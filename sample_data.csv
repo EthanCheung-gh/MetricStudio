@@ -1,0 +1,10 @@
+date,category,value,region
+2024-01-01,A,120,North
+2024-02-01,A,150,North
+2024-03-01,A,180,South
+2024-01-01,B,90,South
+2024-02-01,B,110,East
+2024-03-01,B,130,East
+2024-01-01,C,200,North
+2024-02-01,C,170,West
+2024-03-01,C,160,West

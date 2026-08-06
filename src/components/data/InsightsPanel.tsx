@@ -1,0 +1,80 @@
+import { useCallback, useEffect, useState } from 'react'
+import { BarChart3, Lightbulb, Link2, PieChart, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Button } from '@heroui/react'
+import { api } from '@/api/client'
+import { useDataStore } from '@/stores/dataStore'
+
+interface Insight {
+  type: string
+  text: string
+  evidence: Record<string, unknown>
+}
+
+const ICONS: Record<string, React.ReactNode> = {
+  trend: <TrendingUp className="h-3.5 w-3.5" />,
+  concentration: <PieChart className="h-3.5 w-3.5" />,
+  skew: <BarChart3 className="h-3.5 w-3.5" />,
+  correlation: <Link2 className="h-3.5 w-3.5" />,
+  missing: <AlertTriangle className="h-3.5 w-3.5" />,
+}
+
+export function InsightsPanel() {
+  const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
+  const [insights, setInsights] = useState<Insight[] | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(async () => {
+    if (!activeDataFrameId) return
+    setLoading(true)
+    try {
+      const body = await api.insights(activeDataFrameId)
+      setInsights(body.insights)
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false)
+    }
+  }, [activeDataFrameId])
+
+  useEffect(() => {
+    setInsights(null)
+    load()
+  }, [load])
+
+  if (!activeDataFrameId) return null
+
+  return (
+    <div className="flex flex-col gap-2 rounded border border-border bg-surface p-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1 text-xs font-semibold text-muted">
+          <Lightbulb className="h-3.5 w-3.5" />
+          Insights
+        </div>
+        <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh insights">
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {loading && !insights && <div className="text-[11px] text-muted">Analyzing…</div>}
+
+      {insights && insights.length === 0 && (
+        <div className="text-[11px] text-muted">No insights to report</div>
+      )}
+
+      {insights &&
+        insights.map((insight, idx) => (
+          <div key={`${insight.type}-${idx}`} className="rounded border border-border/60 bg-surface-elevated/40 p-2">
+            <div className="flex items-start gap-1.5">
+              <span className="mt-0.5 text-primary">{ICONS[insight.type] ?? <Lightbulb className="h-3.5 w-3.5" />}</span>
+              <p className="text-[11px] leading-snug">{insight.text}</p>
+            </div>
+            <div className="ml-5 mt-1 font-mono text-[10px] text-muted">
+              {Object.entries(insight.evidence)
+                .map(([k, v]) => `${k}=${v}`)
+                .join('  ')}
+            </div>
+          </div>
+        ))}
+    </div>
+  )
+}

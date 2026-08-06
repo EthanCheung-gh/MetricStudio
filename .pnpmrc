@@ -1,0 +1,3 @@
+ignore-scripts=false
+only-built-dependencies[]=@heroui/shared-utils
+only-built-dependencies[]=es5-ext
