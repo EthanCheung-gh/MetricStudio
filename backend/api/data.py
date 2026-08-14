@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import Response, StreamingResponse
 
 from backend.core.session import session
 from backend.models.data import DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta
@@ -130,3 +132,33 @@ async def describe_dataframe(dataset_id: str):
 async def delete_dataframe(dataset_id: str):
     session.delete_dataset(dataset_id)
     return {"ok": True}
+
+
+@router.get("/{dataset_id}/export")
+async def export_dataframe(dataset_id: str, format: str = "csv"):
+    """Download the current derived state as CSV or Parquet."""
+    try:
+        dataset = session.get(dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    df = dataset.df
+    if format == "csv":
+        buf = io.StringIO()
+        df.to_csv(buf, index=False)
+        filename = f"{dataset.name}.csv"
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    if format == "parquet":
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False)
+        filename = f"{dataset.name}.parquet"
+        return Response(
+            content=buf.getvalue(),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    raise HTTPException(status_code=400, detail=f"Unsupported format: {format}")

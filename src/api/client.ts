@@ -128,6 +128,8 @@ export const api = {
   deleteDataFrame: (id: string) => fetchJson<void>(`/api/v1/data/${id}`, { method: 'DELETE' }),
   refreshDataset: (id: string) =>
     fetchJson<DataFrameMeta>(`/api/v1/data/${id}/refresh`, { method: 'POST' }),
+  exportDatasetUrl: (id: string, format: 'csv' | 'parquet') =>
+    `${getBaseUrl()}/api/v1/data/${id}/export?format=${format}`,
 
   // Transform
   filter: (id: string, params: FilterParams) =>
