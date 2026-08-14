@@ -9,6 +9,7 @@ import type {
   TransformHistoryItem,
   LineageResponse,
   QualityReport,
+  UserRecipe,
 } from '@/types/data';
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
@@ -104,6 +105,17 @@ export const api = {
   listDataFrames: () => fetchJson<DataFrameMeta[]>('/api/v1/data/list'),
   lineage: () => fetchJson<LineageResponse>('/api/v1/data/lineage'),
   quality: (id: string) => fetchJson<QualityReport>(`/api/v1/data/${id}/quality`),
+  listRecipes: () =>
+    fetchJson<{ presets: { id: string; name: string; description: string; dynamic: boolean }[]; custom: UserRecipe[] }>(
+      '/api/v1/recipes'
+    ),
+  saveRecipe: (name: string, steps: { type: string; params: Record<string, unknown> }[]) =>
+    fetchJson<UserRecipe>('/api/v1/recipes', {
+      method: 'POST',
+      body: JSON.stringify({ name, steps }),
+    }),
+  deleteRecipe: (id: string) =>
+    fetchJson<{ deleted: boolean }>(`/api/v1/recipes/${id}`, { method: 'DELETE' }),
   insights: (id: string) =>
     fetchJson<{ insights: { type: string; text: string; evidence: Record<string, unknown> }[] }>(
       `/api/v1/data/${id}/insights`

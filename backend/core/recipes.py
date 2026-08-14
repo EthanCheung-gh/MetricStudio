@@ -92,7 +92,12 @@ def build_steps(recipe_id: str, df: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 def recipe_steps_for_issue(df: pd.DataFrame, recipe_id: str) -> list[dict[str, Any]]:
-    """Build steps, guarding against unknown recipe ids."""
+    """Resolve a recipe id to concrete steps (user recipe first, then preset)."""
+    from backend.core.user_recipes import get_user_recipe
+
+    user_recipe = get_user_recipe(recipe_id)
+    if user_recipe is not None:
+        return user_recipe.get("steps", [])
     if recipe_id not in RECIPE_IDS:
         raise ValueError(f"Unknown recipe: {recipe_id}")
     return build_steps(recipe_id, df)

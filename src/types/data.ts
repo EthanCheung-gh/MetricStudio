@@ -97,6 +97,13 @@ export interface QualityIssue {
   suggestions: string[];
 }
 
+export interface UserRecipe {
+  id: string;
+  name: string;
+  steps: { type: string; params: Record<string, unknown> }[];
+  created_at: string;
+}
+
 export interface QualityReport {
   issues: QualityIssue[];
   summary: { missing_cells: number; duplicate_rows: number; columns: number; rows: number };

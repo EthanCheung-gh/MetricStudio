@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Sparkles, RefreshCw } from 'lucide-react'
-import { Button } from '@heroui/react'
+import { AlertTriangle, CheckCircle2, Play, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react'
+import { Button, Input } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
-import type { QualityReport } from '@/types/data'
+import type { QualityReport, UserRecipe } from '@/types/data'
+
+interface RecipePreset {
+  id: string
+  name: string
+  description: string
+  dynamic: boolean
+}
 
 export function CleaningPanel() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
@@ -12,8 +19,12 @@ export function CleaningPanel() {
   const addNotification = useUIStore((s) => s.addNotification)
   const cleaningScanVersion = useUIStore((s) => s.cleaningScanVersion)
   const [report, setReport] = useState<QualityReport | null>(null)
+  const [recipes, setRecipes] = useState<{ presets: RecipePreset[]; custom: UserRecipe[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState<string | null>(null)
+  const [saveOpen, setSaveOpen] = useState(false)
+  const [saveName, setSaveName] = useState('')
+  const [savingRecipe, setSavingRecipe] = useState(false)
 
   const load = useCallback(async () => {
     if (!activeDataFrameId) return
@@ -27,17 +38,26 @@ export function CleaningPanel() {
     }
   }, [activeDataFrameId])
 
+  const loadRecipes = useCallback(async () => {
+    try {
+      setRecipes(await api.listRecipes())
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
   useEffect(() => {
     setReport(null)
     load()
-  }, [load, cleaningScanVersion])
+    loadRecipes()
+  }, [load, loadRecipes, cleaningScanVersion])
 
-  const applyRecipe = async (recipeId: string) => {
+  const applyRecipe = async (recipeId: string, name?: string) => {
     if (!activeDataFrameId) return
     setApplying(recipeId)
     try {
       await api.applyRecipe(activeDataFrameId, recipeId)
-      addNotification('success', `Recipe applied: ${recipeId}`)
+      addNotification('success', `Recipe applied: ${name ?? recipeId}`)
       await Promise.all([load(), refreshActiveDataFrame()])
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Recipe failed')
@@ -46,9 +66,44 @@ export function CleaningPanel() {
     }
   }
 
+  const saveRecipe = async () => {
+    if (!activeDataFrameId || !saveName.trim()) return
+    setSavingRecipe(true)
+    try {
+      const history = await api.history(activeDataFrameId)
+      if (history.length === 0) {
+        addNotification('info', 'No transforms to save as a recipe')
+        return
+      }
+      await api.saveRecipe(
+        saveName.trim(),
+        history.map((h) => ({ type: h.type, params: h.params })),
+      )
+      addNotification('success', 'Recipe saved')
+      setSaveName('')
+      setSaveOpen(false)
+      await loadRecipes()
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Save recipe failed')
+    } finally {
+      setSavingRecipe(false)
+    }
+  }
+
+  const deleteRecipe = async (recipeId: string) => {
+    try {
+      await api.deleteRecipe(recipeId)
+      await loadRecipes()
+      addNotification('success', 'Recipe deleted')
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Delete recipe failed')
+    }
+  }
+
   if (!activeDataFrameId) return null
 
   const recipeById = new Map((report?.recipes ?? []).map((r) => [r.id, r]))
+  const customRecipes = recipes?.custom ?? []
 
   return (
     <div className="flex flex-col gap-2 rounded border border-border bg-surface p-2">
@@ -101,7 +156,7 @@ export function CleaningPanel() {
                       color={issue.severity === 'warning' ? 'warning' : 'primary'}
                       className="h-6 min-h-0 px-2 text-[10px]"
                       isLoading={applying === rid}
-                      onPress={() => applyRecipe(rid)}
+                      onPress={() => applyRecipe(rid, meta.name)}
                     >
                       {meta.name}
                     </Button>
@@ -111,6 +166,67 @@ export function CleaningPanel() {
             )}
           </div>
         ))}
+
+      {/* User-defined recipes */}
+      <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">My recipes</span>
+          <Button
+            size="sm"
+            variant="light"
+            startContent={<Save className="h-3 w-3" />}
+            onPress={() => setSaveOpen((v) => !v)}
+          >
+            Save
+          </Button>
+        </div>
+        {saveOpen && (
+          <div className="flex gap-1">
+            <Input
+              size="sm"
+              value={saveName}
+              onValueChange={setSaveName}
+              placeholder="Recipe name"
+              className="flex-1"
+            />
+            <Button size="sm" color="primary" isLoading={savingRecipe} onPress={saveRecipe}>
+              Save
+            </Button>
+          </div>
+        )}
+        {customRecipes.map((r) => (
+          <div
+            key={r.id}
+            className="flex items-center justify-between rounded border border-border/60 bg-surface-elevated/40 px-2 py-1"
+          >
+            <span className="truncate text-[11px]">{r.name}</span>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                isLoading={applying === r.id}
+                onPress={() => applyRecipe(r.id, r.name)}
+                aria-label={`Apply ${r.name}`}
+              >
+                <Play className="h-3 w-3 text-primary" />
+              </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => deleteRecipe(r.id)}
+                aria-label={`Delete ${r.name}`}
+              >
+                <Trash2 className="h-3 w-3 text-muted" />
+              </Button>
+            </div>
+          </div>
+        ))}
+        {customRecipes.length === 0 && !saveOpen && (
+          <div className="text-[11px] text-muted">Save a transform chain as a reusable recipe</div>
+        )}
+      </div>
     </div>
   )
 }

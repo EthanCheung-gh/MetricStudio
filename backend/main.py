@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import data, transform, chart, project, report
+from backend.api import data, transform, chart, project, report, recipes
 
 
 @asynccontextmanager
@@ -83,6 +83,7 @@ app.include_router(transform.router)
 app.include_router(chart.router)
 app.include_router(project.router)
 app.include_router(report.router)
+app.include_router(recipes.router)
 
 
 if __name__ == "__main__":
