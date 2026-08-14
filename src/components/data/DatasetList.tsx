@@ -28,9 +28,9 @@ export const DatasetList = memo(function DatasetList() {
   return (
     <Card className="bg-surface-elevated border-border">
       <CardBody className="gap-2">
-        <div className="text-xs font-semibold text-muted">Datasets</div>
+        <div className="text-xs font-semibold text-muted">数据集</div>
         {dataFrames.length === 0 && (
-          <p className="text-xs text-muted">No datasets imported yet.</p>
+          <p className="text-xs text-muted">尚未导入数据集。</p>
         )}
         <div className="flex flex-col gap-1">
           {dataFrames.map((df) => (

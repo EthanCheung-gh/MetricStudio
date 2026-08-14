@@ -48,14 +48,14 @@ export function getCommands(): Command[] {
   const staticCommands: Command[] = [
     {
       id: 'import',
-      title: 'Import data…',
+      title: '导入数据…',
       category: 'Actions',
       icon: <FileUp size={14} />,
       run: () => ui.setImportModalOpen(true),
     },
     {
       id: 'new-chart',
-      title: 'New chart',
+      title: '新建图表',
       category: 'Actions',
       icon: <BarChart3 size={14} />,
       run: () => {
@@ -71,28 +71,28 @@ export function getCommands(): Command[] {
     },
     {
       id: 'save-project',
-      title: 'Save project…',
+      title: '保存项目…',
       category: 'Actions',
       icon: <Save size={14} />,
       run: () => ui.setSaveProjectModalOpen(true),
     },
     {
       id: 'open-project',
-      title: 'Open project…',
+      title: '打开项目…',
       category: 'Actions',
       icon: <FolderOpen size={14} />,
       run: () => ui.setLoadProjectModalOpen(true),
     },
     {
       id: 'generate-report',
-      title: 'Generate report…',
+      title: '生成报告…',
       category: 'Actions',
       icon: <FileText size={14} />,
       run: () => ui.setReportDialogOpen(true),
     },
     {
       id: 'insights',
-      title: 'View insights',
+      title: '查看洞察',
       category: 'Actions',
       icon: <Lightbulb size={14} />,
       run: () => {
@@ -107,7 +107,7 @@ export function getCommands(): Command[] {
     },
     {
       id: 'cleaning-scan',
-      title: 'Cleaning scan…',
+      title: '数据清洗扫描…',
       category: 'Actions',
       icon: <Sparkles size={14} />,
       run: () => {
@@ -123,7 +123,7 @@ export function getCommands(): Command[] {
     },
     {
       id: 'undo',
-      title: 'Undo',
+      title: '撤销',
       category: 'Actions',
       icon: <Undo2 size={14} />,
       run: () => {
@@ -132,7 +132,7 @@ export function getCommands(): Command[] {
     },
     {
       id: 'redo',
-      title: 'Redo',
+      title: '重做',
       category: 'Actions',
       icon: <Redo2 size={14} />,
       run: () => {
@@ -141,49 +141,49 @@ export function getCommands(): Command[] {
     },
     {
       id: 'go-data',
-      title: 'Go to Data tab',
+      title: '切换到数据标签',
       category: 'Navigation',
       icon: <Table2 size={14} />,
       run: () => ws.setActiveTab('data'),
     },
     {
       id: 'go-chart',
-      title: 'Go to Chart tab',
+      title: '切换到图表标签',
       category: 'Navigation',
       icon: <BarChart3 size={14} />,
       run: () => ws.setActiveTab('chart'),
     },
     {
       id: 'panel-left',
-      title: 'Toggle left panel',
+      title: '切换左面板',
       category: 'Settings',
       icon: <PanelLeft size={14} />,
       run: () => ws.togglePanel('left'),
     },
     {
       id: 'panel-right',
-      title: 'Toggle right panel',
+      title: '切换右面板',
       category: 'Settings',
       icon: <PanelRight size={14} />,
       run: () => ws.togglePanel('right'),
     },
     {
       id: 'theme-dark',
-      title: 'Theme: Dark',
+      title: '主题: 深色',
       category: 'Settings',
       icon: <Moon size={14} />,
       run: () => ws.setTheme('dark'),
     },
     {
       id: 'theme-light',
-      title: 'Theme: Light',
+      title: '主题: 浅色',
       category: 'Settings',
       icon: <Sun size={14} />,
       run: () => ws.setTheme('light'),
     },
     {
       id: 'theme-system',
-      title: 'Theme: System',
+      title: '主题: 跟随系统',
       category: 'Settings',
       icon: <Monitor size={14} />,
       run: () => ws.setTheme('system'),
@@ -192,7 +192,7 @@ export function getCommands(): Command[] {
 
   const recentCommands: Command[] = ui.recentProjects.map((p) => ({
     id: `recent-${p.path}`,
-    title: `Open recent: ${p.name}`,
+    title: `打开最近: ${p.name}`,
     keywords: `recent project open ${p.name}`,
     category: 'Actions' as const,
     icon: <FolderOpen size={14} />,

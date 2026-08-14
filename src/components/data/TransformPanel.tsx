@@ -337,7 +337,7 @@ export function TransformPanel() {
           </div>
           {computePreviewValues !== null && (
             <div className="rounded border border-border/60 bg-surface-elevated/40 px-2 py-1 font-mono text-[10px] text-muted">
-              Preview: {computePreviewValues.map((v) => String(v ?? '∅')).join(', ')}
+              预览: {computePreviewValues.map((v) => String(v ?? '∅')).join(', ')}
             </div>
           )}
           <Button size="sm" color="primary" isLoading={loading} onPress={handleCompute}>

@@ -101,7 +101,7 @@ export function ChartCanvas() {
               className="w-48"
             />
           ) : (
-            <span className="text-sm text-muted">No chart selected</span>
+            <span className="text-sm text-muted">未选择图表</span>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -109,14 +109,14 @@ export function ChartCanvas() {
             <div className="mr-1 flex items-center gap-1 rounded bg-primary/15 px-2 py-1 text-[11px] text-primary">
               <Filter className="h-3 w-3" />
               {selection.chartId === activeChartId ? (
-                <span>Brush source · other charts filtered</span>
+                <span>框选源 · 其他图表已联动</span>
               ) : (
-                <span>Filtered by “{selection.sourceName}”</span>
+                <span>已按“{selection.sourceName}”</span>
               )}
               <button
                 className="ml-0.5 rounded p-0.5 hover:bg-primary/20"
                 onClick={clearSelection}
-                aria-label="Clear crossfilter selection"
+                aria-label="清除联动选择"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -126,7 +126,7 @@ export function ChartCanvas() {
             isIconOnly size="sm" variant="light"
             isDisabled={charts.length === 0}
             onPress={() => setReportDialogOpen(true)}
-            aria-label="Generate report"
+            aria-label="生成报告"
           >
             <FileText className="h-4 w-4" />
           </Button>

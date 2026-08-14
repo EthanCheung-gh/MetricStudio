@@ -23,7 +23,7 @@ export function DataExplorer() {
   return (
     <Card className="bg-surface-elevated border-border">
       <CardBody className="gap-2">
-        <div className="text-xs font-semibold text-muted">Import Data</div>
+        <div className="text-xs font-semibold text-muted">导入数据</div>
         <div
           className={`rounded border border-dashed p-3 text-center transition-colors ${
             dragOver ? 'border-primary bg-primary/10' : 'border-border'
@@ -41,7 +41,7 @@ export function DataExplorer() {
           }}
         >
           <Upload className="mx-auto h-6 w-6 text-muted" />
-          <p className="mt-1 text-xs text-muted">Drop CSV / Excel / Parquet</p>
+          <p className="mt-1 text-xs text-muted">拖入 CSV / Excel / Parquet</p>
           <input
             ref={inputRef}
             type="file"
@@ -59,7 +59,7 @@ export function DataExplorer() {
             isLoading={loading}
             onPress={() => inputRef.current?.click()}
           >
-            Browse
+            浏览
           </Button>
         </div>
       </CardBody>

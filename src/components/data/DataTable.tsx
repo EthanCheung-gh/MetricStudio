@@ -121,7 +121,7 @@ export function DataTable() {
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
         <span className="text-xs text-muted">
-          Preview: {fmt(table.getFilteredRowModel().rows.length)} / {fmt(preview.totalRows)} rows ×{' '}
+          预览: {fmt(table.getFilteredRowModel().rows.length)} / {fmt(preview.totalRows)} rows ×{' '}
           {fmt(preview.totalCols)} cols
         </span>
         <div className="flex items-center gap-1.5">
@@ -130,7 +130,7 @@ export function DataTable() {
             <input
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              placeholder="Search all columns…"
+              placeholder="搜索所有列…"
               className="w-44 rounded border border-border bg-surface-elevated py-1 pl-7 pr-2 text-xs outline-none placeholder:text-muted focus:border-primary"
             />
           </div>
@@ -141,7 +141,7 @@ export function DataTable() {
               startContent={<Columns3 className="h-3.5 w-3.5" />}
               onPress={() => setShowColumnsPanel((v) => !v)}
             >
-              Columns
+              列
             </Button>
             {showColumnsPanel && (
               <div className="absolute right-0 top-8 z-30 flex max-h-72 w-44 flex-col gap-0.5 overflow-auto rounded border border-border bg-surface-elevated p-1.5 shadow-xl">
@@ -193,7 +193,7 @@ export function DataTable() {
                       <button
                         className="flex w-full items-center gap-1"
                         onClick={header.column.getToggleSortingHandler()}
-                        title="Click to sort"
+                        title="点击排序"
                       >
                         <span className="truncate">
                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -211,7 +211,7 @@ export function DataTable() {
                           value={(header.column.getFilterValue() as string) ?? ''}
                           onChange={(e) => header.column.setFilterValue(e.target.value)}
                           onClick={(e) => e.stopPropagation()}
-                          placeholder="Filter…"
+                          placeholder="筛选…"
                           className="mt-1 w-full rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] outline-none placeholder:text-muted focus:border-primary"
                         />
                       )}
@@ -232,7 +232,7 @@ export function DataTable() {
             {table.getRowModel().rows.length === 0 && (
               <tr>
                 <td colSpan={table.getAllLeafColumns().length} className="px-3 py-8 text-center text-muted">
-                  No rows match the current filters
+                  无匹配当前筛选条件的行
                 </td>
               </tr>
             )}
@@ -243,7 +243,7 @@ export function DataTable() {
                     key={cell.id}
                     className="group relative cursor-pointer border-b border-r border-border px-3 py-1.5 whitespace-nowrap text-foreground"
                     onClick={() => copyCell(cell.id, cell.getValue())}
-                    title="Click to copy"
+                    title="点击复制"
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     {copiedCell === cell.id && (

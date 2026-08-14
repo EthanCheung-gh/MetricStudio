@@ -9,7 +9,7 @@ export function ImportModal() {
   return (
     <Modal isOpen={open} onClose={() => setOpen(false)} size="lg">
       <ModalContent>
-        <ModalHeader>Import Data</ModalHeader>
+        <ModalHeader>导入数据</ModalHeader>
         <ModalBody className="pb-6">
           <DataExplorer />
         </ModalBody>

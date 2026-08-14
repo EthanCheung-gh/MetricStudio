@@ -41,7 +41,7 @@ export function StatusBar() {
         <span className="flex items-center gap-1">
           <Activity className="h-3 w-3" />
           <span className={backendConnected ? 'text-success' : 'text-danger'}>
-            {backendConnected ? 'Backend Online' : backendMessage}
+            {backendConnected ? '后端在线' : backendMessage}
           </span>
         </span>
         {deps && (
@@ -50,7 +50,7 @@ export function StatusBar() {
               {deps.ok && deps.missingOptional.length === 0 ? (
                 <>
                   <PackageCheck className="h-3 w-3 text-success" />
-                  <span className="text-success">Deps OK</span>
+                  <span className="text-success">依赖正常</span>
                 </>
               ) : (
                 <>
@@ -69,11 +69,11 @@ export function StatusBar() {
           <>
             <span className="flex items-center gap-1">
               <Rows3 className="h-3 w-3" />
-              {fmt(rows)} rows × {fmt(cols)} cols
+              {fmt(rows)} 行 × {fmt(cols)} 列
             </span>
             <span className="flex items-center gap-1">
               <Cpu className="h-3 w-3" />
-              Engine: {active.engine ?? 'pandas'}
+              引擎: {active.engine ?? 'pandas'}
             </span>
           </>
         )}

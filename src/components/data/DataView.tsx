@@ -27,7 +27,7 @@ export function DataView() {
               }`}
               onClick={() => setView(v)}
             >
-              {v === 'lineage' ? 'Lineage' : 'Table'}
+              {v === 'lineage' ? '血缘' : '表格'}
             </button>
           ))}
         </div>

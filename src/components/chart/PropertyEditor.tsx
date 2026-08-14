@@ -13,7 +13,7 @@ export function PropertyEditor() {
   if (!chart) {
     return (
       <div className="rounded border border-border bg-surface-elevated p-3 text-xs text-muted">
-        Select a chart to edit properties.
+        选择图表以编辑属性。
       </div>
     )
   }
@@ -83,57 +83,57 @@ export function PropertyEditor() {
 
   return (
     <>
-    <CollapsibleSection title="Properties" defaultOpen={false}>
+    <CollapsibleSection title="属性" defaultOpen={false}>
       <div className="flex flex-col gap-2">
-        <Input size="sm" label="Title" value={String(layout.title || '')}
+        <Input size="sm" label="标题" value={String(layout.title || '')}
           onValueChange={(v) => updateLayout(chart.id, { title: v })} />
-        <Input size="sm" label="X Axis Label" value={getTitleText(xaxis)}
+        <Input size="sm" label="X 轴标签" value={getTitleText(xaxis)}
           onValueChange={(v) => setTitleText('xaxis', v)} />
-        <Input size="sm" label="Left Y Axis Label" value={getTitleText(yaxis)}
+        <Input size="sm" label="左 Y 轴标签" value={getTitleText(yaxis)}
           onValueChange={(v) => setTitleText('yaxis', v)} />
         {hasRightAxis && (
-          <Input size="sm" label="Right Y Axis Label" value={getTitleText(yaxis2)}
+          <Input size="sm" label="右 Y 轴标签" value={getTitleText(yaxis2)}
             onValueChange={(v) => setTitleText('yaxis2', v)} />
         )}
         <div className="flex items-center justify-between text-xs">
-          <span>X Log Scale</span>
+          <span>X 轴对数</span>
           <Switch size="sm" isSelected={xaxis.type === 'log'}
             onValueChange={(v) => setAxisLog('xaxis', v)} />
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span>Left Y Log Scale</span>
+          <span>左 Y 轴对数</span>
           <Switch size="sm" isSelected={yaxis.type === 'log'}
             onValueChange={(v) => setAxisLog('yaxis', v)} />
         </div>
         {hasRightAxis && (
           <div className="flex items-center justify-between text-xs">
-            <span>Right Y Log Scale</span>
+            <span>右 Y 轴对数</span>
             <Switch size="sm" isSelected={yaxis2.type === 'log'}
               onValueChange={(v) => setAxisLog('yaxis2', v)} />
           </div>
         )}
         <div className="flex items-center justify-between text-xs">
-          <span>Show Legend</span>
+          <span>显示图例</span>
           <Switch size="sm" isSelected={!!layout.showlegend}
             onValueChange={(v) => updateLayout(chart.id, { showlegend: v })} />
         </div>
-        <Input size="sm" type="color" label="Background Color"
+        <Input size="sm" type="color" label="背景色"
           value={String(layout.plot_bgcolor || '#000000')}
           onValueChange={(v) => updateLayout(chart.id, { plot_bgcolor: v })} />
       </div>
     </CollapsibleSection>
 
-    <CollapsibleSection title="Annotations" defaultOpen={false}>
+    <CollapsibleSection title="批注" defaultOpen={false}>
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap gap-1">
           <Button size="sm" variant="flat" startContent={<MessageSquarePlus className="h-3 w-3" />} onPress={addTextAnnotation}>
-            Text
+            文本
           </Button>
           <Button size="sm" variant="flat" startContent={<Minus className="h-3 w-3" />} onPress={() => addShape('hline')}>
-            H-Line
+            横线
           </Button>
           <Button size="sm" variant="flat" startContent={<Minus className="h-3 w-3 rotate-90" />} onPress={() => addShape('vline')}>
-            V-Line
+            竖线
           </Button>
         </div>
         {annotations.map((a, i) => (
@@ -159,7 +159,7 @@ export function PropertyEditor() {
           </div>
         ))}
         {annotations.length === 0 && shapes.length === 0 && (
-          <div className="text-[11px] text-muted">Add text or guide lines on the chart</div>
+          <div className="text-[11px] text-muted">在图表上添加文本或参考线</div>
         )}
       </div>
     </CollapsibleSection>

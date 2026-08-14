@@ -8,6 +8,7 @@ import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useCommandPaletteStore } from '@/stores/commandPaletteStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { globalUndo, globalRedo } from '@/utils/globalHistory'
 import type { FieldType } from '@/types/encoding'
 
@@ -18,6 +19,25 @@ function App() {
   const columns = useDataStore((s) => s.columns)
   const activeChartId = useChartStore((s) => s.activeChartId)
   const updateEncoding = useChartStore((s) => s.updateEncoding)
+  const theme = useWorkspaceStore((s) => s.theme)
+
+  // Apply light/dark theme to the root element
+  useEffect(() => {
+    const root = document.documentElement
+    const apply = () => {
+      const dark =
+        theme === 'dark' ||
+        (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      root.classList.toggle('dark', dark)
+      root.classList.toggle('light', !dark)
+    }
+    apply()
+    if (theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      mq.addEventListener('change', apply)
+      return () => mq.removeEventListener('change', apply)
+    }
+  }, [theme])
 
   // Only show the disconnect banner after a connection was previously established
   // (initial startup failure is surfaced in the StatusBar instead)

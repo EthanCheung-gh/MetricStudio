@@ -37,7 +37,7 @@ export function AskPanel() {
     <div className="flex flex-col gap-2 rounded border border-border bg-surface p-2">
       <div className="flex items-center gap-1 text-xs font-semibold text-muted">
         <Bot className="h-3.5 w-3.5" />
-        Ask Data
+        数据问答
       </div>
 
       {history.map((qa, i) => (
@@ -50,7 +50,7 @@ export function AskPanel() {
       <div className="flex gap-1">
         <Input
           size="sm"
-          placeholder="e.g. which region has the highest value?"
+          placeholder="例如：哪个地区 value 最高？"
           value={question}
           onValueChange={setQuestion}
           onKeyDown={(e) => {

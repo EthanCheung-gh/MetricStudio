@@ -110,19 +110,19 @@ export function CleaningPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs font-semibold text-muted">
           <Sparkles className="h-3.5 w-3.5" />
-          Cleaning
+          数据清洗
         </div>
         <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh quality report">
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      {loading && !report && <div className="text-[11px] text-muted">Scanning…</div>}
+      {loading && !report && <div className="text-[11px] text-muted">扫描中…</div>}
 
       {report && report.issues.length === 0 && (
         <div className="flex items-center gap-1.5 text-[11px] text-success">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          No issues detected
+          未发现问题
         </div>
       )}
 
@@ -170,14 +170,14 @@ export function CleaningPanel() {
       {/* User-defined recipes */}
       <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">My recipes</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">我的配方</span>
           <Button
             size="sm"
             variant="light"
             startContent={<Save className="h-3 w-3" />}
             onPress={() => setSaveOpen((v) => !v)}
           >
-            Save
+            保存
           </Button>
         </div>
         {saveOpen && (
@@ -186,11 +186,11 @@ export function CleaningPanel() {
               size="sm"
               value={saveName}
               onValueChange={setSaveName}
-              placeholder="Recipe name"
+              placeholder="配方名称"
               className="flex-1"
             />
             <Button size="sm" color="primary" isLoading={savingRecipe} onPress={saveRecipe}>
-              Save
+              保存
             </Button>
           </div>
         )}
@@ -224,7 +224,7 @@ export function CleaningPanel() {
           </div>
         ))}
         {customRecipes.length === 0 && !saveOpen && (
-          <div className="text-[11px] text-muted">Save a transform chain as a reusable recipe</div>
+          <div className="text-[11px] text-muted">将变换链保存为可复用配方</div>
         )}
       </div>
     </div>

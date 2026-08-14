@@ -9,11 +9,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: '#0d0d0d',
-        foreground: '#f5f5f5',
-        surface: '#1a1a1a',
-        'surface-elevated': '#262626',
-        border: '#333333',
+        background: 'var(--background)',
+        foreground: 'var(--foreground)',
+        surface: 'var(--surface)',
+        'surface-elevated': 'var(--surface-elevated)',
+        border: 'var(--border)',
+        muted: 'var(--muted)',
         primary: {
           DEFAULT: '#3b82f6',
           foreground: '#ffffff',

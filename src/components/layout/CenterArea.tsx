@@ -28,7 +28,7 @@ export function CenterArea() {
   if (loading && dataFrames.length === 0) {
     return (
       <div className="flex h-full items-center justify-center bg-background">
-        <LoadingSpinner message="Loading datasets..." />
+        <LoadingSpinner message="正在加载数据集…" />
       </div>
     )
   }
@@ -37,8 +37,8 @@ export function CenterArea() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-background text-muted">
         <Database className="h-12 w-12 opacity-20" />
-        <p className="text-sm">No dataset loaded</p>
-        <p className="text-xs">Import a CSV, Excel, or Parquet file to get started.</p>
+        <p className="text-sm">未加载数据集</p>
+        <p className="text-xs">导入 CSV、Excel 或 Parquet 文件开始。</p>
       </div>
     )
   }
@@ -59,7 +59,7 @@ export function CenterArea() {
           }}
         >
           <Database className="h-3 w-3" />
-          Data
+          数据
         </button>
 
         {/* Dashboard tab */}

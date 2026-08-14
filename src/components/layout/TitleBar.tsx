@@ -71,17 +71,17 @@ export function TitleBar() {
           <span className="font-semibold text-sm">MetricStudio</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button isIconOnly size="sm" variant="light" aria-label="Open project" onPress={() => setLoadProjectModalOpen(true)}>
+          <Button isIconOnly size="sm" variant="light" aria-label="打开项目" onPress={() => setLoadProjectModalOpen(true)}>
             <FolderOpen className="h-4 w-4" />
           </Button>
-          <Button isIconOnly size="sm" variant="light" aria-label="Save project" onPress={() => setSaveProjectModalOpen(true)}>
+          <Button isIconOnly size="sm" variant="light" aria-label="保存项目" onPress={() => setSaveProjectModalOpen(true)}>
             <Save className="h-4 w-4" />
           </Button>
           <Button
             isIconOnly
             size="sm"
             variant="light"
-            aria-label="Import data"
+            aria-label="导入数据"
             onPress={() => setImportModalOpen(true)}
           >
             <FileJson className="h-4 w-4" />
@@ -91,16 +91,16 @@ export function TitleBar() {
 
       <Modal isOpen={saveProjectModalOpen} onClose={() => setSaveProjectModalOpen(false)}>
         <ModalContent>
-          <ModalHeader>Save Project</ModalHeader>
+          <ModalHeader>保存项目</ModalHeader>
           <ModalBody>
             <Input
-              label="Project Name"
+              label="项目名称"
               value={projectName}
               onValueChange={setProjectName}
               size="sm"
             />
             <Input
-              label="File Path"
+              label="文件路径"
               value={projectPath}
               onValueChange={setProjectPath}
               size="sm"
@@ -109,10 +109,10 @@ export function TitleBar() {
           </ModalBody>
           <ModalFooter>
             <Button variant="light" onPress={() => setSaveProjectModalOpen(false)}>
-              Cancel
+              取消
             </Button>
             <Button color="primary" isLoading={saving} onPress={handleSave}>
-              Save
+              保存
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -120,12 +120,12 @@ export function TitleBar() {
 
       <Modal isOpen={loadProjectModalOpen} onClose={() => setLoadProjectModalOpen(false)}>
         <ModalContent>
-          <ModalHeader>Load Project</ModalHeader>
+          <ModalHeader>加载项目</ModalHeader>
           <ModalBody className="gap-3">
             {recentProjects.length > 0 && (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                  <History className="h-3 w-3" /> Recent
+                  <History className="h-3 w-3" /> 最近
                 </div>
                 {recentProjects.map((p) => (
                   <button
@@ -147,7 +147,7 @@ export function TitleBar() {
               isLoading={saving}
               onPress={() => fileInputRef.current?.click()}
             >
-              Upload project file…
+              上传项目文件…
             </Button>
             <input
               ref={fileInputRef}
@@ -157,19 +157,19 @@ export function TitleBar() {
               onChange={(e) => handleUpload(e.target.files?.[0])}
             />
             <Input
-              label="File Path"
+              label="文件路径"
               value={projectPath}
               onValueChange={setProjectPath}
               size="sm"
-              description="Server-side path (advanced)"
+              description="服务端路径（高级）"
             />
           </ModalBody>
           <ModalFooter>
             <Button variant="light" onPress={() => setLoadProjectModalOpen(false)}>
-              Cancel
+              取消
             </Button>
             <Button color="primary" isLoading={saving} onPress={() => handleLoadPath(projectPath)}>
-              Load
+              加载
             </Button>
           </ModalFooter>
         </ModalContent>

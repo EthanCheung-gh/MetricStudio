@@ -77,7 +77,7 @@ export function NLQueryPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs font-semibold text-muted">
           <Sparkles className="h-3.5 w-3.5" />
-          NL Query
+          自然语言查询
         </div>
         <Button isIconOnly size="sm" variant="light" onPress={loadConfig} aria-label="LLM settings">
           <Settings className="h-3.5 w-3.5" />
@@ -86,23 +86,23 @@ export function NLQueryPanel() {
 
       {showConfig && (
         <div className="flex flex-col gap-1 rounded border border-border/60 p-2">
-          <Input size="sm" label="Base URL" value={config.base_url} onValueChange={(v) => setConfig({ ...config, base_url: v })} />
-          <Input size="sm" label="Model" value={config.model} onValueChange={(v) => setConfig({ ...config, model: v })} />
-          <Input size="sm" label="API Key (optional)" type="password" value={config.api_key} onValueChange={(v) => setConfig({ ...config, api_key: v })} />
+          <Input size="sm" label="接口地址" value={config.base_url} onValueChange={(v) => setConfig({ ...config, base_url: v })} />
+          <Input size="sm" label="模型" value={config.model} onValueChange={(v) => setConfig({ ...config, model: v })} />
+          <Input size="sm" label="API 密钥（可选）" type="password" value={config.api_key} onValueChange={(v) => setConfig({ ...config, api_key: v })} />
           <Button size="sm" color="primary" onPress={saveConfig}>
-            Save config
+            保存配置
           </Button>
         </div>
       )}
 
       <Input
         size="sm"
-        placeholder="e.g. remove rows where value > 100, then sort by date"
+        placeholder="例如：删除 value>100 的行，然后按 date 排序"
         value={query}
         onValueChange={setQuery}
       />
       <Button size="sm" color="primary" isLoading={generating} startContent={<Wand2 className="h-3 w-3" />} onPress={generate}>
-        Generate
+        生成
       </Button>
 
       {operations !== null && (
@@ -124,10 +124,10 @@ export function NLQueryPanel() {
               startContent={<Play className="h-3 w-3" />}
               onPress={apply}
             >
-              Apply
+              应用
             </Button>
             <Button size="sm" variant="light" startContent={<X className="h-3 w-3" />} onPress={() => setOperations(null)}>
-              Cancel
+              取消
             </Button>
           </div>
         </div>

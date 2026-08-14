@@ -10,29 +10,54 @@ body,
   overflow: hidden;
 }
 
+/* Theme tokens: dark by default, .light overrides */
+:root {
+  --background: #0d0d0d;
+  --foreground: #f5f5f5;
+  --surface: #1a1a1a;
+  --surface-elevated: #262626;
+  --border: #333333;
+  --muted: #9ca3af;
+  --scrollbar-track: #1a1a1a;
+  --scrollbar-thumb: #4b5563;
+  --scrollbar-thumb-hover: #6b7280;
+}
+
+.light {
+  --background: #f7f7f8;
+  --foreground: #1a1a1a;
+  --surface: #ffffff;
+  --surface-elevated: #f0f0f2;
+  --border: #d9d9de;
+  --muted: #71717a;
+  --scrollbar-track: #e5e5ea;
+  --scrollbar-thumb: #b3b3bc;
+  --scrollbar-thumb-hover: #8e8e99;
+}
+
 body {
-  background-color: #0d0d0d;
-  color: #f5f5f5;
+  background-color: var(--background);
+  color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 }
 
-/* Custom scrollbar for dark theme */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1a1a1a;
+  background: var(--scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--scrollbar-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Plotly container overrides */

@@ -48,17 +48,17 @@ export function InsightsPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs font-semibold text-muted">
           <Lightbulb className="h-3.5 w-3.5" />
-          Insights
+          洞察
         </div>
         <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh insights">
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      {loading && !insights && <div className="text-[11px] text-muted">Analyzing…</div>}
+      {loading && !insights && <div className="text-[11px] text-muted">分析中…</div>}
 
       {insights && insights.length === 0 && (
-        <div className="text-[11px] text-muted">No insights to report</div>
+        <div className="text-[11px] text-muted">暂无洞察</div>
       )}
 
       {insights &&
