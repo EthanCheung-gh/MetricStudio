@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, Card, CardBody, Input, Select, SelectItem } from '@heroui/react'
 import { RotateCcw } from 'lucide-react'
 import { useDataStore } from '@/stores/dataStore'
@@ -31,6 +31,28 @@ export function TransformPanel() {
   const [renameTo, setRenameTo] = useState('')
   const [computeName, setComputeName] = useState('')
   const [computeExpr, setComputeExpr] = useState('')
+  const [computePreviewValues, setComputePreviewValues] = useState<(string | number | boolean | null)[] | null>(null)
+
+  // Live read-only preview of the compute expression (debounced 300ms)
+  useEffect(() => {
+    if (!activeId || !computeExpr.trim()) {
+      setComputePreviewValues(null)
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const { values } = await api.computePreview(activeId, computeExpr)
+        setComputePreviewValues(values)
+      } catch {
+        setComputePreviewValues(null)
+      }
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [activeId, computeExpr])
+
+  const insertField = (name: string) => {
+    setComputeExpr((prev) => (prev.trim() && !prev.endsWith(' ') ? prev + ' ' : prev) + name)
+  }
   const dataFrames = useDataStore((s) => s.dataFrames)
   const [pivotIndex, setPivotIndex] = useState('')
   const [pivotColumns, setPivotColumns] = useState('')
@@ -301,6 +323,23 @@ export function TransformPanel() {
             value={computeExpr}
             onValueChange={setComputeExpr}
           />
+          <div className="flex flex-wrap gap-1">
+            {columns.map((c) => (
+              <button
+                key={c.name}
+                className="rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted hover:bg-primary/15 hover:text-primary"
+                onClick={() => insertField(c.name)}
+                title={`Insert ${c.name}`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+          {computePreviewValues !== null && (
+            <div className="rounded border border-border/60 bg-surface-elevated/40 px-2 py-1 font-mono text-[10px] text-muted">
+              Preview: {computePreviewValues.map((v) => String(v ?? '∅')).join(', ')}
+            </div>
+          )}
           <Button size="sm" color="primary" isLoading={loading} onPress={handleCompute}>
             Add Computed Column
           </Button>

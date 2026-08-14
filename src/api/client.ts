@@ -165,6 +165,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name, expression }),
     }),
+  computePreview: (id: string, expression: string) =>
+    fetchJson<{ values: (number | string | boolean | null)[] }>(`/api/v1/transform/${id}/compute/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ expression }),
+    }),
   pivot: (id: string, params: { index: string; columns: string; values: string; aggfunc: string }) =>
     fetchJson<DataPreview>(`/api/v1/transform/${id}/pivot`, {
       method: 'POST',

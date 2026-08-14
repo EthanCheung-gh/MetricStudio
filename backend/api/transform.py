@@ -103,6 +103,28 @@ async def compute_column(dataset_id: str, request: ComputeRequest):
     return _apply(dataset_id, "compute", request.model_dump())
 
 
+@router.post("/{dataset_id}/compute/preview")
+async def compute_preview(dataset_id: str, payload: dict):
+    """Read-only eval preview: returns the first 20 result values without touching history."""
+    try:
+        dataset = session.get(dataset_id)
+        expression = (payload.get("expression") or "").strip()
+        if not expression:
+            return {"values": []}
+        df = dataset.df
+        try:
+            result = df.eval(expression)
+        except Exception:
+            result = df.eval(expression, engine="python")
+        values = result.head(20).tolist()
+        values = [None if (isinstance(v, float) and v != v) else v for v in values]
+        return {"values": values}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/{dataset_id}/pivot", response_model=DataPreview, response_model_by_alias=True)
 async def pivot_data(dataset_id: str, request: PivotRequest):
     return _apply(dataset_id, "pivot", request.model_dump())
