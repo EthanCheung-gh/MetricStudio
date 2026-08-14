@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from backend.core.dataframe import apply_dedupe, apply_clip, apply_parse_numeric, parse_numeric_series
+from backend.core.dataframe import apply_dedupe, apply_clip, apply_parse_numeric, parse_numeric_series, apply_drop, apply_str_clean, apply_groupby, apply_sample
 
 
 def test_apply_dedupe_removes_fully_duplicate_rows():
@@ -42,3 +42,31 @@ def test_apply_parse_numeric_rewrites_column(dirty_df):
     out = apply_parse_numeric(dirty_df, {"column": "num_str"})
     assert out["num_str"].dtype.kind in "fi"
     assert out["num_str"].iloc[0] == 1000.0
+
+
+def test_apply_drop():
+    df = pd.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6]})
+    out = apply_drop(df, {"columns": ["b"]})
+    assert list(out.columns) == ["a", "c"]
+
+
+def test_apply_str_clean():
+    df = pd.DataFrame({"s": ["  hello ", "WORLD"]})
+    out = apply_str_clean(df, {"column": "s", "action": "trim"})
+    assert out["s"].tolist() == ["hello", "WORLD"]
+    out2 = apply_str_clean(df, {"column": "s", "action": "lower", "new_column": "s2"})
+    assert out2["s2"].tolist() == ["  hello ", "world"]
+
+
+def test_apply_groupby():
+    df = pd.DataFrame({"cat": ["a", "a", "b"], "v": [10, 20, 30]})
+    out = apply_groupby(df, {"by": ["cat"], "value_column": "v", "aggfunc": "sum"})
+    assert out["v"].tolist() == [30, 30]
+
+
+def test_apply_sample():
+    df = pd.DataFrame({"a": list(range(100))})
+    out = apply_sample(df, {"n": 10})
+    assert len(out) == 10
+    out2 = apply_sample(df, {"frac": 0.2})
+    assert len(out2) == 20

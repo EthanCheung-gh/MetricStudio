@@ -87,6 +87,14 @@ class Dataset:
             self._df = apply_clip(self._df, params)
         elif op_type == "parse_numeric":
             self._df = apply_parse_numeric(self._df, params)
+        elif op_type == "drop":
+            self._df = apply_drop(self._df, params)
+        elif op_type == "str_clean":
+            self._df = apply_str_clean(self._df, params)
+        elif op_type == "groupby":
+            self._df = apply_groupby(self._df, params)
+        elif op_type == "sample":
+            self._df = apply_sample(self._df, params)
         elif op_type == "join":
             raise ValueError("join requires session context; use Dataset.apply_join via SessionManager")
         else:
@@ -246,6 +254,51 @@ def apply_clip(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
         raise ValueError("clip requires at least one of min/max")
     df = df.copy()
     df[col] = df[col].clip(lower=lo, upper=hi)
+    return df
+
+
+def apply_drop(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
+    """Drop one or more columns (missing columns are ignored)."""
+    columns = [c for c in params.get("columns", []) if c in df.columns]
+    return df.drop(columns=columns)
+
+
+def apply_str_clean(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
+    """String cleanup: trim / lower / upper, optionally into a new column."""
+    col = params["column"]
+    action = params.get("action", "trim")
+    new_col = params.get("new_column") or col
+    df = df.copy()
+    series = df[col].astype(str)
+    if action == "trim":
+        result = series.str.strip()
+    elif action == "lower":
+        result = series.str.lower()
+    elif action == "upper":
+        result = series.str.upper()
+    else:
+        raise ValueError(f"Unsupported string action: {action}")
+    df[new_col] = result
+    return df
+
+
+def apply_groupby(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
+    """Group by columns and aggregate a value column into a new table."""
+    by = params["by"]
+    value_column = params["value_column"]
+    aggfunc = params.get("aggfunc", "sum")
+    grouped = df.groupby(by, dropna=False)[value_column].agg(aggfunc).reset_index()
+    return grouped
+
+
+def apply_sample(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
+    """Random sample by fraction or row count."""
+    frac = params.get("frac")
+    n = params.get("n")
+    if frac is not None:
+        return df.sample(frac=min(1.0, max(0.0, float(frac))))
+    if n is not None:
+        return df.sample(n=min(len(df), max(0, int(n))))
     return df
 
 

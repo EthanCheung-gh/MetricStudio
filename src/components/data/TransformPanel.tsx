@@ -59,6 +59,14 @@ export function TransformPanel() {
   const [pivotValues, setPivotValues] = useState('')
   const [pivotAgg, setPivotAgg] = useState('sum')
   const [meltIdVars, setMeltIdVars] = useState<string[]>([])
+  const [dropCols, setDropCols] = useState<string[]>([])
+  const [strCol, setStrCol] = useState('')
+  const [strAction, setStrAction] = useState('trim')
+  const [strNewCol, setStrNewCol] = useState('')
+  const [groupByCols, setGroupByCols] = useState<string[]>([])
+  const [groupValueCol, setGroupValueCol] = useState('')
+  const [groupAgg, setGroupAgg] = useState('sum')
+  const [sampleN, setSampleN] = useState('')
   const [joinRight, setJoinRight] = useState('')
   const [joinOn, setJoinOn] = useState('')
   const [joinHow, setJoinHow] = useState('inner')
@@ -183,6 +191,66 @@ export function TransformPanel() {
       addNotification('success', 'Join applied')
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Join failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDrop = async () => {
+    if (!activeId || dropCols.length === 0) return
+    setLoading(true)
+    try {
+      const preview = await api.dropColumns(activeId, dropCols)
+      updatePreview(preview)
+      setPreview()
+      addNotification('success', '删除列已应用')
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : '删除列失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleStrClean = async () => {
+    if (!activeId || !strCol) return
+    setLoading(true)
+    try {
+      const preview = await api.strClean(activeId, strCol, strAction as 'trim' | 'lower' | 'upper', strNewCol || undefined)
+      updatePreview(preview)
+      setPreview()
+      addNotification('success', '字符串清理已应用')
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : '字符串清理失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGroupby = async () => {
+    if (!activeId || groupByCols.length === 0 || !groupValueCol) return
+    setLoading(true)
+    try {
+      const preview = await api.groupby(activeId, groupByCols, groupValueCol, groupAgg)
+      updatePreview(preview)
+      setPreview()
+      addNotification('success', '分组聚合已应用')
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : '分组聚合失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSample = async () => {
+    if (!activeId || !sampleN) return
+    setLoading(true)
+    try {
+      const preview = await api.sample(activeId, parseInt(sampleN, 10))
+      updatePreview(preview)
+      setPreview()
+      addNotification('success', '抽样已应用')
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : '抽样失败')
     } finally {
       setLoading(false)
     }
@@ -458,6 +526,106 @@ export function TransformPanel() {
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleJoin}>
             Apply Join
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase text-muted">Drop Columns</span>
+          <Select
+            size="sm"
+            selectionMode="multiple"
+            placeholder="删除列"
+            selectedKeys={new Set(dropCols)}
+            onSelectionChange={(keys) => setDropCols(Array.from(keys) as string[])}
+          >
+            {columns.map((c) => (
+              <SelectItem key={c.name}>{c.name}</SelectItem>
+            ))}
+          </Select>
+          <Button size="sm" color="primary" isLoading={loading} onPress={handleDrop}>
+            删除列
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase text-muted">String Clean</span>
+          <div className="flex gap-1">
+            <Select
+              size="sm"
+              placeholder="列"
+              selectedKeys={strCol ? [strCol] : []}
+              onSelectionChange={(keys) => setStrCol(Array.from(keys)[0] as string)}
+              className="flex-1"
+            >
+              {columns.map((c) => (
+                <SelectItem key={c.name}>{c.name}</SelectItem>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              selectedKeys={[strAction]}
+              onSelectionChange={(keys) => setStrAction(Array.from(keys)[0] as string)}
+              className="w-24"
+              aria-label="清理方式"
+            >
+              {['trim', 'lower', 'upper'].map((a) => (
+                <SelectItem key={a}>{a}</SelectItem>
+              ))}
+            </Select>
+          </div>
+          <Input size="sm" placeholder="新列名（可选）" value={strNewCol} onValueChange={setStrNewCol} />
+          <Button size="sm" color="primary" isLoading={loading} onPress={handleStrClean}>
+            字符串清理
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase text-muted">Group By</span>
+          <Select
+            size="sm"
+            selectionMode="multiple"
+            placeholder="分组列"
+            selectedKeys={new Set(groupByCols)}
+            onSelectionChange={(keys) => setGroupByCols(Array.from(keys) as string[])}
+          >
+            {columns.map((c) => (
+              <SelectItem key={c.name}>{c.name}</SelectItem>
+            ))}
+          </Select>
+          <div className="flex gap-1">
+            <Select
+              size="sm"
+              placeholder="值列"
+              selectedKeys={groupValueCol ? [groupValueCol] : []}
+              onSelectionChange={(keys) => setGroupValueCol(Array.from(keys)[0] as string)}
+              className="flex-1"
+            >
+              {columns.map((c) => (
+                <SelectItem key={c.name}>{c.name}</SelectItem>
+              ))}
+            </Select>
+            <Select
+              size="sm"
+              selectedKeys={[groupAgg]}
+              onSelectionChange={(keys) => setGroupAgg(Array.from(keys)[0] as string)}
+              className="w-24"
+              aria-label="聚合"
+            >
+              {['sum', 'mean', 'count', 'min', 'max'].map((a) => (
+                <SelectItem key={a}>{a}</SelectItem>
+              ))}
+            </Select>
+          </div>
+          <Button size="sm" color="primary" isLoading={loading} onPress={handleGroupby}>
+            分组聚合
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[10px] uppercase text-muted">Sample</span>
+          <Input size="sm" placeholder="行数" value={sampleN} onValueChange={setSampleN} />
+          <Button size="sm" color="primary" isLoading={loading} onPress={handleSample}>
+            随机抽样
           </Button>
         </div>
 

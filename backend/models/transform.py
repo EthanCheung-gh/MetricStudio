@@ -61,6 +61,27 @@ class JoinRequest(CBaseModel):
     how: Literal["inner", "left", "right", "outer"] = "inner"
 
 
+class DropRequest(CBaseModel):
+    columns: list[str]
+
+
+class StrCleanRequest(CBaseModel):
+    column: str
+    action: Literal["trim", "lower", "upper"] = "trim"
+    new_column: Optional[str] = None
+
+
+class GroupbyRequest(CBaseModel):
+    by: list[str]
+    value_column: str
+    aggfunc: Literal["sum", "mean", "count", "min", "max"] = "sum"
+
+
+class SampleRequest(CBaseModel):
+    n: Optional[int] = None
+    frac: Optional[float] = None
+
+
 class BatchRequest(CBaseModel):
     """Apply a sequence of operations in one request (each appended to history)."""
 

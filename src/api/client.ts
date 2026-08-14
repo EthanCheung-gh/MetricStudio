@@ -182,6 +182,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(params),
     }),
+  dropColumns: (id: string, columns: string[]) =>
+    fetchJson<DataPreview>(`/api/v1/transform/${id}/drop`, {
+      method: 'POST',
+      body: JSON.stringify({ columns }),
+    }),
+  strClean: (id: string, column: string, action: 'trim' | 'lower' | 'upper', newColumn?: string) =>
+    fetchJson<DataPreview>(`/api/v1/transform/${id}/str-clean`, {
+      method: 'POST',
+      body: JSON.stringify({ column, action, new_column: newColumn }),
+    }),
+  groupby: (id: string, by: string[], valueColumn: string, aggfunc: string) =>
+    fetchJson<DataPreview>(`/api/v1/transform/${id}/groupby`, {
+      method: 'POST',
+      body: JSON.stringify({ by, value_column: valueColumn, aggfunc }),
+    }),
+  sample: (id: string, n?: number, frac?: number) =>
+    fetchJson<DataPreview>(`/api/v1/transform/${id}/sample`, {
+      method: 'POST',
+      body: JSON.stringify({ n, frac }),
+    }),
   join: (id: string, params: { right_dataset_id: string; on?: string; left_on?: string; right_on?: string; how: string }) =>
     fetchJson<DataPreview>(`/api/v1/transform/${id}/join`, {
       method: 'POST',

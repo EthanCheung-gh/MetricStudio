@@ -17,6 +17,10 @@ from backend.models.transform import (
     JoinRequest,
     UndoRequest,
     BatchRequest,
+    DropRequest,
+    StrCleanRequest,
+    GroupbyRequest,
+    SampleRequest,
 )
 from backend.core.recipes import recipe_steps_for_issue
 
@@ -133,6 +137,26 @@ async def pivot_data(dataset_id: str, request: PivotRequest):
 @router.post("/{dataset_id}/melt", response_model=DataPreview, response_model_by_alias=True)
 async def melt_data(dataset_id: str, request: MeltRequest):
     return _apply(dataset_id, "melt", request.model_dump())
+
+
+@router.post("/{dataset_id}/drop", response_model=DataPreview, response_model_by_alias=True)
+async def drop_columns(dataset_id: str, request: DropRequest):
+    return _apply(dataset_id, "drop", request.model_dump())
+
+
+@router.post("/{dataset_id}/str-clean", response_model=DataPreview, response_model_by_alias=True)
+async def str_clean(dataset_id: str, request: StrCleanRequest):
+    return _apply(dataset_id, "str_clean", request.model_dump())
+
+
+@router.post("/{dataset_id}/groupby", response_model=DataPreview, response_model_by_alias=True)
+async def groupby(dataset_id: str, request: GroupbyRequest):
+    return _apply(dataset_id, "groupby", request.model_dump())
+
+
+@router.post("/{dataset_id}/sample", response_model=DataPreview, response_model_by_alias=True)
+async def sample(dataset_id: str, request: SampleRequest):
+    return _apply(dataset_id, "sample", request.model_dump())
 
 
 @router.post("/{dataset_id}/join", response_model=DataPreview, response_model_by_alias=True)
