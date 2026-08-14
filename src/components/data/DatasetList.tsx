@@ -1,8 +1,9 @@
 import { memo } from 'react'
-import { Database, Trash2 } from 'lucide-react'
+import { Database, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, Card, CardBody, Chip } from '@heroui/react'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
+import { api } from '@/api/client'
 
 export const DatasetList = memo(function DatasetList() {
   const dataFrames = useDataStore((s) => s.dataFrames)
@@ -10,6 +11,19 @@ export const DatasetList = memo(function DatasetList() {
   const setActive = useDataStore((s) => s.setActiveDataFrame)
   const remove = useDataStore((s) => s.removeDataFrame)
   const addNotification = useUIStore((s) => s.addNotification)
+
+  const refreshDataset = async (id: string, name: string) => {
+    try {
+      await api.refreshDataset(id)
+      await useDataStore.getState().loadDataFrames()
+      if (useDataStore.getState().activeDataFrameId === id) {
+        await useDataStore.getState().refreshActiveDataFrame()
+      }
+      addNotification('success', `Refreshed ${name}`)
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Refresh failed')
+    }
+  }
 
   return (
     <Card className="bg-surface-elevated border-border">
@@ -35,6 +49,16 @@ export const DatasetList = memo(function DatasetList() {
                 <Chip size="sm" variant="flat" className="text-[10px] h-4">
                   {df.rows}
                 </Chip>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  className="h-5 w-5 min-w-0"
+                  aria-label={`Refresh ${df.name}`}
+                  onPress={() => refreshDataset(df.id, df.name)}
+                >
+                  <RefreshCw className="h-3 w-3 text-primary" />
+                </Button>
                 <Button
                   isIconOnly
                   size="sm"

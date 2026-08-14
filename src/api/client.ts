@@ -126,6 +126,8 @@ export const api = {
   getColumns: (id: string) => fetchJson<import('@/types/data').ColumnMeta[]>(`/api/v1/data/${id}/columns`),
   describeDataFrame: (id: string) => fetchJson<DescribeResponse>(`/api/v1/data/${id}/describe`),
   deleteDataFrame: (id: string) => fetchJson<void>(`/api/v1/data/${id}`, { method: 'DELETE' }),
+  refreshDataset: (id: string) =>
+    fetchJson<DataFrameMeta>(`/api/v1/data/${id}/refresh`, { method: 'POST' }),
 
   // Transform
   filter: (id: string, params: FilterParams) =>

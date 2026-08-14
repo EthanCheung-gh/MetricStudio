@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import uuid
 from datetime import datetime
 from typing import Any
 from pathlib import Path
@@ -16,6 +18,7 @@ logger = logging.getLogger("session")
 # Session persistence: raw data as parquet + metadata/history as JSON,
 # so a sidecar restart can rebuild datasets and replay operation chains (spec §3.3/§7.3)
 STORAGE_DIR = Path.home() / ".metricstudio" / "session"
+SOURCES_DIR = Path.home() / ".metricstudio" / "sources"
 
 
 class SessionManager:
@@ -27,6 +30,8 @@ class SessionManager:
         # Global undo/redo stacks: one entry per user-facing operation batch.
         self.global_history: list[dict[str, Any]] = []
         self.global_redo: list[dict[str, Any]] = []
+        # Data source metadata: dataset_id -> {path, original_name, ext, sheet_name}
+        self.sources: dict[str, dict[str, Any]] = {}
 
     # ---- persistence ----
 
@@ -40,6 +45,7 @@ class SessionManager:
                 "engine": dataset.engine,
                 "created_at": dataset.created_at,
                 "history": dataset.history,
+                "source": self.sources.get(dataset.id),
             }
             (STORAGE_DIR / f"{dataset.id}.json").write_text(
                 json.dumps(meta, ensure_ascii=False, default=str), encoding="utf-8"
@@ -68,6 +74,8 @@ class SessionManager:
                 raw_df = pd.read_parquet(STORAGE_DIR / f"{dataset_id}.parquet")
                 dataset = Dataset(raw_df, name=meta["name"], engine=meta["engine"], dataset_id=dataset_id)
                 self.datasets[dataset.id] = dataset  # register first: join replay may reference it
+                if meta.get("source"):
+                    self.sources[dataset_id] = meta["source"]
                 # Replay the operation chain to rebuild the derived state
                 self._replay(dataset, meta.get("history", []))
                 restored += 1
@@ -86,6 +94,13 @@ class SessionManager:
         ext = path.suffix.lower()
         datasets: list[Dataset] = []
 
+        # Persist the source file so the dataset can be refreshed later.
+        SOURCES_DIR.mkdir(parents=True, exist_ok=True)
+        source_id = str(uuid.uuid4())
+        source_path = SOURCES_DIR / f"{source_id}{ext}"
+        shutil.copyfile(path, source_path)
+        source_meta = {"path": str(source_path), "original_name": name, "ext": ext}
+
         if ext in (".xlsx", ".xls"):
             sheet_names = self.engine.get_excel_sheet_names(path)
             if sheet_name:
@@ -97,6 +112,7 @@ class SessionManager:
                 actual_engine = self.engine.auto_engine(df)
                 dataset = Dataset(df, name=f"{name} - {sn}", engine=actual_engine)
                 self.datasets[dataset.id] = dataset
+                self.sources[dataset.id] = {**source_meta, "sheet_name": sn}
                 self._persist(dataset)
                 datasets.append(dataset)
         else:
@@ -111,10 +127,43 @@ class SessionManager:
             actual_engine = self.engine.auto_engine(df)
             dataset = Dataset(df, name=name, engine=actual_engine)
             self.datasets[dataset.id] = dataset
+            self.sources[dataset.id] = {**source_meta, "sheet_name": None}
             self._persist(dataset)
             datasets.append(dataset)
 
         return datasets
+
+    def refresh_dataset(self, dataset_id: str) -> Dataset:
+        """Re-read the source file and replay the transform history."""
+        dataset = self.get(dataset_id)
+        source = self.sources.get(dataset_id)
+        if not source:
+            raise ValueError("No data source for this dataset")
+        source_path = Path(source["path"])
+        if not source_path.exists():
+            raise ValueError("Source file is missing")
+
+        ext = source.get("ext") or source_path.suffix.lower()
+        sheet_name = source.get("sheet_name")
+        if ext in (".xlsx", ".xls"):
+            df = self.engine.read_excel(source_path, sheet_name=sheet_name)
+        elif ext == ".csv":
+            df = self.engine.read_csv(source_path)
+        elif ext == ".parquet":
+            df = self.engine.read_parquet(source_path)
+        else:
+            raise ValueError(f"Unsupported source format: {ext}")
+        if not isinstance(df, pd.DataFrame):
+            df = self._to_pandas(df)
+
+        history = list(dataset.history)
+        dataset.raw_df = df.copy()
+        dataset._df = df.copy()
+        dataset.history = []
+        self._replay(dataset, history)
+        dataset._build_meta()
+        self._persist(dataset)
+        return dataset
 
     def _to_pandas(self, df: Any) -> Any:
         if hasattr(df, "to_pandas"):

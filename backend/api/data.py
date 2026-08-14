@@ -66,6 +66,18 @@ async def get_columns(dataset_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{dataset_id}/refresh", response_model=DataFrameMeta, response_model_by_alias=True)
+async def refresh_dataset(dataset_id: str):
+    """Re-read the persisted source file and replay the transform history."""
+    try:
+        dataset = session.refresh_dataset(dataset_id)
+        return dataset.to_meta()
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{dataset_id}/quality")
 async def data_quality(dataset_id: str):
     """Rule-based data quality report + available cleaning recipes."""
