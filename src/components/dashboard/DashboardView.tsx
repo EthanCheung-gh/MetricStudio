@@ -1,11 +1,14 @@
+import { useState } from 'react'
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { Button } from '@heroui/react'
-import { Plus, Save, X } from 'lucide-react'
+import { Download, Plus, Save, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { useUIStore } from '@/stores/uiStore'
+import { api } from '@/api/client'
 import { DashboardChartCard, type DashboardCardFilter } from './DashboardChartCard'
 import { DashboardFilterBar } from './DashboardFilterBar'
 
@@ -34,6 +37,8 @@ export function DashboardView() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const openChartTab = useWorkspaceStore((s) => s.openChartTab)
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
+  const addNotification = useUIStore((s) => s.addNotification)
+  const [exporting, setExporting] = useState(false)
 
   const dashboard = dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0]
   const activeBrushes = dashboard ? (brushSelections[dashboard.id] ?? {}) : {}
@@ -74,6 +79,48 @@ export function DashboardView() {
 
   const availableCharts = charts.filter((c) => !dashboard.items.some((i) => i.chartId === c.id))
 
+  const handleExportHtml = async () => {
+    setExporting(true)
+    try {
+      const figures = []
+      for (const item of dashboard.items) {
+        const chart = charts.find((c) => c.id === item.chartId)
+        if (!chart) continue
+        const externalBrushes = dashboard.items
+          .filter((i) => i.chartId !== item.chartId)
+          .map((i) => activeBrushes[i.chartId])
+          .filter((b): b is NonNullable<typeof b> => Boolean(b))
+        const figure = await api.previewChart(
+          chart.datasetId,
+          chart.encoding,
+          undefined,
+          filters,
+          externalBrushes,
+        )
+        figures.push({ name: chart.name, figure })
+      }
+      const { html } = await api.generateReport({
+        title: dashboard.name,
+        dataset_id: activeDataFrameId ?? undefined,
+        charts: figures,
+        notes: '',
+        include_insights: false,
+      })
+      const blob = new Blob([html], { type: 'text/html' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${dashboard.name.replace(/[^\w-]+/g, '_')}.html`
+      a.click()
+      URL.revokeObjectURL(url)
+      addNotification('success', `Dashboard exported with ${figures.length} chart(s)`)
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Dashboard export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="flex h-full flex-col gap-2 p-2">
       <div className="flex items-center justify-between gap-2">
@@ -111,6 +158,16 @@ export function DashboardView() {
               Save layout
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="light"
+            isDisabled={dashboard.items.length === 0}
+            isLoading={exporting}
+            startContent={<Download className="h-3 w-3" />}
+            onPress={handleExportHtml}
+          >
+            Export
+          </Button>
           {layoutTemplates.length > 0 && (
             <select
               className="rounded border border-border bg-surface px-2 py-1 text-[11px]"
