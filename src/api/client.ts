@@ -201,6 +201,25 @@ export const api = {
   globalRedo: () =>
     fetchJson<GlobalUndoResponse>('/api/v1/transform/global/redo', { method: 'POST' }),
 
+  // NL query + LLM config
+  nlTransform: (datasetId: string, query: string) =>
+    fetchJson<{ operations: { type: string; params: Record<string, unknown> }[]; raw: string }>(
+      '/api/v1/nl/transform',
+      { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, query }) },
+    ),
+  getLLMConfig: () =>
+    fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config'),
+  setLLMConfig: (config: { base_url: string; model: string; api_key: string }) =>
+    fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+  applyBatch: (id: string, operations: { type: string; params: Record<string, unknown> }[]) =>
+    fetchJson<DataPreview>(`/api/v1/transform/${id}/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ operations }),
+    }),
+
   // Chart
   previewChart: (
     datasetId: string,
