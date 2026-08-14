@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Checkbox, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Textarea } from '@heroui/react'
-import { FileText } from 'lucide-react'
+import { Bookmark, FileText } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -17,6 +17,9 @@ export function ReportDialog() {
   const [notes, setNotes] = useState('')
   const [includeInsights, setIncludeInsights] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [templateName, setTemplateName] = useState('')
+  const reportTemplates = useUIStore((s) => s.reportTemplates)
+  const saveReportTemplate = useUIStore((s) => s.saveReportTemplate)
 
   // Default to all charts whenever the dialog opens
   useEffect(() => {
@@ -59,6 +62,28 @@ export function ReportDialog() {
       <ModalContent>
         <ModalHeader>Generate Report</ModalHeader>
         <ModalBody className="gap-3">
+          {reportTemplates.length > 0 && (
+            <select
+              className="rounded border border-border bg-surface px-2 py-1 text-xs"
+              value=""
+              onChange={(e) => {
+                const t = reportTemplates.find((x) => x.id === e.target.value)
+                if (!t) return
+                setTitle(t.title)
+                setSelected(t.chartIds.filter((id) => charts.some((c) => c.id === id)))
+                setNotes(t.notes)
+                setIncludeInsights(t.includeInsights)
+                e.target.value = ''
+              }}
+            >
+              <option value="">应用报告模板…</option>
+              {reportTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
           <Input
             label="Report title"
             value={title}
@@ -105,6 +130,33 @@ export function ReportDialog() {
           </Checkbox>
         </ModalBody>
         <ModalFooter>
+          <div className="flex flex-1 items-center gap-1">
+            <Input
+              size="sm"
+              placeholder="模板名称"
+              value={templateName}
+              onValueChange={setTemplateName}
+              className="w-32"
+            />
+            <Button
+              size="sm"
+              variant="light"
+              startContent={<Bookmark className="h-3 w-3" />}
+              onPress={() => {
+                saveReportTemplate({
+                  name: templateName.trim() || `模板 ${reportTemplates.length + 1}`,
+                  title,
+                  chartIds: selected,
+                  notes,
+                  includeInsights,
+                })
+                setTemplateName('')
+                addNotification('success', '报告模板已保存')
+              }}
+            >
+              保存模板
+            </Button>
+          </div>
           <Button variant="light" onPress={() => setOpen(false)}>
             Cancel
           </Button>

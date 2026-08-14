@@ -97,6 +97,15 @@ export interface QualityIssue {
   suggestions: string[];
 }
 
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  title: string;
+  chartIds: string[];
+  notes: string;
+  includeInsights: boolean;
+}
+
 export interface UserRecipe {
   id: string;
   name: string;
