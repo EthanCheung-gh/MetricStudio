@@ -7,6 +7,7 @@ import type { PlotlyFigure } from '@/types/plotly'
 import { api } from '@/api/client'
 
 export type DashboardCardFilter = {
+  datasetId: string
   field: string
   op: 'range' | 'in'
   range?: [string, string]
@@ -46,7 +47,13 @@ export function DashboardChartCard({
     let cancelled = false
     const timer = setTimeout(() => {
       api
-        .previewChart(chart.datasetId, chart.encoding, undefined, filters, externalBrushes)
+        .previewChart(
+          chart.datasetId,
+          chart.encoding,
+          undefined,
+          filters.filter((f) => !f.datasetId || f.datasetId === chart.datasetId),
+          externalBrushes,
+        )
         .then((f) => {
           if (!cancelled) setFigure(f)
         })

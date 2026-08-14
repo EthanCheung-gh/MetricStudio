@@ -71,11 +71,11 @@ export function DashboardView() {
       if (f.value === null || f.value === undefined) return null
       if (f.kind === 'category') {
         const values = f.value as string[]
-        return values.length > 0 ? { field: f.field, op: 'in', values } : null
+        return values.length > 0 ? { datasetId: f.datasetId, field: f.field, op: 'in', values } : null
       }
       const range = f.value as [string, string]
       if (range.length !== 2 || (range[0] === '' && range[1] === '')) return null
-      return { field: f.field, op: 'range', range }
+      return { datasetId: f.datasetId, field: f.field, op: 'range', range }
     })
     .filter((f): f is DashboardCardFilter => f !== null)
 
