@@ -207,6 +207,11 @@ export const api = {
       '/api/v1/nl/transform',
       { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, query }) },
     ),
+  nlAsk: (datasetId: string, question: string) =>
+    fetchJson<{ answer: string }>('/api/v1/nl/ask', {
+      method: 'POST',
+      body: JSON.stringify({ dataset_id: datasetId, question }),
+    }),
   getLLMConfig: () =>
     fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config'),
   setLLMConfig: (config: { base_url: string; model: string; api_key: string }) =>

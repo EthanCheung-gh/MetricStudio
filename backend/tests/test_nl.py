@@ -94,3 +94,37 @@ def test_nl_transform_invalid_output(client, monkeypatch):
     monkeypatch.setattr(nl_module, "chat", lambda messages: "I cannot help with that")
     resp = client.post("/api/v1/nl/transform", json={"dataset_id": dsid, "query": "anything"})
     assert resp.status_code == 422
+
+
+def test_ask_endpoint_returns_answer(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,value\na,10\nb,20\nc,30\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    captured = {}
+
+    def fake_chat(messages):
+        captured["prompt"] = messages[0]["content"]
+        return "The max value is 30 (row c)."
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dsid, "question": "what is the max value?"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["answer"] == "The max value is 30 (row c)."
+    # prompt carries real data context
+    assert "value" in captured["prompt"]
+    assert "a=10" in captured["prompt"] or "name=a" in captured["prompt"]
+
+
+def test_ask_llm_unavailable(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "a\n1\n2\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    monkeypatch.setattr(nl_module, "chat", lambda messages: (_ for _ in ()).throw(RuntimeError("no llm")))
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dsid, "question": "anything"})
+    assert resp.status_code == 502

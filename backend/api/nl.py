@@ -40,6 +40,11 @@ class NLTransformRequest(BaseModel):
     query: str
 
 
+class NLAskRequest(BaseModel):
+    dataset_id: str
+    question: str
+
+
 class LLMConfig(BaseModel):
     base_url: str
     model: str
@@ -109,6 +114,46 @@ async def nl_transform(request: NLTransformRequest):
         raise HTTPException(status_code=422, detail=f"LLM output invalid: {exc}") from exc
 
     return {"operations": ops, "raw": raw}
+
+
+def _build_data_context(dataset: Any) -> str:
+    from backend.core.insights import generate_insights
+
+    df = dataset.df
+    lines: list[str] = []
+    lines.append("Columns: " + ", ".join(f"{c.name}({c.dtype})" for c in dataset.meta.columns))
+    numeric = df.select_dtypes(include="number")
+    if not numeric.empty:
+        desc = numeric.describe().T
+        for col in desc.index:
+            row = desc.loc[col]
+            lines.append(
+                f"{col}: min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, median={df[col].median():.2f}"
+            )
+    lines.append("Sample rows:")
+    for _, r in df.head(5).iterrows():
+        lines.append("  " + ", ".join(f"{k}={v}" for k, v in r.items()))
+    insights = generate_insights(df)
+    if insights:
+        lines.append("Insights: " + "; ".join(i["text"] for i in insights))
+    return "\n".join(lines)
+
+
+@router.post("/ask")
+async def nl_ask(request: NLAskRequest):
+    dataset = session.get(request.dataset_id)
+    context = _build_data_context(dataset)
+    prompt = (
+        "You are analyzing a dataset. Use ONLY the data context below; never invent numbers.\n\n"
+        f"Data context:\n{context}\n\n"
+        f"Question: {request.question}\n\n"
+        "Answer concisely, citing specific numbers from the context when available."
+    )
+    try:
+        answer = chat([{"role": "user", "content": prompt}])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
+    return {"answer": answer}
 
 
 @router.get("/config")

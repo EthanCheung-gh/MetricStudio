@@ -5,6 +5,7 @@ import { TransformPanel } from './TransformPanel'
 import { LineageView } from './LineageView'
 import { CleaningPanel } from './CleaningPanel'
 import { NLQueryPanel } from './NLQueryPanel'
+import { AskPanel } from './AskPanel'
 import { InsightsPanel } from './InsightsPanel'
 import { useDataStore } from '@/stores/dataStore'
 
@@ -35,6 +36,7 @@ export function DataView() {
         </div>
       </div>
       <div className="flex h-full min-h-0 w-full flex-col gap-2 overflow-auto lg:w-72">
+        <AskPanel />
         <NLQueryPanel />
         <CleaningPanel />
         <InsightsPanel />
