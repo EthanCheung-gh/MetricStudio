@@ -74,10 +74,20 @@ class SelectionFilter(CBaseModel):
     y_range: Optional[list] = None
 
 
+class FilterSpec(CBaseModel):
+    """One dashboard filter applied to a dataset before aggregation."""
+
+    field: str
+    op: Literal["range", "in"] = "range"
+    range: Optional[list] = None      # op=range: [lo, hi]
+    values: Optional[list] = None     # op=in: category values
+
+
 class ChartPreviewRequest(CBaseModel):
     dataset_id: str
     encoding: ChartEncoding
     selection: Optional[SelectionFilter] = None
+    filters: Optional[list[FilterSpec]] = None
 
 
 class AggregateRequest(CBaseModel):

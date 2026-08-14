@@ -3,6 +3,7 @@ import { Database, FileJson, FolderOpen, History, Save, Upload } from 'lucide-re
 import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input } from '@heroui/react'
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
+import { useDashboardStore } from '@/stores/dashboardStore'
 import { api } from '@/api/client'
 import { loadProjectByPath } from '@/utils/project'
 
@@ -23,7 +24,8 @@ export function TitleBar() {
     setSaving(true)
     try {
       const charts = useChartStore.getState().charts
-      const result = await api.saveProject({ path: projectPath, name: projectName, charts })
+      const dashboards = useDashboardStore.getState().dashboards
+      const result = await api.saveProject({ path: projectPath, name: projectName, charts, dashboards })
       addNotification('success', `Project saved: ${result.datasets} dataset(s) to ${result.path}`)
       setSaveProjectModalOpen(false)
     } catch (err) {

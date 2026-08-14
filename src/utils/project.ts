@@ -1,6 +1,7 @@
 import { api } from '@/api/client';
 import { useDataStore } from '@/stores/dataStore';
 import { useChartStore } from '@/stores/chartStore';
+import { useDashboardStore } from '@/stores/dashboardStore';
 import { useUIStore } from '@/stores/uiStore';
 
 export interface LoadProjectResult {
@@ -22,6 +23,9 @@ export async function loadProjectByPath(path: string): Promise<LoadProjectResult
   }
   if (result.charts.length > 0) {
     useChartStore.getState().loadCharts(result.charts);
+  }
+  if (result.dashboards && result.dashboards.length > 0) {
+    useDashboardStore.getState().loadDashboards(result.dashboards);
   }
   const name = result.project.name || path;
   useUIStore.getState().addRecentProject({ path, name });

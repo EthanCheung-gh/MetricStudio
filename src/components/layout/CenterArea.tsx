@@ -1,7 +1,8 @@
-import { Database, X, Plus, SlidersHorizontal } from 'lucide-react'
+import { Database, X, Plus, SlidersHorizontal, LayoutDashboard } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { DataView } from '@/components/data/DataView'
 import { ChartCanvas } from '@/components/chart/ChartCanvas'
+import { DashboardView } from '@/components/dashboard/DashboardView'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
@@ -59,6 +60,19 @@ export function CenterArea() {
         >
           <Database className="h-3 w-3" />
           Data
+        </button>
+
+        {/* Dashboard tab */}
+        <button
+          className={`flex items-center gap-1 rounded px-2.5 py-1 text-xs whitespace-nowrap transition-colors ${
+            activeTab === 'dashboard' ? 'bg-primary/20 text-primary' : 'text-muted hover:text-foreground'
+          }`}
+          onClick={() => {
+            setActiveTab('dashboard')
+          }}
+        >
+          <LayoutDashboard className="h-3 w-3" />
+          Dashboard
         </button>
 
         {/* Chart tabs */}
@@ -136,6 +150,8 @@ export function CenterArea() {
         <ErrorBoundary>
           {isDataTab ? (
             <DataView />
+          ) : activeTab === 'dashboard' ? (
+            <DashboardView />
           ) : (
             <ChartCanvas />
           )}

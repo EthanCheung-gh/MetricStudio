@@ -10,7 +10,7 @@ interface WorkspaceState {
   rightPanelCollapsed: boolean;
   leftActiveSection: LeftSection;
   rightActiveSection: RightSection;
-  activeTab: 'data' | 'chart';
+  activeTab: 'data' | 'chart' | 'dashboard';
   theme: 'dark' | 'light' | 'system';
   leftPanelSize: number;
   rightPanelSize: number;
@@ -22,7 +22,7 @@ interface WorkspaceState {
 
   togglePanel: (panel: PanelKey) => void;
   setPanelCollapsed: (panel: PanelKey, collapsed: boolean) => void;
-  setActiveTab: (tab: 'data' | 'chart') => void;
+  setActiveTab: (tab: 'data' | 'chart' | 'dashboard') => void;
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   setPanelSize: (panel: PanelKey, size: number) => void;
   notifyPanelResize: () => void;

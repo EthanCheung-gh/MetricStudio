@@ -19,15 +19,17 @@ async def save_project(payload: dict):
     path = Path(payload.get("path", "project.metricstudio"))
     name = payload.get("name", "Untitled")
     charts = payload.get("charts", [])
+    dashboards = payload.get("dashboards", [])
     try:
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
             manifest = {
                 "name": name,
-                "version": "0.2.0",
+                "version": "0.3.0",
                 "created_at": datetime.utcnow().isoformat(),
                 "engine": "pandas",
                 "data_sources": [],
                 "charts": charts,
+                "dashboards": dashboards,
             }
             for ds in session.list_datasets():
                 manifest["data_sources"].append({
@@ -103,6 +105,7 @@ async def load_project(payload: dict):
             "restored": restored,
             "datasets": [ds.to_meta() for ds in session.list_datasets()],
             "charts": manifest.get("charts", []),
+            "dashboards": manifest.get("dashboards", []),
         }
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"Project file malformed: missing {exc}") from exc

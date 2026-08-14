@@ -13,7 +13,7 @@ logger = logging.getLogger("chart")
 logging.basicConfig(level=logging.DEBUG)
 
 from backend.core.session import session
-from backend.models.chart import ChartPreviewRequest, AggregateRequest, TemplateSaveRequest, ChartTemplate, SelectionFilter
+from backend.models.chart import ChartPreviewRequest, AggregateRequest, TemplateSaveRequest, ChartTemplate, SelectionFilter, FilterSpec
 
 router = APIRouter(prefix="/api/v1/chart", tags=["chart"])
 
@@ -811,11 +811,44 @@ def _filter_by_selection(df: pd.DataFrame, selection: "SelectionFilter") -> pd.D
     return out
 
 
+def _filter_by_filters(df: pd.DataFrame, filters: list[FilterSpec]) -> pd.DataFrame:
+    """Apply dashboard filters (range / in) to dataset rows before aggregation."""
+    out = df
+    for f in filters or []:
+        if f.field not in out.columns:
+            continue
+        series = out[f.field]
+        if f.op == "in":
+            vals = {str(v) for v in (f.values or [])}
+            out = out[series.astype(str).isin(vals)]
+        else:
+            rng = f.range
+            if not rng or len(rng) != 2:
+                continue
+            lo, hi = rng[0], rng[1]
+            try:
+                numeric = pd.to_numeric(series, errors="coerce")
+                if numeric.notna().any():
+                    out = out[(numeric >= float(lo)) & (numeric <= float(hi))]
+                else:
+                    raise TypeError("not numeric")
+            except (TypeError, ValueError):
+                dt = pd.to_datetime(series, errors="coerce")
+                if dt.notna().any():
+                    try:
+                        out = out[(dt >= pd.to_datetime(lo)) & (dt <= pd.to_datetime(hi))]
+                    except (TypeError, ValueError):
+                        pass
+    return out
+
+
 @router.post("/preview")
 async def preview_chart(request: ChartPreviewRequest):
     try:
         dataset = session.get(request.dataset_id)
         df = dataset.df
+        if request.filters:
+            df = _filter_by_filters(df, request.filters)
         if request.selection:
             df = _filter_by_selection(df, request.selection)
         figure = _aggregate(df, request.encoding)

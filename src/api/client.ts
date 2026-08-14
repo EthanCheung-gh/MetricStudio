@@ -12,6 +12,7 @@ import type {
 } from '@/types/data';
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
+import type { DashboardConfig } from '@/types/dashboard';
 
 export interface DepsReport {
   python: string;
@@ -33,10 +34,12 @@ export interface LoadProjectResponse {
     version?: string;
     data_sources: { id: string; name: string; rows: number; cols: number }[];
     charts: ChartConfig[];
+    dashboards?: DashboardConfig[];
   };
   restored: string[];
   datasets: DataFrameMeta[];
   charts: ChartConfig[];
+  dashboards: DashboardConfig[];
 }
 
 const DEFAULT_BACKEND_PORT = 8123;
@@ -180,10 +183,20 @@ export const api = {
     fetchJson<GlobalUndoResponse>('/api/v1/transform/global/redo', { method: 'POST' }),
 
   // Chart
-  previewChart: (datasetId: string, encoding: ChartEncoding, selection?: SelectionFilter) =>
+  previewChart: (
+    datasetId: string,
+    encoding: ChartEncoding,
+    selection?: SelectionFilter,
+    filters?: { field: string; op: 'range' | 'in'; range?: [string, string]; values?: string[] }[],
+  ) =>
     fetchJson<PlotlyFigure>('/api/v1/chart/preview', {
       method: 'POST',
-      body: JSON.stringify({ dataset_id: datasetId, encoding, selection: selection ?? undefined }),
+      body: JSON.stringify({
+        dataset_id: datasetId,
+        encoding,
+        selection: selection ?? undefined,
+        filters: filters ?? undefined,
+      }),
     }),
   aggregate: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<PlotlyFigure>('/api/v1/chart/aggregate', {
@@ -205,7 +218,7 @@ export const api = {
     fetchJson<{ deleted: boolean }>(`/api/v1/chart/templates/${templateId}`, { method: 'DELETE' }),
 
   // Project
-  saveProject: (payload: { path: string; name: string; charts?: ChartConfig[] }) =>
+  saveProject: (payload: { path: string; name: string; charts?: ChartConfig[]; dashboards?: DashboardConfig[] }) =>
     fetchJson<{ path: string; datasets: number }>('/api/v1/project/save', {
       method: 'POST',
       body: JSON.stringify(payload),
