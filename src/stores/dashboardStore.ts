@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { DashboardConfig, DashboardFilter, DashboardItem } from '@/types/dashboard'
+import type { SelectionFilter } from '@/types/encoding'
 import { generateId } from '@/utils/id'
 
 interface DashboardState {
@@ -19,6 +20,10 @@ interface DashboardState {
   updateFilter: (dashboardId: string, filterId: string, patch: Partial<DashboardFilter>) => void
   removeFilter: (dashboardId: string, filterId: string) => void
   loadDashboards: (dashboards: DashboardConfig[]) => void
+  brushSelections: Record<string, Record<string, SelectionFilter>>
+  setBrushSelection: (dashboardId: string, chartId: string, sel: SelectionFilter) => void
+  clearBrushSelection: (dashboardId: string, chartId: string) => void
+  clearAllBrushes: (dashboardId: string) => void
 }
 
 function touch(
@@ -128,6 +133,26 @@ export const useDashboardStore = create<DashboardState>()(
         })),
 
       loadDashboards: (dashboards) => set({ dashboards }),
+
+      brushSelections: {},
+
+      setBrushSelection: (dashboardId, chartId, sel) =>
+        set((s) => ({
+          brushSelections: {
+            ...s.brushSelections,
+            [dashboardId]: { ...(s.brushSelections[dashboardId] || {}), [chartId]: sel },
+          },
+        })),
+
+      clearBrushSelection: (dashboardId, chartId) =>
+        set((s) => {
+          const next = { ...(s.brushSelections[dashboardId] || {}) }
+          delete next[chartId]
+          return { brushSelections: { ...s.brushSelections, [dashboardId]: next } }
+        }),
+
+      clearAllBrushes: (dashboardId) =>
+        set((s) => ({ brushSelections: { ...s.brushSelections, [dashboardId]: {} } })),
     }),
     { name: 'metricstudio-dashboards', partialize: (s) => ({ dashboards: s.dashboards }) },
   ),

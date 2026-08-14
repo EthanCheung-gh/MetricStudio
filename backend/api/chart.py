@@ -849,6 +849,8 @@ async def preview_chart(request: ChartPreviewRequest):
         df = dataset.df
         if request.filters:
             df = _filter_by_filters(df, request.filters)
+        for sel in (request.selections or []):
+            df = _filter_by_selection(df, sel)
         if request.selection:
             df = _filter_by_selection(df, request.selection)
         figure = _aggregate(df, request.encoding)

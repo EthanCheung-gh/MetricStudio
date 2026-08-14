@@ -86,7 +86,8 @@ class FilterSpec(CBaseModel):
 class ChartPreviewRequest(CBaseModel):
     dataset_id: str
     encoding: ChartEncoding
-    selection: Optional[SelectionFilter] = None
+    selection: Optional[SelectionFilter] = None   # single brush (backward compat)
+    selections: Optional[list[SelectionFilter]] = None  # multi-brush (dashboard)
     filters: Optional[list[FilterSpec]] = None
 
 

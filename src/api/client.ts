@@ -188,6 +188,7 @@ export const api = {
     encoding: ChartEncoding,
     selection?: SelectionFilter,
     filters?: { field: string; op: 'range' | 'in'; range?: [string, string]; values?: string[] }[],
+    selections?: SelectionFilter[],
   ) =>
     fetchJson<PlotlyFigure>('/api/v1/chart/preview', {
       method: 'POST',
@@ -196,6 +197,7 @@ export const api = {
         encoding,
         selection: selection ?? undefined,
         filters: filters ?? undefined,
+        selections: selections ?? undefined,
       }),
     }),
   aggregate: (datasetId: string, encoding: ChartEncoding) =>

@@ -1,7 +1,7 @@
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { Button } from '@heroui/react'
-import { Plus } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -20,6 +20,10 @@ export function DashboardView() {
   const removeItem = useDashboardStore((s) => s.removeItem)
   const moveItem = useDashboardStore((s) => s.moveItem)
   const resizeItem = useDashboardStore((s) => s.resizeItem)
+  const brushSelections = useDashboardStore((s) => s.brushSelections)
+  const setBrushSelection = useDashboardStore((s) => s.setBrushSelection)
+  const clearBrushSelection = useDashboardStore((s) => s.clearBrushSelection)
+  const clearAllBrushes = useDashboardStore((s) => s.clearAllBrushes)
   const charts = useChartStore((s) => s.charts)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
   const columns = useDataStore((s) => s.columns)
@@ -29,6 +33,7 @@ export function DashboardView() {
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
 
   const dashboard = dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0]
+  const activeBrushes = dashboard ? (brushSelections[dashboard.id] ?? {}) : {}
 
   if (!dashboard) {
     return (
@@ -84,6 +89,15 @@ export function DashboardView() {
           <Button size="sm" variant="light" startContent={<Plus className="h-3 w-3" />} onPress={() => createDashboard()}>
             New
           </Button>
+          {Object.keys(activeBrushes).length > 0 && (
+            <button
+              className="flex items-center gap-1 rounded bg-primary/15 px-2 py-1 text-[11px] text-primary hover:bg-primary/25"
+              onClick={() => clearAllBrushes(dashboard.id)}
+            >
+              <X className="h-3 w-3" />
+              Clear brushes ({Object.keys(activeBrushes).length})
+            </button>
+          )}
         </div>
         {availableCharts.length > 0 && (
           <select
@@ -139,11 +153,19 @@ export function DashboardView() {
                 <DashboardChartCard
                   chart={chart}
                   filters={filters}
+                  externalBrushes={dashboard.items
+                    .filter((i) => i.chartId !== item.chartId)
+                    .map((i) => activeBrushes[i.chartId])
+                    .filter((b): b is NonNullable<typeof b> => Boolean(b))}
                   onRemove={() => removeItem(dashboard.id, item.chartId)}
                   onEdit={() => {
                     setActiveChart(chart.id)
                     openChartTab(chart.id)
                     setActiveTab('chart')
+                  }}
+                  onBrushChange={(sel) => {
+                    if (sel) setBrushSelection(dashboard.id, item.chartId, sel)
+                    else clearBrushSelection(dashboard.id, item.chartId)
                   }}
                 />
               </div>
