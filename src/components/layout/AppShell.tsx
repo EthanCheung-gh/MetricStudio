@@ -6,12 +6,13 @@ import { ImportModal } from '@/components/data/ImportModal'
 import { ChartConfigDialog } from '@/components/chart/ChartConfigDialog'
 import { CommandPalette } from '@/components/common/CommandPalette'
 import { ReportDialog } from '@/components/common/ReportDialog'
+import { AICommandBar } from '@/components/ai/AICommandBar'
 
 export function AppShell() {
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground">
       <TitleBar />
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden pb-16">
         <WorkspaceLayout />
       </div>
       <StatusBar />
@@ -20,6 +21,7 @@ export function AppShell() {
       <ChartConfigDialog />
       <CommandPalette />
       <ReportDialog />
+      <AICommandBar />
     </div>
   )
 }
