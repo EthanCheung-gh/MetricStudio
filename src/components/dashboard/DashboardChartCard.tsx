@@ -32,8 +32,15 @@ export function DashboardChartCard({
   onBrushChange,
 }: DashboardChartCardProps) {
   const [figure, setFigure] = useState<PlotlyFigure | null>(null)
+  const [highlight, setHighlight] = useState(false)
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters])
   const brushesKey = useMemo(() => JSON.stringify(externalBrushes), [externalBrushes])
+
+  useEffect(() => {
+    setHighlight(true)
+    const timer = setTimeout(() => setHighlight(false), 600)
+    return () => clearTimeout(timer)
+  }, [filtersKey, brushesKey])
 
   useEffect(() => {
     let cancelled = false
@@ -65,7 +72,7 @@ export function DashboardChartCard({
   }
 
   return (
-    <Card className="h-full border-border bg-surface">
+    <Card className={`h-full border-border bg-surface transition-colors ${highlight ? 'border-primary/60' : ''}`}>
       <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1">
         <span className="drag-handle flex-1 cursor-grab truncate text-xs font-medium">{chart.name}</span>
         <div className="flex shrink-0 items-center gap-0.5">

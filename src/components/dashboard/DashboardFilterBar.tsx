@@ -1,5 +1,5 @@
 import { Input, Select, SelectItem } from '@heroui/react'
-import { X } from 'lucide-react'
+import { Eraser, X } from 'lucide-react'
 import type { ColumnMeta, DataPreview } from '@/types/data'
 import type { DashboardFilter, DashboardFilterKind } from '@/types/dashboard'
 import { useDashboardStore } from '@/stores/dashboardStore'
@@ -59,6 +59,7 @@ export function DashboardFilterBar({
   const addFilter = useDashboardStore((s) => s.addFilter)
   const updateFilter = useDashboardStore((s) => s.updateFilter)
   const removeFilter = useDashboardStore((s) => s.removeFilter)
+  const clearAllFilters = useDashboardStore((s) => s.clearAllFilters)
 
   const addForField = (field: string) => {
     const col = columns.find((c) => c.name === field)
@@ -72,12 +73,29 @@ export function DashboardFilterBar({
     })
   }
 
+  const activeCount = filters.filter((f) => f.value !== null && f.value !== undefined).length
+
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {activeCount > 0 && (
+        <button
+          className="flex items-center gap-1 rounded bg-primary/15 px-2 py-1 text-[11px] text-primary hover:bg-primary/25"
+          onClick={() => clearAllFilters(dashboardId)}
+        >
+          <Eraser className="h-3 w-3" />
+          Clear filters ({activeCount})
+        </button>
+      )}
       {filters.map((f) => {
         const values = distinctValues(preview, f.field)
+        const active = f.value !== null && f.value !== undefined
         return (
-          <div key={f.id} className="flex items-center gap-1.5 rounded border border-border bg-surface px-2 py-1">
+          <div
+            key={f.id}
+            className={`flex items-center gap-1.5 rounded border bg-surface px-2 py-1 ${
+              active ? 'border-primary/60' : 'border-border'
+            }`}
+          >
             <span className="text-[10px] uppercase tracking-wide text-muted">{f.label}</span>
             {f.kind === 'category' ? (
               <Select

@@ -19,6 +19,7 @@ interface DashboardState {
   addFilter: (dashboardId: string, filter: Omit<DashboardFilter, 'id'>) => void
   updateFilter: (dashboardId: string, filterId: string, patch: Partial<DashboardFilter>) => void
   removeFilter: (dashboardId: string, filterId: string) => void
+  clearAllFilters: (dashboardId: string) => void
   loadDashboards: (dashboards: DashboardConfig[]) => void
   brushSelections: Record<string, Record<string, SelectionFilter>>
   setBrushSelection: (dashboardId: string, chartId: string, sel: SelectionFilter) => void
@@ -132,6 +133,15 @@ export const useDashboardStore = create<DashboardState>()(
           dashboards: touch(s.dashboards, dashboardId, (d) => ({
             ...d,
             filters: d.filters.filter((f) => f.id !== filterId),
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      clearAllFilters: (dashboardId) =>
+        set((s) => ({
+          dashboards: touch(s.dashboards, dashboardId, (d) => ({
+            ...d,
+            filters: d.filters.map((f) => ({ ...f, value: null })),
             updatedAt: new Date().toISOString(),
           })),
         })),
