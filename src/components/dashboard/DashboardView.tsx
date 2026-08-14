@@ -39,6 +39,8 @@ export function DashboardView() {
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
   const addNotification = useUIStore((s) => s.addNotification)
   const [exporting, setExporting] = useState(false)
+  const [selectedChart, setSelectedChart] = useState('')
+  const [selectedTemplate, setSelectedTemplate] = useState('')
 
   const dashboard = dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0]
   const activeBrushes = dashboard ? (brushSelections[dashboard.id] ?? {}) : {}
@@ -171,12 +173,12 @@ export function DashboardView() {
           {layoutTemplates.length > 0 && (
             <select
               className="rounded border border-border bg-surface px-2 py-1 text-[11px]"
-              value=""
+              value={selectedTemplate}
               onChange={(e) => {
                 if (e.target.value) {
                   applyLayoutTemplate(dashboard.id, e.target.value)
-                  e.target.value = ''
                 }
+                setSelectedTemplate('')
               }}
             >
               <option value="">
@@ -193,12 +195,12 @@ export function DashboardView() {
         {availableCharts.length > 0 && (
           <select
             className="rounded border border-border bg-surface px-2 py-1 text-xs"
-            value=""
+            value={selectedChart}
             onChange={(e) => {
               if (e.target.value) {
                 addItem(dashboard.id, e.target.value)
-                e.target.value = ''
               }
+              setSelectedChart('')
             }}
           >
             <option value="">+ Add chart…</option>
