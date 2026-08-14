@@ -1,7 +1,7 @@
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { Button } from '@heroui/react'
-import { Plus, X } from 'lucide-react'
+import { Plus, Save, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -24,6 +24,9 @@ export function DashboardView() {
   const setBrushSelection = useDashboardStore((s) => s.setBrushSelection)
   const clearBrushSelection = useDashboardStore((s) => s.clearBrushSelection)
   const clearAllBrushes = useDashboardStore((s) => s.clearAllBrushes)
+  const layoutTemplates = useDashboardStore((s) => s.layoutTemplates)
+  const saveLayoutTemplate = useDashboardStore((s) => s.saveLayoutTemplate)
+  const applyLayoutTemplate = useDashboardStore((s) => s.applyLayoutTemplate)
   const charts = useChartStore((s) => s.charts)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
   const columns = useDataStore((s) => s.columns)
@@ -97,6 +100,37 @@ export function DashboardView() {
               <X className="h-3 w-3" />
               Clear brushes ({Object.keys(activeBrushes).length})
             </button>
+          )}
+          {dashboard.items.length > 0 && (
+            <Button
+              size="sm"
+              variant="light"
+              startContent={<Save className="h-3 w-3" />}
+              onPress={() => saveLayoutTemplate(dashboard.id, `Layout ${layoutTemplates.length + 1}`)}
+            >
+              Save layout
+            </Button>
+          )}
+          {layoutTemplates.length > 0 && (
+            <select
+              className="rounded border border-border bg-surface px-2 py-1 text-[11px]"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  applyLayoutTemplate(dashboard.id, e.target.value)
+                  e.target.value = ''
+                }
+              }}
+            >
+              <option value="">
+                <span className="text-muted">Apply layout…</span>
+              </option>
+              {layoutTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
           )}
         </div>
         {availableCharts.length > 0 && (

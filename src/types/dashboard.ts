@@ -17,6 +17,13 @@ export interface DashboardFilter {
   value: unknown // category: string[] | null; range/date: [string, string] | null
 }
 
+export interface LayoutTemplate {
+  id: string
+  name: string
+  items: DashboardItem[]
+  createdAt: string
+}
+
 export interface DashboardConfig {
   id: string
   name: string

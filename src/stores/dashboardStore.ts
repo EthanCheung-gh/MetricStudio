@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DashboardConfig, DashboardFilter, DashboardItem } from '@/types/dashboard'
+import type { DashboardConfig, DashboardFilter, DashboardItem, LayoutTemplate } from '@/types/dashboard'
 import type { SelectionFilter } from '@/types/encoding'
 import { generateId } from '@/utils/id'
 
@@ -24,6 +24,10 @@ interface DashboardState {
   setBrushSelection: (dashboardId: string, chartId: string, sel: SelectionFilter) => void
   clearBrushSelection: (dashboardId: string, chartId: string) => void
   clearAllBrushes: (dashboardId: string) => void
+  layoutTemplates: LayoutTemplate[]
+  saveLayoutTemplate: (dashboardId: string, name: string) => void
+  applyLayoutTemplate: (dashboardId: string, templateId: string) => void
+  removeLayoutTemplate: (templateId: string) => void
 }
 
 function touch(
@@ -153,7 +157,47 @@ export const useDashboardStore = create<DashboardState>()(
 
       clearAllBrushes: (dashboardId) =>
         set((s) => ({ brushSelections: { ...s.brushSelections, [dashboardId]: {} } })),
+
+      layoutTemplates: [],
+
+      saveLayoutTemplate: (dashboardId, name) =>
+        set((s) => {
+          const dashboard = s.dashboards.find((d) => d.id === dashboardId)
+          if (!dashboard) return s
+          const template: LayoutTemplate = {
+            id: generateId(),
+            name,
+            items: dashboard.items.map((i) => ({ ...i })),
+            createdAt: new Date().toISOString(),
+          }
+          return { layoutTemplates: [...s.layoutTemplates, template] }
+        }),
+
+      applyLayoutTemplate: (dashboardId, templateId) =>
+        set((s) => {
+          const template = s.layoutTemplates.find((t) => t.id === templateId)
+          if (!template) return s
+          const dashboard = s.dashboards.find((d) => d.id === dashboardId)
+          if (!dashboard) return s
+          const validIds = new Set(dashboard.items.map((i) => i.chartId))
+          const items = template.items
+            .filter((i) => validIds.has(i.chartId))
+            .map((i) => ({ ...i }))
+          return {
+            dashboards: touch(s.dashboards, dashboardId, (d) => ({
+              ...d,
+              items,
+              updatedAt: new Date().toISOString(),
+            })),
+          }
+        }),
+
+      removeLayoutTemplate: (templateId) =>
+        set((s) => ({ layoutTemplates: s.layoutTemplates.filter((t) => t.id !== templateId) })),
     }),
-    { name: 'metricstudio-dashboards', partialize: (s) => ({ dashboards: s.dashboards }) },
+    {
+      name: 'metricstudio-dashboards',
+      partialize: (s) => ({ dashboards: s.dashboards, layoutTemplates: s.layoutTemplates }),
+    },
   ),
 )
