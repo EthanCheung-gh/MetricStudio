@@ -76,7 +76,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const [preview, describe, columns] = await Promise.all([
-        api.previewDataFrame(activeDataFrameId, 100),
+        api.previewDataFrame(activeDataFrameId, 5000),
         api.describeDataFrame(activeDataFrameId),
         api.getColumns(activeDataFrameId),
       ]);

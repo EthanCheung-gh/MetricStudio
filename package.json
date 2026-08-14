@@ -27,6 +27,7 @@
     "@heroui/system": "^2.4.13",
     "@heroui/theme": "^2.4.14",
     "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.9",
     "framer-motion": "^12.10.0",
     "lucide-react": "^0.510.0",
     "plotly.js": "^3.0.1",

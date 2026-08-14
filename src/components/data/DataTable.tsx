@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,6 +8,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from '@tanstack/react-table'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Download, Search } from 'lucide-react'
 import { Button, Spinner } from '@heroui/react'
 import { useDataStore } from '@/stores/dataStore'
@@ -67,6 +68,15 @@ export function DataTable() {
     getFilteredRowModel: getFilteredRowModel(),
     globalFilterFn: 'includesString',
     columnResizeMode: 'onChange',
+  })
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const rows = table.getRowModel().rows
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 33,
+    overscan: 10,
   })
 
   const copyCell = async (cellId: string, value: unknown) => {
@@ -174,7 +184,7 @@ export function DataTable() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div ref={scrollRef} className="flex-1 overflow-auto">
         <table
           className="w-full border-collapse text-xs"
           style={{ width: table.getTotalSize() }}
@@ -228,20 +238,33 @@ export function DataTable() {
               </tr>
             ))}
           </thead>
-          <tbody>
-            {table.getRowModel().rows.length === 0 && (
-              <tr>
-                <td colSpan={table.getAllLeafColumns().length} className="px-3 py-8 text-center text-muted">
-                  无匹配当前筛选条件的行
-                </td>
-              </tr>
-            )}
-            {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-surface-elevated/50">
+        </table>
+        {rows.length === 0 && (
+          <div className="px-3 py-8 text-center text-muted">无匹配当前筛选条件的行</div>
+        )}
+        <div
+          style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: table.getTotalSize() }}
+        >
+          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+            const row = rows[virtualRow.index]
+            return (
+              <div
+                key={row.id}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+                className="flex hover:bg-surface-elevated/50"
+              >
                 {row.getVisibleCells().map((cell) => (
-                  <td
+                  <div
                     key={cell.id}
-                    className="group relative cursor-pointer border-b border-r border-border px-3 py-1.5 whitespace-nowrap text-foreground"
+                    style={{ width: cell.column.getSize(), flexShrink: 0 }}
+                    className="group relative cursor-pointer whitespace-nowrap border-b border-r border-border px-3 py-1.5 text-foreground"
                     onClick={() => copyCell(cell.id, cell.getValue())}
                     title="点击复制"
                   >
@@ -251,12 +274,12 @@ export function DataTable() {
                         <Check className="h-3 w-3" />
                       </span>
                     )}
-                  </td>
+                  </div>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
