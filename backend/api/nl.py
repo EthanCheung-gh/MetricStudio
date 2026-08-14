@@ -147,7 +147,7 @@ async def nl_ask(request: NLAskRequest):
         "You are analyzing a dataset. Use ONLY the data context below; never invent numbers.\n\n"
         f"Data context:\n{context}\n\n"
         f"Question: {request.question}\n\n"
-        "Answer concisely, citing specific numbers from the context when available."
+        "请用简体中文简洁回答，引用上下文中的具体数字。"
     )
     try:
         answer = chat([{"role": "user", "content": prompt}])

@@ -22,7 +22,7 @@ def detect_quality(df: pd.DataFrame) -> dict[str, Any]:
         issues.append({
             "id": "missing",
             "severity": "warning",
-            "title": "Missing values",
+            "title": "缺失值",
             "detail": detail,
             "columns": miss_cols,
             "suggestions": ["fillna-median-numeric", "dropna"],
@@ -34,8 +34,8 @@ def detect_quality(df: pd.DataFrame) -> dict[str, Any]:
         issues.append({
             "id": "duplicates",
             "severity": "warning",
-            "title": "Duplicate rows",
-            "detail": f"{n_dup} fully duplicate row(s)",
+            "title": "重复行",
+            "detail": f"{n_dup} 行完全重复",
             "columns": [],
             "suggestions": ["dedupe"],
         })
@@ -52,8 +52,8 @@ def detect_quality(df: pd.DataFrame) -> dict[str, Any]:
             issues.append({
                 "id": "outliers",
                 "severity": "info",
-                "title": "Outliers",
-                "detail": f"{col}: {n} value(s) beyond 1.5×IQR",
+                "title": "异常值",
+                "detail": f"{col}: {n} 个值超出 1.5×IQR",
                 "columns": [col],
                 "suggestions": ["clip-outliers"],
             })
@@ -64,8 +64,8 @@ def detect_quality(df: pd.DataFrame) -> dict[str, Any]:
             issues.append({
                 "id": "constant",
                 "severity": "info",
-                "title": "Constant column",
-                "detail": f"{col} has a single unique value",
+                "title": "常量列",
+                "detail": f"{col} 只有 1 个唯一值",
                 "columns": [col],
                 "suggestions": [],
             })
@@ -84,8 +84,8 @@ def detect_quality(df: pd.DataFrame) -> dict[str, Any]:
                 issues.append({
                     "id": "type",
                     "severity": "info",
-                    "title": "Numeric string column",
-                    "detail": f"{col} can be coerced to numeric",
+                    "title": "数字字符串列",
+                    "detail": f"{col} 可转换为数值",
                     "columns": [col],
                     "suggestions": ["coerce-numeric"],
                 })

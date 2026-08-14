@@ -16,7 +16,7 @@ _PLOTLY_CDN = "https://cdn.plot.ly/plotly-latest.min.js"
 
 @router.post("/generate")
 async def generate_report(payload: dict):
-    title = payload.get("title", "Untitled Report")
+    title = payload.get("title", "未命名报告")
     dataset_id = payload.get("dataset_id")
     charts = payload.get("charts", [])  # [{name, figure}]
     notes = payload.get("notes", "")
@@ -42,7 +42,7 @@ async def generate_report(payload: dict):
                     items = "".join(
                         f"<li>{html.escape(i['text'])}</li>" for i in insights
                     )
-                    insights_html = f"<section><h2>Insights</h2><ul>{items}</ul></section>"
+                    insights_html = f"<section><h2>洞察</h2><ul>{items}</ul></section>"
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -70,7 +70,7 @@ async def generate_report(payload: dict):
         )
 
     notes_html = (
-        f"<section><h2>Notes</h2><p>{html.escape(notes)}</p></section>" if notes else ""
+        f"<section><h2>注释</h2><p>{html.escape(notes)}</p></section>" if notes else ""
     )
 
     document = f"""<!DOCTYPE html>

@@ -42,7 +42,7 @@ def recommend_charts(df: pd.DataFrame, limit: int = 5) -> list[dict[str, Any]]:
         tcol, qcol = temporal[0], quantitative[0]
         recommendations.append({
             "chart_type": "line",
-            "reason": f"Track {qcol} over time ({tcol})",
+            "reason": f"按时间（{tcol}）追踪 {qcol}",
             "encoding": {"chartType": "line", "x": x(tcol, "temporal"), "yFields": y_field(qcol)},
         })
 
@@ -51,7 +51,7 @@ def recommend_charts(df: pd.DataFrame, limit: int = 5) -> list[dict[str, Any]]:
         ncol, qcol = nominal[0], quantitative[0]
         recommendations.append({
             "chart_type": "bar",
-            "reason": f"Compare {qcol} across {ncol}",
+            "reason": f"按 {ncol} 比较 {qcol}",
             "encoding": {"chartType": "bar", "x": x(ncol, "nominal"), "yFields": y_field(qcol)},
         })
 
@@ -60,7 +60,7 @@ def recommend_charts(df: pd.DataFrame, limit: int = 5) -> list[dict[str, Any]]:
         qcol = quantitative[0]
         recommendations.append({
             "chart_type": "histogram",
-            "reason": f"Distribution of {qcol}",
+            "reason": f"{qcol} 的分布",
             "encoding": {"chartType": "histogram", "x": x(qcol, "quantitative"), "yFields": y_field(qcol)},
         })
 
@@ -73,7 +73,7 @@ def recommend_charts(df: pd.DataFrame, limit: int = 5) -> list[dict[str, Any]]:
             enc["reason_extra"] = f"colored by {nominal[0]}"
         recommendations.append({
             "chart_type": "scatter",
-            "reason": f"Explore {a} vs {b}" + (f", colored by {nominal[0]}" if nominal else ""),
+            "reason": f"探索 {a} 与 {b}" + (f"，按 {nominal[0]} 着色" if nominal else ""),
             "encoding": enc,
         })
 
@@ -81,7 +81,7 @@ def recommend_charts(df: pd.DataFrame, limit: int = 5) -> list[dict[str, Any]]:
     if len(quantitative) >= 3:
         recommendations.append({
             "chart_type": "heatmap",
-            "reason": f"Correlation matrix of {len(quantitative)} numeric columns",
+            "reason": f"{len(quantitative)} 个数值列的相关矩阵",
             "encoding": {
                 "chartType": "heatmap",
                 "x": x(quantitative[1], "quantitative"),
@@ -98,7 +98,7 @@ def recommend_charts(df: pd.DataFrame, limit: int = 5) -> list[dict[str, Any]]:
         if 2 <= unique <= 6:
             recommendations.append({
                 "chart_type": "pie",
-                "reason": f"Share of {quantitative[0]} by {ncol}",
+                "reason": f"按 {ncol} 查看 {quantitative[0]} 占比",
                 "encoding": {
                     "chartType": "pie",
                     "color": x(ncol, "nominal"),

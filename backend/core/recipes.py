@@ -14,32 +14,32 @@ import pandas as pd
 RECIPE_META: list[dict[str, Any]] = [
     {
         "id": "dedupe",
-        "name": "Remove duplicates",
-        "description": "Drop fully duplicate rows.",
+        "name": "删除重复",
+        "description": "删除完全重复的行。",
         "dynamic": False,
     },
     {
         "id": "dropna",
-        "name": "Drop missing rows",
-        "description": "Drop rows that contain missing values.",
+        "name": "删除缺失行",
+        "description": "删除包含缺失值的行。",
         "dynamic": False,
     },
     {
         "id": "fillna-median-numeric",
-        "name": "Fill numeric missing with median",
-        "description": "Fill missing values in numeric columns with their median.",
+        "name": "数值列中位数填充",
+        "description": "用中位数填充数值列的缺失值。",
         "dynamic": True,
     },
     {
         "id": "clip-outliers",
-        "name": "Cap outliers (1.5×IQR)",
-        "description": "Clip numeric columns outside the 1.5×IQR bounds to the bounds.",
+        "name": "裁剪异常值（1.5×IQR）",
+        "description": "将超出 1.5×IQR 边界的数值裁剪到边界。",
         "dynamic": True,
     },
     {
         "id": "coerce-numeric",
-        "name": "Coerce numeric strings",
-        "description": "Cast object columns that look numeric (>80% parseable) to float.",
+        "name": "数字字符串转数值",
+        "description": "将看起来是数值的字符串列（>80% 可解析）转为 float。",
         "dynamic": True,
     },
 ]

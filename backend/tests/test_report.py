@@ -34,8 +34,8 @@ def test_generate_report_with_insights_and_charts(client, dirty_dataset):
     assert "cdn.plot.ly" in doc
     assert "Value by Category" in doc
     assert '"chartType"' in doc or '"type"' in doc  # embedded figure data
-    assert "Insights" in doc  # insights section included
-    assert "Notes" in doc and "Draft notes" in doc
+    assert "洞察" in doc  # insights section included
+    assert "注释" in doc and "Draft notes" in doc
     assert "dirty.csv" in doc  # dataset meta
     assert "Plotly.newPlot('chart-0'" in doc
 
@@ -54,8 +54,8 @@ def test_generate_report_without_insights_and_notes(client, dirty_dataset):
     )
     assert resp.status_code == 200
     doc = resp.json()["html"]
-    assert "Insights" not in doc
-    assert "<section><h2>Notes</h2>" not in doc
+    assert "洞察" not in doc
+    assert "<section><h2>注释</h2>" not in doc
 
 
 def test_report_escapes_user_content(client, dirty_dataset):

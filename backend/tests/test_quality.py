@@ -14,7 +14,7 @@ def test_detects_missing(dirty_df):
 def test_detects_duplicates(dirty_df):
     report = detect_quality(dirty_df)
     dup = [i for i in report["issues"] if i["id"] == "duplicates"]
-    assert dup and dup[0]["detail"].startswith("1 fully duplicate")
+    assert dup and dup[0]["detail"].startswith("1 行完全重复")
     assert report["summary"]["duplicate_rows"] == 1
 
 
