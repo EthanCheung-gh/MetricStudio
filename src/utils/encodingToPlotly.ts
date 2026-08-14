@@ -689,6 +689,45 @@ export function encodingToPlotly(
     return { data: [trace], layout };
   }
 
+  if (type === 'candlestick') {
+    const xf = encoding.x?.field;
+    const o = encoding.options?.openField || 'open';
+    const h = encoding.options?.highField || 'high';
+    const l = encoding.options?.lowField || 'low';
+    const c = encoding.options?.closeField || 'close';
+    if (!xf) return { data: [], layout };
+    const trace: any = {
+      type: 'candlestick',
+      x: rows.map((r) => String(r[xf] ?? '')),
+      open: rows.map((r) => Number(r[o]) || 0),
+      high: rows.map((r) => Number(r[h]) || 0),
+      low: rows.map((r) => Number(r[l]) || 0),
+      close: rows.map((r) => Number(r[c]) || 0),
+    };
+    return { data: [trace], layout };
+  }
+
+  if (type === 'surface') {
+    // Surface needs a matrix pivot; the authoritative path is the backend.
+    // Frontend fallback returns empty so ChartConfigDialog relies on previewChart.
+    return { data: [], layout };
+  }
+
+  if (type === 'timeline') {
+    const xf = encoding.x?.field;
+    const yf = yFields[0];
+    if (!xf || !yf) return { data: [], layout };
+    const trace: any = {
+      type: 'scatter',
+      mode: 'markers',
+      x: rows.map((r) => String(r[xf] ?? '')),
+      y: rows.map((r) => r[yf.field] ?? ''),
+      marker: { size: 8, color: defaultColors[0] },
+    };
+    layout.xaxis.type = 'date';
+    return { data: [trace], layout };
+  }
+
   // ---- Multi-Y types: line, bar, scatter ----
   if (yFields.length === 0) {
     return { data: [], layout };

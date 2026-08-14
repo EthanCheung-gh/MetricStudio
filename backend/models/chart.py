@@ -29,6 +29,7 @@ ChartTypeLiteral = Literal[
     "treemap", "sunburst", "icicle", "sankey", "parcoords", "parcats",
     # Coordinate variants & misc
     "radar", "ternary", "waterfall", "funnel", "table", "gantt",
+    "candlestick", "surface", "timeline",
 ]
 
 
@@ -44,6 +45,10 @@ class ChartOptions(CBaseModel):
     corr: bool = False
     start_field: Optional[str] = None
     end_field: Optional[str] = None
+    open_field: Optional[str] = None
+    high_field: Optional[str] = None
+    low_field: Optional[str] = None
+    close_field: Optional[str] = None
 
 
 class ChartEncoding(CBaseModel):

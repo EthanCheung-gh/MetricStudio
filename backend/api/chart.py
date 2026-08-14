@@ -536,6 +536,52 @@ def _aggregate(df, encoding):
         }
         return {"data": [trace], "layout": layout}
 
+    if chart_type == "candlestick":
+        open_f = opts.open_field if opts and opts.open_field else "open"
+        high_f = opts.high_field if opts and opts.high_field else "high"
+        low_f = opts.low_field if opts and opts.low_field else "low"
+        close_f = opts.close_field if opts and opts.close_field else "close"
+        if not encoding.x or not all(c in df.columns for c in (open_f, high_f, low_f, close_f)):
+            return {"data": [], "layout": layout}
+        trace = {
+            "type": "candlestick",
+            "x": [str(v) for v in df[encoding.x.field]],
+            "open": df[open_f].tolist(),
+            "high": df[high_f].tolist(),
+            "low": df[low_f].tolist(),
+            "close": df[close_f].tolist(),
+        }
+        return {"data": [trace], "layout": layout}
+
+    if chart_type == "surface":
+        if not encoding.x or not y_fields or not encoding.z:
+            return {"data": [], "layout": layout}
+        primary = y_fields[0]
+        pivot = df.pivot_table(index=primary.field, columns=encoding.x.field, values=encoding.z.field, aggfunc="mean")
+        z = [[None if (isinstance(v, float) and v != v) else float(v) for v in row] for row in pivot.values.tolist()]
+        trace = {
+            "type": "surface",
+            "x": [str(c) for c in pivot.columns],
+            "y": [str(i) for i in pivot.index],
+            "z": z,
+            "colorscale": "Viridis",
+        }
+        return {"data": [trace], "layout": layout}
+
+    if chart_type == "timeline":
+        if not encoding.x or not y_fields:
+            return {"data": [], "layout": layout}
+        primary = y_fields[0]
+        trace = {
+            "type": "scatter",
+            "mode": "markers",
+            "x": [str(v) for v in df[encoding.x.field]],
+            "y": df[primary.field].tolist(),
+            "marker": {"size": 8, "color": DEFAULT_COLORS[0]},
+        }
+        layout["xaxis"]["type"] = "date"
+        return {"data": [trace], "layout": layout}
+
     # ---- Facet mode: split the multi-Y family into a subplot grid ----
     if (
         chart_type in ("line", "bar", "area", "step", "scatter", "dot")

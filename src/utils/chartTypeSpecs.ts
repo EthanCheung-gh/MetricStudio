@@ -6,7 +6,7 @@ export type ChannelKey = 'x' | 'color' | 'size' | 'facet' | 'z' | 'error' | 'sou
 /** Per-type option controls shown in the EncodingPanel Options section. */
 export type OptionKey =
   | 'barmode' | 'orientation' | 'histnorm' | 'cumulative' | 'boxPoints'
-  | 'marginal' | 'annotated' | 'corr' | 'ganttFields';
+  | 'marginal' | 'annotated' | 'corr' | 'ganttFields' | 'candlestickFields';
 
 export interface ChartTypeSpec {
   label: string;
@@ -67,6 +67,9 @@ export const chartTypeSpecs: Record<ChartType, ChartTypeSpec> = {
   funnel:   { label: 'Funnel',          yFields: 'first', channels: ['x'] },
   table:    { label: 'Table',           yFields: 'none', channels: [], dimensionsLabel: 'Columns' },
   gantt:    { label: 'Gantt',           yFields: 'first', channels: ['color'], options: ['ganttFields'] },
+  candlestick: { label: 'Candlestick',   yFields: 'none', channels: ['x'], options: ['candlestickFields'] },
+  surface:  { label: '3D Surface',      yFields: 'first', channels: ['x', 'z'] },
+  timeline: { label: 'Timeline',        yFields: 'first', channels: ['x'] },
 };
 
 export const chartTypeList = Object.entries(chartTypeSpecs).map(([value, spec]) => ({

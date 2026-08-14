@@ -8,7 +8,7 @@ export type ChartType =
   // Hierarchical / network / high-dim
   | 'treemap' | 'sunburst' | 'icicle' | 'sankey' | 'parcoords' | 'parcats'
   // Coordinate variants & misc
-  | 'radar' | 'ternary' | 'waterfall' | 'funnel' | 'table' | 'gantt';
+  | 'radar' | 'ternary' | 'waterfall' | 'funnel' | 'table' | 'gantt' | 'candlestick' | 'surface' | 'timeline';
 
 export type FieldType = 'quantitative' | 'nominal' | 'temporal';
 
@@ -43,6 +43,10 @@ export interface ChartOptions {
   corr?: boolean;                          // heatmap: correlation-matrix mode
   startField?: string;                     // gantt
   endField?: string;                       // gantt
+  openField?: string;                      // candlestick
+  highField?: string;                      // candlestick
+  lowField?: string;                       // candlestick
+  closeField?: string;                     // candlestick
 }
 
 export interface ChartEncoding {
