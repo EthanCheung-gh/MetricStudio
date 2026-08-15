@@ -229,6 +229,11 @@ export const api = {
       '/api/v1/nl/transform',
       { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, query }) },
     ),
+  nlNarrate: (datasetId: string) =>
+    fetchJson<{ narrative: string }>('/api/v1/nl/narrate', {
+      method: 'POST',
+      body: JSON.stringify({ dataset_id: datasetId }),
+    }),
   nlAsk: (datasetId: string, question: string) =>
     fetchJson<{ answer: string }>('/api/v1/nl/ask', {
       method: 'POST',

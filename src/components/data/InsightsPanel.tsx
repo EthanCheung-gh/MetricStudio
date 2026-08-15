@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BarChart3, Lightbulb, Link2, PieChart, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { BarChart3, Lightbulb, Link2, PieChart, Sparkles, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
@@ -21,7 +21,22 @@ const ICONS: Record<string, React.ReactNode> = {
 export function InsightsPanel() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [insights, setInsights] = useState<Insight[] | null>(null)
+  const [narrative, setNarrative] = useState<string | null>(null)
+  const [narrating, setNarrating] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  const narrate = async () => {
+    if (!activeDataFrameId) return
+    setNarrating(true)
+    try {
+      const { narrative } = await api.nlNarrate(activeDataFrameId)
+      setNarrative(narrative)
+    } catch (err) {
+      setNarrative('生成叙述失败，请检查 LLM 配置')
+    } finally {
+      setNarrating(false)
+    }
+  }
 
   const load = useCallback(async () => {
     if (!activeDataFrameId) return
@@ -50,10 +65,27 @@ export function InsightsPanel() {
           <Lightbulb className="h-3.5 w-3.5" />
           洞察
         </div>
-        <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh insights">
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="light"
+            isLoading={narrating}
+            startContent={<Sparkles className="h-3 w-3" />}
+            onPress={narrate}
+          >
+            生成叙述
+          </Button>
+          <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh insights">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
+
+      {narrative && (
+        <div className="rounded border border-primary/30 bg-primary/10 p-2 text-[11px] leading-relaxed">
+          {narrative}
+        </div>
+      )}
 
       {loading && !insights && <div className="text-[11px] text-muted">分析中…</div>}
 

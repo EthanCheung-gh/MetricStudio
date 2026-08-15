@@ -128,3 +128,24 @@ def test_ask_llm_unavailable(client, monkeypatch):
     monkeypatch.setattr(nl_module, "chat", lambda messages: (_ for _ in ()).throw(RuntimeError("no llm")))
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dsid, "question": "anything"})
     assert resp.status_code == 502
+
+
+def test_narrate_endpoint(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "date,value\n2024-01-01,100\n2024-02-01,150\n2024-03-01,200\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    captured = {}
+
+    def fake_chat(messages):
+        captured["prompt"] = messages[0]["content"]
+        return "value 均值从 100 上升到 200，涨幅 100%。"
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post("/api/v1/nl/narrate", json={"dataset_id": dsid})
+    assert resp.status_code == 200, resp.text
+    assert "上升" in resp.json()["narrative"]
+    # prompt carries insight text
+    assert "均值" in captured["prompt"]

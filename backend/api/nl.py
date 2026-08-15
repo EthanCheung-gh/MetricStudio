@@ -156,6 +156,30 @@ async def nl_ask(request: NLAskRequest):
     return {"answer": answer}
 
 
+@router.post("/narrate")
+async def nl_narrate(payload: dict):
+    """Generate a Chinese analysis narrative from the dataset insights."""
+    dataset_id = payload.get("dataset_id")
+    if not dataset_id:
+        raise HTTPException(status_code=400, detail="dataset_id is required")
+    dataset = session.get(dataset_id)
+    from backend.core.insights import generate_insights
+
+    insights = generate_insights(dataset.df)
+    if not insights:
+        return {"narrative": ""}
+    insight_texts = "\n".join("- " + i["text"] for i in insights)
+    prompt = (
+        "以下是数据集的分析洞察：\n" + insight_texts +
+        "\n\n请用简体中文撰写一段 2-3 句的连贯分析叙述，基于上述洞察并引用具体数字，不要编造。"
+    )
+    try:
+        narrative = chat([{"role": "user", "content": prompt}])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
+    return {"narrative": narrative}
+
+
 @router.get("/config")
 async def get_llm_config():
     return load_config()
