@@ -85,9 +85,9 @@ export function TransformPanel() {
     try {
       const preview = await api.filter(activeId, { column: filterCol, operator: filterOp as never, value: filterVal })
       updatePreview(preview)
-      addNotification('success', 'Filter applied')
+      addNotification('success', t('transform.filterApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Filter failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.filterFailed'))
     } finally {
       setLoading(false)
     }
@@ -99,9 +99,9 @@ export function TransformPanel() {
     try {
       const preview = await api.sort(activeId, { column: sortCol, ascending: sortAsc })
       updatePreview(preview)
-      addNotification('success', 'Sort applied')
+      addNotification('success', t('transform.sortApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Sort failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.sortFailed'))
     } finally {
       setLoading(false)
     }
@@ -113,9 +113,9 @@ export function TransformPanel() {
     try {
       const preview = await api.dropNa(activeId)
       updatePreview(preview)
-      addNotification('success', 'Dropped missing values')
+      addNotification('success', t('transform.dropNaApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Drop NA failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.dropNaFailed'))
     } finally {
       setLoading(false)
     }
@@ -128,9 +128,9 @@ export function TransformPanel() {
       const preview = await api.rename(activeId, { mappings: { [renameFrom]: renameTo } })
       updatePreview(preview)
       setPreview()
-      addNotification('success', 'Column renamed')
+      addNotification('success', t('transform.renameApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Rename failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.renameFailed'))
     } finally {
       setLoading(false)
     }
@@ -145,9 +145,9 @@ export function TransformPanel() {
       setPreview()
       setComputeName('')
       setComputeExpr('')
-      addNotification('success', 'Computed column added')
+      addNotification('success', t('transform.computeApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Compute failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.computeFailed'))
     } finally {
       setLoading(false)
     }
@@ -160,9 +160,9 @@ export function TransformPanel() {
       const preview = await api.pivot(activeId, { index: pivotIndex, columns: pivotColumns, values: pivotValues, aggfunc: pivotAgg })
       updatePreview(preview)
       setPreview()
-      addNotification('success', 'Pivot applied')
+      addNotification('success', t('transform.pivotApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Pivot failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.pivotFailed'))
     } finally {
       setLoading(false)
     }
@@ -175,9 +175,9 @@ export function TransformPanel() {
       const preview = await api.melt(activeId, { id_vars: meltIdVars })
       updatePreview(preview)
       setPreview()
-      addNotification('success', 'Melt applied')
+      addNotification('success', t('transform.meltApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Melt failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.meltFailed'))
     } finally {
       setLoading(false)
     }
@@ -190,9 +190,9 @@ export function TransformPanel() {
       const preview = await api.join(activeId, { right_dataset_id: joinRight, on: joinOn, how: joinHow })
       updatePreview(preview)
       setPreview()
-      addNotification('success', 'Join applied')
+      addNotification('success', t('transform.joinApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Join failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.joinFailed'))
     } finally {
       setLoading(false)
     }
@@ -262,10 +262,10 @@ export function TransformPanel() {
     setUndoing(true)
     try {
       const ok = await globalUndo()
-      if (ok) addNotification('success', 'Undo applied')
-      else addNotification('info', 'Nothing to undo')
+      if (ok) addNotification('success', t('transform.undoApplied'))
+      else addNotification('info', t('transform.nothingToUndo'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Undo failed')
+      addNotification('error', err instanceof Error ? err.message : t('transform.undoFailed'))
     } finally {
       setUndoing(false)
     }
@@ -275,7 +275,7 @@ export function TransformPanel() {
     return (
       <Card className="bg-surface-elevated border-border">
         <CardBody>
-          <p className="text-xs text-muted">Select a dataset to transform.</p>
+          <p className="text-xs text-muted">{t('transform.selectDataset')}</p>
         </CardBody>
       </Card>
     )
@@ -284,14 +284,14 @@ export function TransformPanel() {
   return (
     <Card className="bg-surface-elevated border-border">
       <CardBody className="gap-3">
-        <div className="text-xs font-semibold text-muted">Transform</div>
+        <div className="text-xs font-semibold text-muted">{t('transform.title')}</div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Filter</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.filter')}</span>
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="Column"
+              placeholder={t('transform.column')}
               selectedKeys={filterCol ? [filterCol] : []}
               onSelectionChange={(keys) => setFilterCol(Array.from(keys)[0] as string)}
               className="min-w-[80px]"
@@ -313,21 +313,21 @@ export function TransformPanel() {
           </div>
           <Input
             size="sm"
-            placeholder="Value"
+            placeholder={t('transform.value')}
             value={filterVal}
             onValueChange={setFilterVal}
           />
           <Button size="sm" color="primary" isLoading={loading} onPress={handleFilter}>
-            Apply Filter
+            {t('transform.applyFilter')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Sort</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.sort')}</span>
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="Column"
+              placeholder={t('transform.column')}
               selectedKeys={sortCol ? [sortCol] : []}
               onSelectionChange={(keys) => setSortCol(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -337,27 +337,27 @@ export function TransformPanel() {
               ))}
             </Select>
             <Button size="sm" variant="flat" onPress={() => setSortAsc((v) => !v)}>
-              {sortAsc ? 'Asc' : 'Desc'}
+              {sortAsc ? t('transform.asc') : t('transform.desc')}
             </Button>
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleSort}>
-            Apply Sort
+            {t('transform.applySort')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Drop NA</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.dropNa')}</span>
           <Button size="sm" color="warning" isLoading={loading} onPress={handleDropNa}>
-            Drop Missing Values
+            {t('transform.dropMissing')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Rename</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.rename')}</span>
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="From"
+              placeholder={t('transform.from')}
               selectedKeys={renameFrom ? [renameFrom] : []}
               onSelectionChange={(keys) => setRenameFrom(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -375,15 +375,15 @@ export function TransformPanel() {
             />
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleRename}>
-            Rename Column
+            {t('transform.renameColumn')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Compute Column</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.compute')}</span>
           <Input
             size="sm"
-            placeholder="New column name"
+            placeholder={t('transform.newColumn')}
             value={computeName}
             onValueChange={setComputeName}
           />
@@ -399,7 +399,7 @@ export function TransformPanel() {
                 key={c.name}
                 className="rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted hover:bg-primary/15 hover:text-primary"
                 onClick={() => insertField(c.name)}
-                title={`Insert ${c.name}`}
+                title={t('transform.insertField', { name: c.name })}
               >
                 {c.name}
               </button>
@@ -411,16 +411,16 @@ export function TransformPanel() {
             </div>
           )}
           <Button size="sm" color="primary" isLoading={loading} onPress={handleCompute}>
-            Add Computed Column
+            {t('transform.addComputed')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Pivot</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.pivot')}</span>
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="Index"
+              placeholder={t('transform.index')}
               selectedKeys={pivotIndex ? [pivotIndex] : []}
               onSelectionChange={(keys) => setPivotIndex(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -431,7 +431,7 @@ export function TransformPanel() {
             </Select>
             <Select
               size="sm"
-              placeholder="Columns"
+              placeholder={t('table.columns')}
               selectedKeys={pivotColumns ? [pivotColumns] : []}
               onSelectionChange={(keys) => setPivotColumns(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -444,7 +444,7 @@ export function TransformPanel() {
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="Values"
+              placeholder={t('transform.value')}
               selectedKeys={pivotValues ? [pivotValues] : []}
               onSelectionChange={(keys) => setPivotValues(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -466,16 +466,16 @@ export function TransformPanel() {
             </Select>
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={handlePivot}>
-            Apply Pivot
+            {t('transform.applyPivot')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Melt</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.melt')}</span>
           <Select
             size="sm"
             selectionMode="multiple"
-            placeholder="ID columns (kept as-is)"
+            placeholder={t('transform.idColumns')}
             selectedKeys={new Set(meltIdVars)}
             onSelectionChange={(keys) => setMeltIdVars(Array.from(keys) as string[])}
           >
@@ -484,12 +484,12 @@ export function TransformPanel() {
             ))}
           </Select>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleMelt}>
-            Apply Melt
+            {t('transform.applyMelt')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Join</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.join')}</span>
           <Select
             size="sm"
             placeholder={t('transform.rightDataset')}
@@ -519,7 +519,7 @@ export function TransformPanel() {
               selectedKeys={[joinHow]}
               onSelectionChange={(keys) => setJoinHow(Array.from(keys)[0] as string)}
               className="w-24"
-              aria-label="Join type"
+              aria-label={t('transform.joinType')}
             >
               {['inner', 'left', 'right', 'outer'].map((h) => (
                 <SelectItem key={h}>{h}</SelectItem>
@@ -527,7 +527,7 @@ export function TransformPanel() {
             </Select>
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleJoin}>
-            Apply Join
+            {t('transform.applyJoin')}
           </Button>
         </div>
 
