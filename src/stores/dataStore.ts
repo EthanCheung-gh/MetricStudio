@@ -3,6 +3,13 @@ import type { DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta } from '@
 import { api } from '@/api/client';
 import { useUIStore } from './uiStore';
 
+export interface TsResult {
+  periods?: string[];
+  values?: number[];
+  pct_change?: (number | null)[];
+  ok?: boolean;
+}
+
 interface DataState {
   dataFrames: DataFrameMeta[];
   activeDataFrameId: string | null;
@@ -11,12 +18,18 @@ interface DataState {
   columns: ColumnMeta[];
   loading: boolean;
   error: string | null;
+  /** Per-dataset AI narrative, keyed by DataFrame id (survives dataset switches). */
+  narratives: Record<string, string>;
+  /** Per-dataset MoM/timeseries result, keyed by DataFrame id. */
+  tsResults: Record<string, TsResult>;
 
   setActiveDataFrame: (id: string | null) => void;
   loadDataFrames: () => Promise<void>;
   importFile: (file: File) => Promise<DataFrameMeta>;
   refreshActiveDataFrame: () => Promise<void>;
   removeDataFrame: (id: string) => Promise<void>;
+  setNarrative: (id: string, text: string) => void;
+  setTsResult: (id: string, result: TsResult) => void;
   clearError: () => void;
 }
 
@@ -28,6 +41,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   columns: [],
   loading: false,
   error: null,
+  narratives: {},
+  tsResults: {},
 
   setActiveDataFrame: (id) => {
     set({ activeDataFrameId: id });
@@ -96,12 +111,20 @@ export const useDataStore = create<DataState>((set, get) => ({
         preview: state.activeDataFrameId === id ? null : state.preview,
         describe: state.activeDataFrameId === id ? null : state.describe,
         columns: state.activeDataFrameId === id ? [] : state.columns,
+        narratives: Object.fromEntries(Object.entries(state.narratives).filter(([k]) => k !== id)),
+        tsResults: Object.fromEntries(Object.entries(state.tsResults).filter(([k]) => k !== id)),
         loading: false,
       }));
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to delete dataset', loading: false });
     }
   },
+
+  setNarrative: (id, text) =>
+    set((state) => ({ narratives: { ...state.narratives, [id]: text } })),
+
+  setTsResult: (id, result) =>
+    set((state) => ({ tsResults: { ...state.tsResults, [id]: result } })),
 
   clearError: () => set({ error: null }),
 }));

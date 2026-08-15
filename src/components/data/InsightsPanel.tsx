@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { BarChart3, Lightbulb, LineChart, Link2, PieChart, Sparkles, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
-import { useDataStore } from '@/stores/dataStore'
+import { useDataStore, type TsResult } from '@/stores/dataStore'
 
 interface Insight {
   type: string
@@ -23,9 +23,9 @@ export function InsightsPanel() {
   const { t } = useTranslation();
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [insights, setInsights] = useState<Insight[] | null>(null)
-  const [narrative, setNarrative] = useState<string | null>(null)
+  const narrative = useDataStore((s) => (activeDataFrameId ? (s.narratives[activeDataFrameId] ?? null) : null))
+  const tsResult = useDataStore((s) => (activeDataFrameId ? (s.tsResults[activeDataFrameId] ?? null) : null))
   const [narrating, setNarrating] = useState(false)
-  const [tsResult, setTsResult] = useState<{ periods?: string[]; values?: number[]; pct_change?: (number | null)[]; ok?: boolean } | null>(null)
   const [tsLoading, setTsLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const columns = useDataStore((s) => s.columns)
@@ -35,9 +35,9 @@ export function InsightsPanel() {
     setNarrating(true)
     try {
       const { narrative } = await api.nlNarrate(activeDataFrameId)
-      setNarrative(narrative)
+      useDataStore.getState().setNarrative(activeDataFrameId, narrative)
     } catch {
-      setNarrative(t('insight.narrateFailed'))
+      useDataStore.getState().setNarrative(activeDataFrameId, t('insight.narrateFailed'))
     } finally {
       setNarrating(false)
     }
@@ -49,9 +49,9 @@ export function InsightsPanel() {
     if (!numericCol) return
     setTsLoading(true)
     try {
-      setTsResult(await api.timeseries(activeDataFrameId, numericCol.name))
+      useDataStore.getState().setTsResult(activeDataFrameId, (await api.timeseries(activeDataFrameId, numericCol.name)) as TsResult)
     } catch {
-      setTsResult({ ok: false })
+      useDataStore.getState().setTsResult(activeDataFrameId, { ok: false })
     } finally {
       setTsLoading(false)
     }
