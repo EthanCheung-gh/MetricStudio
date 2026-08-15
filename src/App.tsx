@@ -9,7 +9,7 @@ import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useCommandPaletteStore } from '@/stores/commandPaletteStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
-import i18n from '@/i18n'
+import { useTranslation } from 'react-i18next'
 import { globalUndo, globalRedo } from '@/utils/globalHistory'
 import type { FieldType } from '@/types/encoding'
 
@@ -22,6 +22,7 @@ function App() {
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const theme = useWorkspaceStore((s) => s.theme)
   const language = useUIStore((s) => s.language)
+  const { i18n } = useTranslation();
 
   useEffect(() => {
     if (i18n.isInitialized) {
@@ -29,7 +30,7 @@ function App() {
     } else {
       i18n.init().then(() => i18n.changeLanguage(language))
     }
-  }, [language])
+  }, [language, i18n])
 
   // Apply light/dark theme to the root element
   useEffect(() => {
