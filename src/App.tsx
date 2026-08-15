@@ -24,7 +24,11 @@ function App() {
   const language = useUIStore((s) => s.language)
 
   useEffect(() => {
-    i18n.changeLanguage(language)
+    if (i18n.isInitialized) {
+      i18n.changeLanguage(language)
+    } else {
+      i18n.init().then(() => i18n.changeLanguage(language))
+    }
   }, [language])
 
   // Apply light/dark theme to the root element
