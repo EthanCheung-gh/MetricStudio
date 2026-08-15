@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next'
 import { useChartStore } from '@/stores/chartStore'
 import { Button, Input, Switch } from '@heroui/react'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 import { Minus, MessageSquarePlus, Trash2 } from 'lucide-react'
 
 export function PropertyEditor() {
+  const { t } = useTranslation()
   const charts = useChartStore((s) => s.charts)
   const activeChartId = useChartStore((s) => s.activeChartId)
   const updateLayout = useChartStore((s) => s.updateLayout)
@@ -13,7 +15,7 @@ export function PropertyEditor() {
   if (!chart) {
     return (
       <div className="rounded border border-border bg-surface-elevated p-3 text-xs text-muted">
-        选择图表以编辑属性。
+        {t('chart.selectChartToEdit')}
       </div>
     )
   }
@@ -83,57 +85,57 @@ export function PropertyEditor() {
 
   return (
     <>
-    <CollapsibleSection title="属性" defaultOpen={false}>
+    <CollapsibleSection title={t('panel.properties')} defaultOpen={false}>
       <div className="flex flex-col gap-2">
-        <Input size="sm" label="标题" value={String(layout.title || '')}
+        <Input size="sm" label={t('chart.title')} value={String(layout.title || '')}
           onValueChange={(v) => updateLayout(chart.id, { title: v })} />
-        <Input size="sm" label="X 轴标签" value={getTitleText(xaxis)}
+        <Input size="sm" label={t('chart.xAxisLabel')} value={getTitleText(xaxis)}
           onValueChange={(v) => setTitleText('xaxis', v)} />
-        <Input size="sm" label="左 Y 轴标签" value={getTitleText(yaxis)}
+        <Input size="sm" label={t('chart.leftYAxisLabel')} value={getTitleText(yaxis)}
           onValueChange={(v) => setTitleText('yaxis', v)} />
         {hasRightAxis && (
-          <Input size="sm" label="右 Y 轴标签" value={getTitleText(yaxis2)}
+          <Input size="sm" label={t('chart.rightYAxisLabel')} value={getTitleText(yaxis2)}
             onValueChange={(v) => setTitleText('yaxis2', v)} />
         )}
         <div className="flex items-center justify-between text-xs">
-          <span>X 轴对数</span>
+          <span>{t('chart.xAxisLog')}</span>
           <Switch size="sm" isSelected={xaxis.type === 'log'}
             onValueChange={(v) => setAxisLog('xaxis', v)} />
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span>左 Y 轴对数</span>
+          <span>{t('chart.leftYAxisLog')}</span>
           <Switch size="sm" isSelected={yaxis.type === 'log'}
             onValueChange={(v) => setAxisLog('yaxis', v)} />
         </div>
         {hasRightAxis && (
           <div className="flex items-center justify-between text-xs">
-            <span>右 Y 轴对数</span>
+            <span>{t('chart.rightYAxisLog')}</span>
             <Switch size="sm" isSelected={yaxis2.type === 'log'}
               onValueChange={(v) => setAxisLog('yaxis2', v)} />
           </div>
         )}
         <div className="flex items-center justify-between text-xs">
-          <span>显示图例</span>
+          <span>{t('chart.showLegend')}</span>
           <Switch size="sm" isSelected={!!layout.showlegend}
             onValueChange={(v) => updateLayout(chart.id, { showlegend: v })} />
         </div>
-        <Input size="sm" type="color" label="背景色"
+        <Input size="sm" type="color" label={t('chart.bgColor')}
           value={String(layout.plot_bgcolor || '#000000')}
           onValueChange={(v) => updateLayout(chart.id, { plot_bgcolor: v })} />
       </div>
     </CollapsibleSection>
 
-    <CollapsibleSection title="批注" defaultOpen={false}>
+    <CollapsibleSection title={t('panel.annotations')} defaultOpen={false}>
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap gap-1">
           <Button size="sm" variant="flat" startContent={<MessageSquarePlus className="h-3 w-3" />} onPress={addTextAnnotation}>
-            文本
+            {t('chart.textAnnotation')}
           </Button>
           <Button size="sm" variant="flat" startContent={<Minus className="h-3 w-3" />} onPress={() => addShape('hline')}>
-            横线
+            {t('chart.hLine')}
           </Button>
           <Button size="sm" variant="flat" startContent={<Minus className="h-3 w-3 rotate-90" />} onPress={() => addShape('vline')}>
-            竖线
+            {t('chart.vLine')}
           </Button>
         </div>
         {annotations.map((a, i) => (
@@ -159,7 +161,7 @@ export function PropertyEditor() {
           </div>
         ))}
         {annotations.length === 0 && shapes.length === 0 && (
-          <div className="text-[11px] text-muted">在图表上添加文本或参考线</div>
+          <div className="text-[11px] text-muted">{t('chart.annotationHint')}</div>
         )}
       </div>
     </CollapsibleSection>

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -24,6 +27,42 @@ class ImportRequest(BaseModel):
     path: str
     table: str
     name: str | None = None
+
+
+DB_EXTENSIONS = {".db", ".sqlite", ".sqlite3", ".db3"}
+
+
+@router.get("/browse")
+async def browse_dir(dir: str | None = None):
+    """List subdirectories and SQLite database files in a server-side directory."""
+    base = Path(dir).expanduser() if dir else Path.home()
+    try:
+        base = base.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=f"目录不存在: {exc}") from exc
+    if not base.is_dir():
+        raise HTTPException(status_code=400, detail="不是目录")
+    dirs: list[dict] = []
+    files: list[dict] = []
+    try:
+        for entry in sorted(os.scandir(base), key=lambda e: e.name.lower()):
+            if entry.name.startswith("."):
+                continue
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    dirs.append({"name": entry.name, "path": entry.path})
+                elif entry.is_file() and Path(entry.name).suffix.lower() in DB_EXTENSIONS:
+                    files.append({"name": entry.name, "path": entry.path})
+            except OSError:
+                continue
+    except PermissionError as exc:
+        raise HTTPException(status_code=400, detail="无权限访问该目录") from exc
+    return {
+        "dir": str(base),
+        "parent": str(base.parent) if base.parent != base else None,
+        "dirs": dirs[:100],
+        "files": files[:200],
+    }
 
 
 @router.post("/tables")

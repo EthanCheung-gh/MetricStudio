@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Play, Settings, Sparkles, Wand2, X } from 'lucide-react'
 import { Button, Input } from '@heroui/react'
 import { api } from '@/api/client'
@@ -11,6 +12,7 @@ interface NLOp {
 }
 
 export function NLQueryPanel() {
+  const { t } = useTranslation()
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const refreshActiveDataFrame = useDataStore((s) => s.refreshActiveDataFrame)
   const addNotification = useUIStore((s) => s.addNotification)
@@ -77,38 +79,38 @@ export function NLQueryPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs font-semibold text-muted">
           <Sparkles className="h-3.5 w-3.5" />
-          自然语言查询
+          {t('panel.nlQuery')}
         </div>
-        <Button isIconOnly size="sm" variant="light" onPress={loadConfig} aria-label="LLM settings">
+        <Button isIconOnly size="sm" variant="light" onPress={loadConfig} aria-label={t('nlq.llmSettings')}>
           <Settings className="h-3.5 w-3.5" />
         </Button>
       </div>
 
       {showConfig && (
         <div className="flex flex-col gap-1 rounded border border-border/60 p-2">
-          <Input size="sm" label="接口地址" value={config.base_url} onValueChange={(v) => setConfig({ ...config, base_url: v })} />
-          <Input size="sm" label="模型" value={config.model} onValueChange={(v) => setConfig({ ...config, model: v })} />
-          <Input size="sm" label="API 密钥（可选）" type="password" value={config.api_key} onValueChange={(v) => setConfig({ ...config, api_key: v })} />
+          <Input size="sm" label={t('nlq.baseUrl')} value={config.base_url} onValueChange={(v) => setConfig({ ...config, base_url: v })} />
+          <Input size="sm" label={t('nlq.model')} value={config.model} onValueChange={(v) => setConfig({ ...config, model: v })} />
+          <Input size="sm" label={t('nlq.apiKey')} type="password" value={config.api_key} onValueChange={(v) => setConfig({ ...config, api_key: v })} />
           <Button size="sm" color="primary" onPress={saveConfig}>
-            保存配置
+            {t('nlq.saveConfig')}
           </Button>
         </div>
       )}
 
       <Input
         size="sm"
-        placeholder="例如：删除 value>100 的行，然后按 date 排序"
+        placeholder={t('nlq.placeholder')}
         value={query}
         onValueChange={setQuery}
       />
       <Button size="sm" color="primary" isLoading={generating} startContent={<Wand2 className="h-3 w-3" />} onPress={generate}>
-        生成
+        {t('nlq.generate')}
       </Button>
 
       {operations !== null && (
         <div className="flex flex-col gap-1 rounded border border-border/60 bg-surface-elevated/40 p-2">
           <div className="text-[10px] font-semibold uppercase text-muted">
-            {operations.length} operation(s)
+            {operations.length} {t('ai.operations')}
           </div>
           {operations.map((op, i) => (
             <div key={i} className="flex items-start gap-1 font-mono text-[10px]">
@@ -124,10 +126,10 @@ export function NLQueryPanel() {
               startContent={<Play className="h-3 w-3" />}
               onPress={apply}
             >
-              应用
+              {t('ai.apply')}
             </Button>
             <Button size="sm" variant="light" startContent={<X className="h-3 w-3" />} onPress={() => setOperations(null)}>
-              取消
+              {t('common.cancel')}
             </Button>
           </div>
         </div>

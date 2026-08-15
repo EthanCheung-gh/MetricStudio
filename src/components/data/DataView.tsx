@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { DataTable } from './DataTable'
 import { ColumnStats } from './ColumnStats'
 import { TransformPanel } from './TransformPanel'
@@ -10,6 +11,7 @@ import { useDataStore } from '@/stores/dataStore'
 type DataViewMode = 'table' | 'lineage'
 
 export function DataView() {
+  const { t } = useTranslation()
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [view, setView] = useState<DataViewMode>('table')
 
@@ -25,7 +27,7 @@ export function DataView() {
               }`}
               onClick={() => setView(v)}
             >
-              {v === 'lineage' ? '血缘' : '表格'}
+              {v === 'lineage' ? t('common.lineage') : t('common.table')}
             </button>
           ))}
         </div>

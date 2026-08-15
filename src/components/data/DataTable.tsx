@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useReactTable,
   getCoreRowModel,
@@ -16,6 +17,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { fmt } from '@/utils/format'
 
 export function DataTable() {
+  const { t } = useTranslation()
   const preview = useDataStore((s) => s.preview)
   const loading = useDataStore((s) => s.loading)
   const addNotification = useUIStore((s) => s.addNotification)
@@ -131,8 +133,8 @@ export function DataTable() {
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
         <span className="text-xs text-muted">
-          预览: {fmt(table.getFilteredRowModel().rows.length)} / {fmt(preview.totalRows)} rows ×{' '}
-          {fmt(preview.totalCols)} cols
+          {t('table.preview')}: {fmt(table.getFilteredRowModel().rows.length)} / {fmt(preview.totalRows)} {t('status.rows')} ×{' '}
+          {fmt(preview.totalCols)} {t('status.cols')}
         </span>
         <div className="flex items-center gap-1.5">
           <div className="relative">
@@ -140,7 +142,7 @@ export function DataTable() {
             <input
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              placeholder="搜索所有列…"
+              placeholder={t('table.searchAll')}
               className="w-44 rounded border border-border bg-surface-elevated py-1 pl-7 pr-2 text-xs outline-none placeholder:text-muted focus:border-primary"
             />
           </div>
@@ -151,7 +153,7 @@ export function DataTable() {
               startContent={<Columns3 className="h-3.5 w-3.5" />}
               onPress={() => setShowColumnsPanel((v) => !v)}
             >
-              列
+              {t('table.columns')}
             </Button>
             {showColumnsPanel && (
               <div className="absolute right-0 top-8 z-30 flex max-h-72 w-44 flex-col gap-0.5 overflow-auto rounded border border-border bg-surface-elevated p-1.5 shadow-xl">
@@ -203,7 +205,7 @@ export function DataTable() {
                       <button
                         className="flex w-full items-center gap-1"
                         onClick={header.column.getToggleSortingHandler()}
-                        title="点击排序"
+                        title={t('table.clickToSort')}
                       >
                         <span className="truncate">
                           {flexRender(header.column.columnDef.header, header.getContext())}
@@ -221,7 +223,7 @@ export function DataTable() {
                           value={(header.column.getFilterValue() as string) ?? ''}
                           onChange={(e) => header.column.setFilterValue(e.target.value)}
                           onClick={(e) => e.stopPropagation()}
-                          placeholder="筛选…"
+                          placeholder={t('table.filterPlaceholder')}
                           className="mt-1 w-full rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] outline-none placeholder:text-muted focus:border-primary"
                         />
                       )}
@@ -240,7 +242,7 @@ export function DataTable() {
           </thead>
         </table>
         {rows.length === 0 && (
-          <div className="px-3 py-8 text-center text-muted">无匹配当前筛选条件的行</div>
+          <div className="px-3 py-8 text-center text-muted">{t('table.noMatchingRows')}</div>
         )}
         <div
           style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: table.getTotalSize() }}
@@ -266,7 +268,7 @@ export function DataTable() {
                     style={{ width: cell.column.getSize(), flexShrink: 0 }}
                     className="group relative cursor-pointer whitespace-nowrap border-b border-r border-border px-3 py-1.5 text-foreground"
                     onClick={() => copyCell(cell.id, cell.getValue())}
-                    title="点击复制"
+                    title={t('table.clickToCopy')}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     {copiedCell === cell.id && (

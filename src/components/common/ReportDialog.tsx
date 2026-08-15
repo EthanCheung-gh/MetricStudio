@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Checkbox, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Textarea } from '@heroui/react'
 import { Bookmark, FileText } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
@@ -7,6 +8,7 @@ import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
 
 export function ReportDialog() {
+  const { t } = useTranslation()
   const open = useUIStore((s) => s.reportDialogOpen)
   const setOpen = useUIStore((s) => s.setReportDialogOpen)
   const addNotification = useUIStore((s) => s.addNotification)
@@ -67,19 +69,19 @@ export function ReportDialog() {
               className="rounded border border-border bg-surface px-2 py-1 text-xs"
               value=""
               onChange={(e) => {
-                const t = reportTemplates.find((x) => x.id === e.target.value)
-                if (!t) return
-                setTitle(t.title)
-                setSelected(t.chartIds.filter((id) => charts.some((c) => c.id === id)))
-                setNotes(t.notes)
-                setIncludeInsights(t.includeInsights)
+                const tpl = reportTemplates.find((x) => x.id === e.target.value)
+                if (!tpl) return
+                setTitle(tpl.title)
+                setSelected(tpl.chartIds.filter((id) => charts.some((c) => c.id === id)))
+                setNotes(tpl.notes)
+                setIncludeInsights(tpl.includeInsights)
                 e.target.value = ''
               }}
             >
-              <option value="">应用报告模板…</option>
-              {reportTemplates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
+              <option value="">{t('report.applyTemplate')}</option>
+              {reportTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.name}
                 </option>
               ))}
             </select>
@@ -133,7 +135,7 @@ export function ReportDialog() {
           <div className="flex flex-1 items-center gap-1">
             <Input
               size="sm"
-              placeholder="模板名称"
+              placeholder={t('report.templateName')}
               value={templateName}
               onValueChange={setTemplateName}
               className="w-32"
@@ -144,17 +146,17 @@ export function ReportDialog() {
               startContent={<Bookmark className="h-3 w-3" />}
               onPress={() => {
                 saveReportTemplate({
-                  name: templateName.trim() || `模板 ${reportTemplates.length + 1}`,
+                  name: templateName.trim() || t('report.templateDefaultName', { n: reportTemplates.length + 1 }),
                   title,
                   chartIds: selected,
                   notes,
                   includeInsights,
                 })
                 setTemplateName('')
-                addNotification('success', '报告模板已保存')
+                addNotification('success', t('report.templateSaved'))
               }}
             >
-              保存模板
+              {t('report.saveTemplate')}
             </Button>
           </div>
           <Button variant="light" onPress={() => setOpen(false)}>

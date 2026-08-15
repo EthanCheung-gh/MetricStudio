@@ -39,7 +39,7 @@ export function AICommandBar() {
         setAnswer(res.answer)
       }
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '请求失败')
+      addNotification('error', err instanceof Error ? err.message : t('ai.requestFailed'))
     } finally {
       setLoading(false)
     }
@@ -50,12 +50,12 @@ export function AICommandBar() {
     setApplying(true)
     try {
       await api.applyBatch(activeDataFrameId, operations)
-      addNotification('success', `已应用 ${operations.length} {t('ai.operations')}`)
+      addNotification('success', t('ai.appliedOps', { count: operations.length }))
       setOperations(null)
       setInput('')
       await refreshActiveDataFrame()
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '应用失败')
+      addNotification('error', err instanceof Error ? err.message : t('ai.applyFailed'))
     } finally {
       setApplying(false)
     }
@@ -75,7 +75,7 @@ export function AICommandBar() {
         <div className="mb-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-xs font-semibold text-muted">{operations.length} {t('ai.operations')}</span>
-            <button className="text-muted hover:text-foreground" onClick={() => setOperations(null)} aria-label="关闭">
+            <button className="text-muted hover:text-foreground" onClick={() => setOperations(null)} aria-label={t('common.close')}>
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -89,10 +89,10 @@ export function AICommandBar() {
           </div>
           <div className="mt-2 flex gap-1">
             <Button size="sm" color="primary" isLoading={applying} startContent={<Play className="h-3 w-3" />} onPress={apply}>
-              应用
+              {t('ai.apply')}
             </Button>
             <Button size="sm" variant="light" startContent={<X className="h-3 w-3" />} onPress={() => setOperations(null)}>
-              取消
+              {t('ai.cancel')}
             </Button>
           </div>
         </div>
@@ -104,7 +104,7 @@ export function AICommandBar() {
           <div className="min-w-0 flex-1">
             <div className="whitespace-pre-wrap text-xs leading-relaxed">{answer}</div>
           </div>
-          <button className="text-muted hover:text-foreground" onClick={() => setAnswer(null)} aria-label="关闭">
+          <button className="text-muted hover:text-foreground" onClick={() => setAnswer(null)} aria-label={t('common.close')}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -119,7 +119,7 @@ export function AICommandBar() {
           onClick={() => setMode('query')}
         >
           <Wand2 className="h-3.5 w-3.5" />
-          清洗
+          {t('ai.clean')}
         </button>
         <button
           className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs transition-colors ${
@@ -128,7 +128,7 @@ export function AICommandBar() {
           onClick={() => setMode('ask')}
         >
           <Sparkles className="h-3.5 w-3.5" />
-          问答
+          {t('ai.ask')}
         </button>
         <input
           value={input}
@@ -145,7 +145,7 @@ export function AICommandBar() {
           color="primary"
           isLoading={loading}
           onPress={submit}
-          aria-label="发送"
+          aria-label={t('ai.send')}
           className="rounded-full"
         >
           <Send className="h-4 w-4" />

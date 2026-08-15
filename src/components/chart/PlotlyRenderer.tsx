@@ -58,6 +58,12 @@ export function PlotlyRenderer({
   const [ready, setReady] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
   const panelResizeVersion = useWorkspaceStore((s) => s.panelResizeVersion)
+  const theme = useWorkspaceStore((s) => s.theme)
+  const isDark =
+    theme === 'dark' ||
+    (theme === 'system' &&
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches)
   const onSelectedRef = useRef(onSelected)
   const onClearSelectionRef = useRef(onClearSelection)
   onSelectedRef.current = onSelected
@@ -83,8 +89,21 @@ export function PlotlyRenderer({
     if (!containerRef.current || !figure || !ready) return
 
     const el = containerRef.current
+    // Backend layout hardcodes dark-theme colors; override them to match the UI theme.
+    // font.color cascades to tick labels, axis titles and legend text.
+    const gridColor = isDark ? '#333333' : '#e5e5e5'
+    const themeLayout: Record<string, unknown> = {
+      font: { color: isDark ? '#f5f5f5' : '#262626' },
+      xaxis: { gridcolor: gridColor, zerolinecolor: gridColor },
+      yaxis: { gridcolor: gridColor, zerolinecolor: gridColor },
+      xaxis2: { gridcolor: gridColor },
+      yaxis2: { gridcolor: gridColor },
+    }
     // Deep merge: userLayout overrides only specific keys, doesn't replace whole axis objects
-    const mergedLayout = deepMergeLayout(figure.layout as Record<string, unknown>, userLayout)
+    const mergedLayout = deepMergeLayout(
+      figure.layout as Record<string, unknown>,
+      deepMergeLayout(themeLayout, userLayout),
+    )
 
     try {
       setRenderError(null)
@@ -128,7 +147,7 @@ export function PlotlyRenderer({
       try { gd.removeAllListeners?.() } catch { /* ignore */ }
       try { Plotly.purge(el) } catch { /* ignore */ }
     }
-  }, [figure, ready, userLayout])
+  }, [figure, ready, userLayout, isDark])
 
   // Resize chart when panelResizeVersion changes
   useEffect(() => {

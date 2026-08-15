@@ -112,19 +112,19 @@ export function CleaningPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs font-semibold text-muted">
           <Sparkles className="h-3.5 w-3.5" />
-          数据清洗
+          {t('panel.cleaning')}
         </div>
-        <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh quality report">
+        <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label={t('clean.refresh')}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      {loading && !report && <div className="text-[11px] text-muted">扫描中…</div>}
+      {loading && !report && <div className="text-[11px] text-muted">{t('clean.scanning')}</div>}
 
       {report && report.issues.length === 0 && (
         <div className="flex items-center gap-1.5 text-[11px] text-success">
           <CheckCircle2 className="h-3.5 w-3.5" />
-          未发现问题
+          {t('clean.noIssues')}
         </div>
       )}
 
@@ -179,7 +179,7 @@ export function CleaningPanel() {
             startContent={<Save className="h-3 w-3" />}
             onPress={() => setSaveOpen((v) => !v)}
           >
-            保存
+            {t('common.save')}
           </Button>
         </div>
         {saveOpen && (
@@ -188,11 +188,11 @@ export function CleaningPanel() {
               size="sm"
               value={saveName}
               onValueChange={setSaveName}
-              placeholder="配方名称"
+              placeholder={t('clean.recipeName')}
               className="flex-1"
             />
             <Button size="sm" color="primary" isLoading={savingRecipe} onPress={saveRecipe}>
-              保存
+              {t('common.save')}
             </Button>
           </div>
         )}
@@ -209,7 +209,7 @@ export function CleaningPanel() {
                 variant="light"
                 isLoading={applying === r.id}
                 onPress={() => applyRecipe(r.id, r.name)}
-                aria-label={`Apply ${r.name}`}
+                aria-label={t('clean.applyRecipe', { name: r.name })}
               >
                 <Play className="h-3 w-3 text-primary" />
               </Button>
@@ -218,7 +218,7 @@ export function CleaningPanel() {
                 size="sm"
                 variant="light"
                 onPress={() => deleteRecipe(r.id)}
-                aria-label={`Delete ${r.name}`}
+                aria-label={t('clean.deleteRecipe', { name: r.name })}
               >
                 <Trash2 className="h-3 w-3 text-muted" />
               </Button>
@@ -226,7 +226,7 @@ export function CleaningPanel() {
           </div>
         ))}
         {customRecipes.length === 0 && !saveOpen && (
-          <div className="text-[11px] text-muted">将变换链保存为可复用配方</div>
+          <div className="text-[11px] text-muted">{t('clean.recipeHint')}</div>
         )}
       </div>
     </div>

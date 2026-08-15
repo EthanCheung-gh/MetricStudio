@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Bot, Send } from 'lucide-react'
 import { Button, Input } from '@heroui/react'
 import { api } from '@/api/client'
@@ -11,6 +12,7 @@ interface QA {
 }
 
 export function AskPanel() {
+  const { t } = useTranslation()
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const addNotification = useUIStore((s) => s.addNotification)
   const [question, setQuestion] = useState('')
@@ -37,7 +39,7 @@ export function AskPanel() {
     <div className="flex flex-col gap-2 rounded border border-border bg-surface p-2">
       <div className="flex items-center gap-1 text-xs font-semibold text-muted">
         <Bot className="h-3.5 w-3.5" />
-        数据问答
+        {t('panel.askData')}
       </div>
 
       {history.map((qa, i) => (
@@ -50,14 +52,14 @@ export function AskPanel() {
       <div className="flex gap-1">
         <Input
           size="sm"
-          placeholder="例如：哪个地区 value 最高？"
+          placeholder={t('ai.askPlaceholder')}
           value={question}
           onValueChange={setQuestion}
           onKeyDown={(e) => {
             if (e.key === 'Enter') ask()
           }}
         />
-        <Button isIconOnly size="sm" color="primary" isLoading={loading} onPress={ask} aria-label="Ask">
+        <Button isIconOnly size="sm" color="primary" isLoading={loading} onPress={ask} aria-label={t('ai.ask')}>
           <Send className="h-3.5 w-3.5" />
         </Button>
       </div>

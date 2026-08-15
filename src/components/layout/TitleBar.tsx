@@ -111,10 +111,10 @@ export function TitleBar() {
           </ModalBody>
           <ModalFooter>
             <Button variant="light" onPress={() => setSaveProjectModalOpen(false)}>
-              取消
+              {t('layout.cancel')}
             </Button>
             <Button color="primary" isLoading={saving} onPress={handleSave}>
-              保存
+              {t('layout.save')}
             </Button>
           </ModalFooter>
         </ModalContent>
@@ -127,7 +127,7 @@ export function TitleBar() {
             {recentProjects.length > 0 && (
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                  <History className="h-3 w-3" /> 最近
+                  <History className="h-3 w-3" /> {t('layout.recent')}
                 </div>
                 {recentProjects.map((p) => (
                   <button
@@ -149,7 +149,7 @@ export function TitleBar() {
               isLoading={saving}
               onPress={() => fileInputRef.current?.click()}
             >
-              上传项目文件…
+              {t('layout.uploadProject')}
             </Button>
             <input
               ref={fileInputRef}
@@ -168,10 +168,10 @@ export function TitleBar() {
           </ModalBody>
           <ModalFooter>
             <Button variant="light" onPress={() => setLoadProjectModalOpen(false)}>
-              取消
+              {t('layout.cancel')}
             </Button>
             <Button color="primary" isLoading={saving} onPress={() => handleLoadPath(projectPath)}>
-              加载
+              {t('layout.load')}
             </Button>
           </ModalFooter>
         </ModalContent>

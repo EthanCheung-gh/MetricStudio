@@ -14,6 +14,7 @@ export function StatusBar() {
   const preview = useDataStore((s) => s.preview)
   const backendConnected = useUIStore((s) => s.backendConnected)
   const backendMessage = useUIStore((s) => s.backendStatusMessage)
+  const language = useUIStore((s) => s.language)
   const [deps, setDeps] = useState<DepsReport | null>(null)
 
   // Dependency check once per backend (re)connection (spec §11)
@@ -52,7 +53,7 @@ export function StatusBar() {
               {deps.ok && deps.missingOptional.length === 0 ? (
                 <>
                   <PackageCheck className="h-3 w-3 text-success" />
-                  <span className="text-success">依赖正常</span>
+                  <span className="text-success">{t('status.depsOk')}</span>
                 </>
               ) : (
                 <>
@@ -80,7 +81,18 @@ export function StatusBar() {
           </>
         )}
       </div>
-      <div>MetricStudio v0.1.0</div>
+      <div className="flex items-center gap-2">
+        <button
+          className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-surface-elevated"
+          onClick={() => {
+            const cur = useUIStore.getState().language
+            useUIStore.getState().setLanguage(cur === 'zh' ? 'en' : 'zh')
+          }}
+        >
+          {language === 'zh' ? 'EN' : '中'}
+        </button>
+        <span>MetricStudio v0.1.0</span>
+      </div>
     </div>
   )
 }

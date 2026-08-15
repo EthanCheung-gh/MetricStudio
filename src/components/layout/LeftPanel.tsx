@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Database, ListTree, SlidersHorizontal, Upload, Sparkles } from 'lucide-react'
 import { Button, Card, CardBody } from '@heroui/react'
 import { DataExplorer } from '@/components/data/DataExplorer'
@@ -12,6 +13,7 @@ import type { ChartRecommendation } from '@/types/encoding'
 import { CollapsedIconBarItem } from './CollapsedIconBar'
 
 export function LeftPanel() {
+  const { t } = useTranslation()
   const toggle = useWorkspaceStore((s) => s.togglePanel)
   const activeSection = useWorkspaceStore((s) => s.leftActiveSection)
 
@@ -19,7 +21,7 @@ export function LeftPanel() {
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-9 items-center justify-between border-b border-border px-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-          {activeSection === 'charts' ? '图表' : activeSection === 'datasets' ? '数据集' : '资源管理器'}
+          {activeSection === 'charts' ? t('nav.charts') : activeSection === 'datasets' ? t('nav.datasets') : t('nav.explorer')}
         </span>
         <Button isIconOnly size="sm" variant="light" onPress={() => toggle('left')} aria-label="Collapse left panel">
           <ChevronLeft className="h-4 w-4" />
@@ -41,6 +43,7 @@ export function LeftPanel() {
 }
 
 function ChartsSection() {
+  const { t } = useTranslation()
   const charts = useChartStore((s) => s.charts)
   const activeChartId = useChartStore((s) => s.activeChartId)
   const createChart = useChartStore((s) => s.createChart)
@@ -74,13 +77,13 @@ function ChartsSection() {
       <div className="flex flex-col gap-2">
         {!activeDataFrameId && (
           <div className="rounded border border-border bg-surface-elevated p-3 text-center text-xs text-muted">
-            导入数据集以获取图表推荐。
+            {t('layout.importForChartRecs')}
           </div>
         )}
         {activeDataFrameId && recs && recs.length > 0 && (
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              <Sparkles className="h-3 w-3" /> 推荐图表
+              <Sparkles className="h-3 w-3" /> {t('panel.suggestedCharts')}
             </div>
             {recs.map((rec) => (
               <button
@@ -96,7 +99,7 @@ function ChartsSection() {
         )}
         {activeDataFrameId && !recs && (
           <div className="rounded border border-border bg-surface-elevated p-3 text-center text-xs text-muted">
-            暂无图表。
+            {t('layout.noCharts')}
           </div>
         )}
       </div>
@@ -106,7 +109,7 @@ function ChartsSection() {
   return (
     <Card className="bg-surface-elevated border-border">
       <CardBody className="gap-1">
-        <div className="text-xs font-semibold text-muted">图表</div>
+        <div className="text-xs font-semibold text-muted">{t('nav.charts')}</div>
         <div className="flex flex-col gap-0.5">
           {charts.map((chart) => (
             <div

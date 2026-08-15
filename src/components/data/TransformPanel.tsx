@@ -205,9 +205,9 @@ export function TransformPanel() {
       const preview = await api.dropColumns(activeId, dropCols)
       updatePreview(preview)
       setPreview()
-      addNotification('success', '删除列已应用')
+      addNotification('success', t('transform.dropApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '删除列失败')
+      addNotification('error', err instanceof Error ? err.message : t('transform.dropFailed'))
     } finally {
       setLoading(false)
     }
@@ -220,9 +220,9 @@ export function TransformPanel() {
       const preview = await api.strClean(activeId, strCol, strAction as 'trim' | 'lower' | 'upper', strNewCol || undefined)
       updatePreview(preview)
       setPreview()
-      addNotification('success', '字符串清理已应用')
+      addNotification('success', t('transform.strCleanApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '字符串清理失败')
+      addNotification('error', err instanceof Error ? err.message : t('transform.strCleanFailed'))
     } finally {
       setLoading(false)
     }
@@ -235,9 +235,9 @@ export function TransformPanel() {
       const preview = await api.groupby(activeId, groupByCols, groupValueCol, groupAgg)
       updatePreview(preview)
       setPreview()
-      addNotification('success', '分组聚合已应用')
+      addNotification('success', t('transform.groupbyApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '分组聚合失败')
+      addNotification('error', err instanceof Error ? err.message : t('transform.groupbyFailed'))
     } finally {
       setLoading(false)
     }
@@ -250,9 +250,9 @@ export function TransformPanel() {
       const preview = await api.sample(activeId, parseInt(sampleN, 10))
       updatePreview(preview)
       setPreview()
-      addNotification('success', '抽样已应用')
+      addNotification('success', t('transform.sampleApplied'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '抽样失败')
+      addNotification('error', err instanceof Error ? err.message : t('transform.sampleFailed'))
     } finally {
       setLoading(false)
     }
@@ -407,7 +407,7 @@ export function TransformPanel() {
           </div>
           {computePreviewValues !== null && (
             <div className="rounded border border-border/60 bg-surface-elevated/40 px-2 py-1 font-mono text-[10px] text-muted">
-              预览: {computePreviewValues.map((v) => String(v ?? '∅')).join(', ')}
+              {t('transform.preview')}: {computePreviewValues.map((v) => String(v ?? '∅')).join(', ')}
             </div>
           )}
           <Button size="sm" color="primary" isLoading={loading} onPress={handleCompute}>
@@ -536,7 +536,7 @@ export function TransformPanel() {
           <Select
             size="sm"
             selectionMode="multiple"
-            placeholder="删除列"
+            placeholder={t('transform.drop')}
             selectedKeys={new Set(dropCols)}
             onSelectionChange={(keys) => setDropCols(Array.from(keys) as string[])}
           >
@@ -545,7 +545,7 @@ export function TransformPanel() {
             ))}
           </Select>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleDrop}>
-            删除列
+            {t('transform.drop')}
           </Button>
         </div>
 
@@ -568,7 +568,7 @@ export function TransformPanel() {
               selectedKeys={[strAction]}
               onSelectionChange={(keys) => setStrAction(Array.from(keys)[0] as string)}
               className="w-24"
-              aria-label="清理方式"
+              aria-label={t('transform.cleanMethod')}
             >
               {['trim', 'lower', 'upper'].map((a) => (
                 <SelectItem key={a}>{a}</SelectItem>
@@ -577,7 +577,7 @@ export function TransformPanel() {
           </div>
           <Input size="sm" placeholder={t('transform.newColumn')} value={strNewCol} onValueChange={setStrNewCol} />
           <Button size="sm" color="primary" isLoading={loading} onPress={handleStrClean}>
-            字符串清理
+            {t('transform.strClean')}
           </Button>
         </div>
 
@@ -586,7 +586,7 @@ export function TransformPanel() {
           <Select
             size="sm"
             selectionMode="multiple"
-            placeholder="分组列"
+            placeholder={t('transform.groupColumns')}
             selectedKeys={new Set(groupByCols)}
             onSelectionChange={(keys) => setGroupByCols(Array.from(keys) as string[])}
           >
@@ -597,7 +597,7 @@ export function TransformPanel() {
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="值列"
+              placeholder={t('transform.valueColumn')}
               selectedKeys={groupValueCol ? [groupValueCol] : []}
               onSelectionChange={(keys) => setGroupValueCol(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -619,20 +619,20 @@ export function TransformPanel() {
             </Select>
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={handleGroupby}>
-            分组聚合
+            {t('transform.groupby')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
           <span className="text-[10px] uppercase text-muted">{t('transform.sample')}</span>
-          <Input size="sm" placeholder={t('transform.column')} value={sampleN} onValueChange={setSampleN} />
+          <Input size="sm" placeholder={t('transform.sampleN')} value={sampleN} onValueChange={setSampleN} />
           <Button size="sm" color="primary" isLoading={loading} onPress={handleSample}>
-            随机抽样
+            {t('transform.sample')}
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Undo</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.undo')}</span>
           <Button
             size="sm"
             color="warning"
@@ -641,7 +641,7 @@ export function TransformPanel() {
             startContent={<RotateCcw className="h-3 w-3" />}
             onPress={handleUndo}
           >
-            Undo
+            {t('transform.undo')}
           </Button>
         </div>
       </CardBody>

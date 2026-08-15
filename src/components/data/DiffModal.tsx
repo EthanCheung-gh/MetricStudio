@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Modal, ModalBody, ModalContent, ModalHeader, Select, SelectItem } from '@heroui/react'
 import { useUIStore } from '@/stores/uiStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -15,6 +16,7 @@ interface DiffResult {
 }
 
 export function DiffModal() {
+  const { t } = useTranslation()
   const open = useUIStore((s) => s.diffModalOpen)
   const setOpen = useUIStore((s) => s.setDiffModalOpen)
   const dataFrames = useDataStore((s) => s.dataFrames)
@@ -36,35 +38,35 @@ export function DiffModal() {
   return (
     <Modal isOpen={open} onClose={() => setOpen(false)} size="lg">
       <ModalContent>
-        <ModalHeader>数据对比</ModalHeader>
+        <ModalHeader>{t('diff.title')}</ModalHeader>
         <ModalBody className="gap-3 pb-4">
           <div className="flex gap-2">
-            <Select size="sm" label="左侧数据集" selectedKeys={leftId ? [leftId] : []} onSelectionChange={(k) => setLeftId(Array.from(k)[0] as string)}>
+            <Select size="sm" label={t('diff.leftDataset')} selectedKeys={leftId ? [leftId] : []} onSelectionChange={(k) => setLeftId(Array.from(k)[0] as string)}>
               {dataFrames.map((d) => <SelectItem key={d.id}>{d.name}</SelectItem>)}
             </Select>
-            <Select size="sm" label="右侧数据集" selectedKeys={rightId ? [rightId] : []} onSelectionChange={(k) => setRightId(Array.from(k)[0] as string)}>
+            <Select size="sm" label={t('diff.rightDataset')} selectedKeys={rightId ? [rightId] : []} onSelectionChange={(k) => setRightId(Array.from(k)[0] as string)}>
               {dataFrames.map((d) => <SelectItem key={d.id}>{d.name}</SelectItem>)}
             </Select>
           </div>
           <Button size="sm" color="primary" isLoading={loading} onPress={diff}>
-            对比
+            {t('diff.compare')}
           </Button>
 
           {result && (
             <div className="flex flex-col gap-2 text-xs">
               <div className="flex gap-4 text-muted">
-                <span>行数: {result.left_rows} → {result.right_rows}</span>
-                <span>列数: {result.left_cols} → {result.right_cols}</span>
+                <span>{t('diff.rows')}: {result.left_rows} → {result.right_rows}</span>
+                <span>{t('diff.cols')}: {result.left_cols} → {result.right_cols}</span>
               </div>
               {(result.only_left.length > 0 || result.only_right.length > 0) && (
                 <div className="flex gap-4">
-                  <span className="text-danger">仅左侧: {result.only_left.join(', ') || '—'}</span>
-                  <span className="text-success">仅右侧: {result.only_right.join(', ') || '—'}</span>
+                  <span className="text-danger">{t('diff.onlyLeft')}: {result.only_left.join(', ') || '—'}</span>
+                  <span className="text-success">{t('diff.onlyRight')}: {result.only_right.join(', ') || '—'}</span>
                 </div>
               )}
               {result.numeric_diff.length > 0 && (
                 <div className="flex flex-col gap-1 rounded border border-border p-2">
-                  <span className="font-semibold text-muted">数值均值差异</span>
+                  <span className="font-semibold text-muted">{t('diff.numericMeanDiff')}</span>
                   {result.numeric_diff.map((n) => (
                     <div key={n.column} className="flex gap-4">
                       <span className="w-24">{n.column}</span>

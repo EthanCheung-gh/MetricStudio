@@ -50,14 +50,14 @@ export function getCommands(): Command[] {
   const staticCommands: Command[] = [
     {
       id: 'import',
-      title: '导入数据…',
+      title: i18n.t('cmd.importData'),
       category: 'Actions',
       icon: <FileUp size={14} />,
       run: () => ui.setImportModalOpen(true),
     },
     {
       id: 'new-chart',
-      title: '新建图表',
+      title: i18n.t('cmd.newChart'),
       category: 'Actions',
       icon: <BarChart3 size={14} />,
       run: () => {
@@ -73,28 +73,28 @@ export function getCommands(): Command[] {
     },
     {
       id: 'save-project',
-      title: '保存项目…',
+      title: i18n.t('cmd.saveProject'),
       category: 'Actions',
       icon: <Save size={14} />,
       run: () => ui.setSaveProjectModalOpen(true),
     },
     {
       id: 'open-project',
-      title: '打开项目…',
+      title: i18n.t('cmd.openProject'),
       category: 'Actions',
       icon: <FolderOpen size={14} />,
       run: () => ui.setLoadProjectModalOpen(true),
     },
     {
       id: 'generate-report',
-      title: '生成报告…',
+      title: i18n.t('cmd.generateReport'),
       category: 'Actions',
       icon: <FileText size={14} />,
       run: () => ui.setReportDialogOpen(true),
     },
     {
       id: 'insights',
-      title: '查看洞察',
+      title: i18n.t('cmd.viewInsights'),
       category: 'Actions',
       icon: <Lightbulb size={14} />,
       run: () => {
@@ -109,7 +109,7 @@ export function getCommands(): Command[] {
     },
     {
       id: 'cleaning-scan',
-      title: '数据清洗扫描…',
+      title: i18n.t('cmd.cleaningScan'),
       category: 'Actions',
       icon: <Sparkles size={14} />,
       run: () => {
@@ -125,7 +125,7 @@ export function getCommands(): Command[] {
     },
     {
       id: 'undo',
-      title: '撤销',
+      title: i18n.t('cmd.undo'),
       category: 'Actions',
       icon: <Undo2 size={14} />,
       run: () => {
@@ -134,7 +134,7 @@ export function getCommands(): Command[] {
     },
     {
       id: 'redo',
-      title: '重做',
+      title: i18n.t('cmd.redo'),
       category: 'Actions',
       icon: <Redo2 size={14} />,
       run: () => {
@@ -143,49 +143,49 @@ export function getCommands(): Command[] {
     },
     {
       id: 'go-data',
-      title: '切换到数据标签',
+      title: i18n.t('cmd.goData'),
       category: 'Navigation',
       icon: <Table2 size={14} />,
       run: () => ws.setActiveTab('data'),
     },
     {
       id: 'go-chart',
-      title: '切换到图表标签',
+      title: i18n.t('cmd.goChart'),
       category: 'Navigation',
       icon: <BarChart3 size={14} />,
       run: () => ws.setActiveTab('chart'),
     },
     {
       id: 'panel-left',
-      title: '切换左面板',
+      title: i18n.t('cmd.toggleLeft'),
       category: 'Settings',
       icon: <PanelLeft size={14} />,
       run: () => ws.togglePanel('left'),
     },
     {
       id: 'panel-right',
-      title: '切换右面板',
+      title: i18n.t('cmd.toggleRight'),
       category: 'Settings',
       icon: <PanelRight size={14} />,
       run: () => ws.togglePanel('right'),
     },
     {
       id: 'theme-dark',
-      title: '主题: 深色',
+      title: i18n.t('cmd.themeDark'),
       category: 'Settings',
       icon: <Moon size={14} />,
       run: () => ws.setTheme('dark'),
     },
     {
       id: 'theme-light',
-      title: '主题: 浅色',
+      title: i18n.t('cmd.themeLight'),
       category: 'Settings',
       icon: <Sun size={14} />,
       run: () => ws.setTheme('light'),
     },
     {
       id: 'theme-system',
-      title: '主题: 跟随系统',
+      title: i18n.t('cmd.themeSystem'),
       category: 'Settings',
       icon: <Monitor size={14} />,
       run: () => ws.setTheme('system'),
@@ -204,7 +204,7 @@ export function getCommands(): Command[] {
 
   const recentCommands: Command[] = ui.recentProjects.map((p) => ({
     id: `recent-${p.path}`,
-    title: `打开最近: ${p.name}`,
+    title: i18n.t('cmd.openRecent', { name: p.name }),
     keywords: `recent project open ${p.name}`,
     category: 'Actions' as const,
     icon: <FolderOpen size={14} />,

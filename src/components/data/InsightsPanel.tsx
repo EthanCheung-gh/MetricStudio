@@ -36,8 +36,8 @@ export function InsightsPanel() {
     try {
       const { narrative } = await api.nlNarrate(activeDataFrameId)
       setNarrative(narrative)
-    } catch (err) {
-      setNarrative('生成叙述失败，请检查 LLM 配置')
+    } catch {
+      setNarrative(t('insight.narrateFailed'))
     } finally {
       setNarrating(false)
     }
@@ -82,7 +82,7 @@ export function InsightsPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs font-semibold text-muted">
           <Lightbulb className="h-3.5 w-3.5" />
-          洞察
+          {t('panel.insights')}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -92,7 +92,7 @@ export function InsightsPanel() {
             startContent={<LineChart className="h-3 w-3" />}
             onPress={analyzeTs}
           >
-            环比
+            {t('ai.mom')}
           </Button>
           <Button
             size="sm"
@@ -101,9 +101,9 @@ export function InsightsPanel() {
             startContent={<Sparkles className="h-3 w-3" />}
             onPress={narrate}
           >
-            生成叙述
+            {t('ai.narrate')}
           </Button>
-          <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label="Refresh insights">
+          <Button isIconOnly size="sm" variant="light" isLoading={loading} onPress={load} aria-label={t('insight.refresh')}>
             <RefreshCw className="h-3.5 w-3.5" />
           </Button>
         </div>
@@ -111,7 +111,7 @@ export function InsightsPanel() {
 
       {tsResult && tsResult.ok && tsResult.periods && (
         <div className="rounded border border-border/60 bg-surface-elevated/40 p-2">
-          <div className="mb-1 text-[10px] font-semibold uppercase text-muted">月度环比</div>
+          <div className="mb-1 text-[10px] font-semibold uppercase text-muted">{t('insight.monthlyMom')}</div>
           {tsResult.periods.map((p, i) => (
             <div key={p} className="flex items-center justify-between text-[11px]">
               <span className="text-muted">{p}</span>
@@ -130,10 +130,10 @@ export function InsightsPanel() {
         </div>
       )}
 
-      {loading && !insights && <div className="text-[11px] text-muted">分析中…</div>}
+      {loading && !insights && <div className="text-[11px] text-muted">{t('insight.analyzing')}</div>}
 
       {insights && insights.length === 0 && (
-        <div className="text-[11px] text-muted">暂无洞察</div>
+        <div className="text-[11px] text-muted">{t('insight.empty')}</div>
       )}
 
       {insights &&

@@ -293,6 +293,13 @@ export const api = {
     fetchJson<{ recommendations: ChartRecommendation[] }>(`/api/v1/data/${id}/chart-recommendations`),
 
   // SQL import
+  sqlBrowse: (dir?: string) =>
+    fetchJson<{
+      dir: string
+      parent: string | null
+      dirs: { name: string; path: string }[]
+      files: { name: string; path: string }[]
+    }>(`/api/v1/sql/browse${dir ? `?dir=${encodeURIComponent(dir)}` : ''}`),
   sqlTables: (path: string) =>
     fetchJson<{ tables: string[] }>('/api/v1/sql/tables', {
       method: 'POST',

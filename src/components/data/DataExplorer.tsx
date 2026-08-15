@@ -1,11 +1,20 @@
-import { Database, Upload } from 'lucide-react'
+import { ArrowUp, Database, FileText, Folder, Upload } from 'lucide-react'
 import { Button, Card, CardBody, Input, Select, SelectItem } from '@heroui/react'
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
 
+interface BrowseState {
+  dir: string
+  parent: string | null
+  dirs: { name: string; path: string }[]
+  files: { name: string; path: string }[]
+}
+
 export function DataExplorer() {
+  const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
   const importFile = useDataStore((s) => s.importFile)
   const loading = useDataStore((s) => s.loading)
@@ -16,16 +25,39 @@ export function DataExplorer() {
   const [sqlSelectedTable, setSqlSelectedTable] = useState('')
   const [sqlLoading, setSqlLoading] = useState(false)
   const [importMode, setImportMode] = useState<'file' | 'sqlite'>('file')
+  const [browse, setBrowse] = useState<BrowseState | null>(null)
+  const [manualPath, setManualPath] = useState(false)
 
-  const listTables = async () => {
-    if (!sqlPath.trim()) return
+  const browseDir = async (dir?: string) => {
     setSqlLoading(true)
     try {
-      const { tables } = await api.sqlTables(sqlPath.trim())
+      const state = await api.sqlBrowse(dir)
+      setBrowse(state)
+      setManualPath(false)
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('import.browseFailed'))
+    } finally {
+      setSqlLoading(false)
+    }
+  }
+
+  const pickDbFile = (path: string) => {
+    setSqlPath(path)
+    setSqlTables([])
+    setSqlSelectedTable('')
+    listTables(path)
+  }
+
+  const listTables = async (path?: string) => {
+    const p = (path ?? sqlPath).trim()
+    if (!p) return
+    setSqlLoading(true)
+    try {
+      const { tables } = await api.sqlTables(p)
       setSqlTables(tables)
       setSqlSelectedTable('')
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '列出表失败')
+      addNotification('error', err instanceof Error ? err.message : t('import.listTablesFailed'))
     } finally {
       setSqlLoading(false)
     }
@@ -37,9 +69,9 @@ export function DataExplorer() {
     try {
       const meta = await api.sqlImport(sqlPath.trim(), sqlSelectedTable)
       await useDataStore.getState().loadDataFrames()
-      addNotification('success', `已导入 SQLite 表 ${meta.name}`)
+      addNotification('success', t('import.tableImported', { name: meta.name }))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : '导入失败')
+      addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
     } finally {
       setSqlLoading(false)
     }
@@ -48,16 +80,16 @@ export function DataExplorer() {
   const handleFile = async (file: File) => {
     try {
       const meta = await importFile(file)
-      addNotification('success', `Imported ${meta.name}`)
+      addNotification('success', t('import.fileImported', { name: meta.name }))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Import failed')
+      addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
     }
   }
 
   return (
     <Card className="bg-surface-elevated border-border">
       <CardBody className="gap-2">
-        <div className="text-xs font-semibold text-muted">导入数据</div>
+        <div className="text-xs font-semibold text-muted">{t('import.title')}</div>
 
         {/* 导入方式切换 */}
         <div className="flex gap-1">
@@ -67,13 +99,16 @@ export function DataExplorer() {
             }`}
             onClick={() => setImportMode('file')}
           >
-            文件
+            {t('import.file')}
           </button>
           <button
             className={`flex-1 rounded px-2 py-1 text-xs transition-colors ${
               importMode === 'sqlite' ? 'bg-primary/20 text-primary' : 'text-muted hover:text-foreground'
             }`}
-            onClick={() => setImportMode('sqlite')}
+            onClick={() => {
+              setImportMode('sqlite')
+              if (!browse && !manualPath) browseDir()
+            }}
           >
             <Database className="mr-1 inline h-3 w-3" />
             SQLite
@@ -98,7 +133,7 @@ export function DataExplorer() {
             }}
           >
             <Upload className="mx-auto h-6 w-6 text-muted" />
-            <p className="mt-1 text-xs text-muted">拖入 CSV / Excel / Parquet</p>
+            <p className="mt-1 text-xs text-muted">{t('import.dropHint')}</p>
             <input
               ref={inputRef}
               type="file"
@@ -116,29 +151,95 @@ export function DataExplorer() {
               isLoading={loading}
               onPress={() => inputRef.current?.click()}
             >
-              浏览
+              {t('import.browse')}
             </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-1 rounded border border-border p-2">
-            <Input size="sm" placeholder="数据库文件路径" value={sqlPath} onValueChange={setSqlPath} />
-            <Button size="sm" variant="flat" isLoading={sqlLoading} onPress={listTables}>
-              列出表
-            </Button>
+            {manualPath ? (
+              <>
+                <Input
+                  size="sm"
+                  placeholder={t('import.dbPath')}
+                  value={sqlPath}
+                  onValueChange={(v) => {
+                    setSqlPath(v)
+                    setSqlTables([])
+                  }}
+                />
+                <div className="flex gap-1">
+                  <Button size="sm" variant="flat" className="flex-1" isLoading={sqlLoading} onPress={() => listTables()}>
+                    {t('import.listTables')}
+                  </Button>
+                  <Button size="sm" variant="light" className="flex-1" onPress={() => browseDir()}>
+                    {t('import.browseFile')}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-1">
+                  <button
+                    className="rounded p-1 hover:bg-surface disabled:opacity-30"
+                    disabled={!browse?.parent}
+                    onClick={() => browse?.parent && browseDir(browse.parent)}
+                    aria-label={t('import.up')}
+                  >
+                    <ArrowUp className="h-3.5 w-3.5 text-muted" />
+                  </button>
+                  <span className="flex-1 truncate font-mono text-[10px] text-muted" title={browse?.dir}>
+                    {browse?.dir ?? '…'}
+                  </span>
+                  <button
+                    className="shrink-0 rounded px-1 text-[10px] text-primary hover:underline"
+                    onClick={() => setManualPath(true)}
+                  >
+                    {t('import.manualInput')}
+                  </button>
+                </div>
+                <div className="max-h-40 overflow-auto rounded bg-surface">
+                  {browse?.dirs.map((d) => (
+                    <button
+                      key={d.path}
+                      className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs hover:bg-surface-elevated"
+                      onClick={() => browseDir(d.path)}
+                    >
+                      <Folder className="h-3.5 w-3.5 shrink-0 text-warning" />
+                      <span className="truncate">{d.name}</span>
+                    </button>
+                  ))}
+                  {browse?.files.map((f) => (
+                    <button
+                      key={f.path}
+                      className={`flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs hover:bg-surface-elevated ${
+                        sqlPath === f.path ? 'bg-primary/15 text-primary' : ''
+                      }`}
+                      onClick={() => pickDbFile(f.path)}
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <span className="truncate">{f.name}</span>
+                    </button>
+                  ))}
+                  {browse && browse.dirs.length === 0 && browse.files.length === 0 && (
+                    <p className="px-2 py-2 text-[10px] text-muted">{t('import.noDbFiles')}</p>
+                  )}
+                </div>
+              </>
+            )}
             {sqlTables.length > 0 && (
               <>
                 <Select
                   size="sm"
-                  placeholder="选择表"
+                  placeholder={t('import.selectTable')}
                   selectedKeys={sqlSelectedTable ? [sqlSelectedTable] : []}
                   onSelectionChange={(keys) => setSqlSelectedTable(Array.from(keys)[0] as string)}
                 >
-                  {sqlTables.map((t) => (
-                    <SelectItem key={t}>{t}</SelectItem>
+                  {sqlTables.map((tbl) => (
+                    <SelectItem key={tbl}>{tbl}</SelectItem>
                   ))}
                 </Select>
                 <Button size="sm" color="primary" isLoading={sqlLoading} onPress={importSqlTable}>
-                  导入表
+                  {t('import.importTable')}
                 </Button>
               </>
             )}

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { generateId } from '@/utils/id';
 import type { ReportTemplate } from '@/types/data';
-import type { Language } from '@/i18n';
+import i18n, { type Language } from '@/i18n';
 import { persist } from 'zustand/middleware';
 
 export interface Notification {
@@ -104,7 +104,11 @@ export const useUIStore = create<UIState>()(
     set((s) => ({ reportTemplates: [...s.reportTemplates, { ...t, id: generateId() }] })),
   removeReportTemplate: (id) =>
     set((s) => ({ reportTemplates: s.reportTemplates.filter((t) => t.id !== id) })),
-  setLanguage: (language) => set({ language }),
+  setLanguage: (language) => {
+    set({ language });
+    // Drive i18next directly so switching never depends on a component-level effect
+    void i18n.changeLanguage(language);
+  },
   setBackendStatus: (connected, message) =>
     set({ backendConnected: connected, backendStatusMessage: message || (connected ? 'Connected' : 'Disconnected') }),
     }),

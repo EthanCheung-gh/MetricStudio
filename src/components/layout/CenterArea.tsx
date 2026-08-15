@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Database, X, Plus, SlidersHorizontal, LayoutDashboard } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { DataView } from '@/components/data/DataView'
@@ -11,6 +12,7 @@ import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
 
 export function CenterArea() {
+  const { t } = useTranslation()
   const activeTab = useWorkspaceStore((s) => s.activeTab)
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
   const dataFrames = useDataStore((s) => s.dataFrames)
@@ -28,7 +30,7 @@ export function CenterArea() {
   if (loading && dataFrames.length === 0) {
     return (
       <div className="flex h-full items-center justify-center bg-background">
-        <LoadingSpinner message="正在加载数据集…" />
+        <LoadingSpinner message={t('layout.loadingDatasets')} />
       </div>
     )
   }
@@ -37,8 +39,8 @@ export function CenterArea() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 bg-background text-muted">
         <Database className="h-12 w-12 opacity-20" />
-        <p className="text-sm">未加载数据集</p>
-        <p className="text-xs">导入 CSV、Excel 或 Parquet 文件开始。</p>
+        <p className="text-sm">{t('layout.noDataset')}</p>
+        <p className="text-xs">{t('layout.importHint')}</p>
       </div>
     )
   }
@@ -59,7 +61,7 @@ export function CenterArea() {
           }}
         >
           <Database className="h-3 w-3" />
-          数据
+          {t('nav.data')}
         </button>
 
         {/* Dashboard tab */}
