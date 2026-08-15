@@ -1,9 +1,11 @@
+import { useTranslation } from 'react-i18next'
 import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
 import { EncodingPanel } from './EncodingPanel'
 import { ChartTypeSelector } from './ChartTypeSelector'
 
 export function ChartBuilder() {
+  const { t } = useTranslation()
   const activeId = useDataStore((s) => s.activeDataFrameId)
   const columns = useDataStore((s) => s.columns)
   const charts = useChartStore((s) => s.charts)
@@ -14,7 +16,7 @@ export function ChartBuilder() {
   if (!activeId) {
     return (
       <div className="rounded border border-border bg-surface-elevated p-3 text-xs text-muted">
-        Select a dataset to build charts.
+        {t('chart.selectDatasetHint')}
       </div>
     )
   }
@@ -31,7 +33,7 @@ export function ChartBuilder() {
         </>
       ) : (
         <div className="rounded border border-border bg-surface-elevated p-3 text-xs text-muted">
-          Create a new chart from the tab bar.
+          {t('chart.createChartHint')}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Input, Select, SelectItem } from '@heroui/react'
+import { useTranslation } from 'react-i18next'
 import { GripHorizontal, Save, Trash2, X } from 'lucide-react'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -59,6 +60,7 @@ function LabeledSelect({ label, items, selectedKey, onSelect, className = '' }: 
 }
 
 export function ChartConfigDialog() {
+  const { t } = useTranslation()
   const isOpen = useUIStore((s) => s.chartConfigDialogOpen)
   const setOpen = useUIStore((s) => s.setChartConfigDialogOpen)
   const addNotification = useUIStore((s) => s.addNotification)
@@ -125,7 +127,7 @@ export function ChartConfigDialog() {
     if (tpl.layout && Object.keys(tpl.layout).length > 0) {
       updateLayout(activeChart.id, tpl.layout)
     }
-    addNotification('success', `Template "${tpl.name}" applied`)
+    addNotification('success', t('chart.templateApplied', { name: tpl.name }))
   }
 
   const saveAsTemplate = async () => {
@@ -136,9 +138,9 @@ export function ChartConfigDialog() {
       const saved = await api.saveTemplate(name, activeChart.encoding, activeChart.layout)
       setTemplates((prev) => [...prev, saved])
       setTemplateName('')
-      addNotification('success', `Template "${name}" saved`)
+      addNotification('success', t('chart.templateSaved', { name }))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Failed to save template')
+      addNotification('error', err instanceof Error ? err.message : t('chart.saveTemplateFailed'))
     } finally {
       setTemplateBusy(false)
     }
@@ -152,9 +154,9 @@ export function ChartConfigDialog() {
       await api.deleteTemplate(tpl.id)
       setTemplates((prev) => prev.filter((t) => t.id !== tpl.id))
       setSelectedTemplateId('')
-      addNotification('success', `Template "${tpl.name}" deleted`)
+      addNotification('success', t('chart.templateDeleted', { name: tpl.name }))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Failed to delete template')
+      addNotification('error', err instanceof Error ? err.message : t('chart.deleteTemplateFailed'))
     } finally {
       setTemplateBusy(false)
     }
@@ -166,7 +168,7 @@ export function ChartConfigDialog() {
       className="fixed z-50 flex max-h-[85vh] flex-col overflow-hidden rounded-lg border border-border bg-surface-elevated shadow-2xl"
       style={{ left: pos.x, top: pos.y, width: DIALOG_WIDTH, maxWidth: 'calc(100vw - 32px)' }}
       role="dialog"
-      aria-label="Chart Configuration"
+      aria-label={t('chart.configTitle')}
     >
       {/* Drag handle header */}
       <div
@@ -177,7 +179,7 @@ export function ChartConfigDialog() {
       >
         <div className="flex items-center gap-2 text-sm font-semibold">
           <GripHorizontal className="h-4 w-4 text-muted" />
-          <span>Chart Configuration</span>
+          <span>{t('chart.configTitle')}</span>
           <span className="text-sm font-normal text-muted">— {activeChart.name}</span>
         </div>
         <Button
@@ -186,7 +188,7 @@ export function ChartConfigDialog() {
           variant="light"
           className="h-6 w-6 min-w-0"
           onPress={onClose}
-          aria-label="Close"
+          aria-label={t('chart.close')}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <X className="h-4 w-4" />
@@ -198,7 +200,7 @@ export function ChartConfigDialog() {
           <div className="flex flex-1 min-h-0 gap-4">
             {/* Left: Chart Type (scrolls independently from the config column) */}
             <div className="w-36 shrink-0 overflow-y-auto pr-1">
-              <span className="text-xs font-semibold text-muted mb-2 block">Chart Type</span>
+              <span className="text-xs font-semibold text-muted mb-2 block">{t('chart.chartType')}</span>
               <div className="flex flex-col gap-1">
                 {chartTypeOptions.map((opt) => (
                   <Button
@@ -209,7 +211,7 @@ export function ChartConfigDialog() {
                     onPress={() => updateEncoding(activeChart.id, { chartType: opt.value as ChartType })}
                     className="justify-start text-xs"
                   >
-                    {opt.label}
+                    {t(`chart.type.${opt.value}`)}
                   </Button>
                 ))}
               </div>
@@ -219,10 +221,10 @@ export function ChartConfigDialog() {
             <div className="flex-1 min-h-0 min-w-0 overflow-y-auto pl-1 pr-1">
               {/* Templates */}
               <div className="mb-4">
-                <span className="text-xs font-semibold text-muted mb-2 block">Templates</span>
+                <span className="text-xs font-semibold text-muted mb-2 block">{t('chart.templates')}</span>
                 <div className="flex items-end gap-1.5">
                   <LabeledSelect
-                    label="Saved Templates"
+                    label={t('chart.savedTemplates')}
                     items={templates.map((t) => ({ key: t.id, label: t.name }))}
                     selectedKey={selectedTemplateId || undefined}
                     onSelect={(id) => setSelectedTemplateId(id || '')}
@@ -235,7 +237,7 @@ export function ChartConfigDialog() {
                     isDisabled={!selectedTemplateId}
                     onPress={applyTemplate}
                   >
-                    Apply
+                    {t('chart.apply')}
                   </Button>
                   <Button
                     isIconOnly
@@ -245,7 +247,7 @@ export function ChartConfigDialog() {
                     className="h-7 w-7 min-w-0 shrink-0"
                     isDisabled={!selectedTemplateId || templateBusy}
                     onPress={deleteTemplate}
-                    aria-label="Delete template"
+                    aria-label={t('chart.deleteTemplate')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -253,7 +255,7 @@ export function ChartConfigDialog() {
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <Input
                     size="sm"
-                    placeholder="Template name"
+                    placeholder={t('chart.templateName')}
                     value={templateName}
                     onValueChange={setTemplateName}
                     className="flex-1"
@@ -269,7 +271,7 @@ export function ChartConfigDialog() {
                     startContent={!templateBusy && <Save className="h-3 w-3" />}
                     onPress={saveAsTemplate}
                   >
-                    Save Current
+                    {t('chart.saveCurrent')}
                   </Button>
                 </div>
               </div>
@@ -281,7 +283,7 @@ export function ChartConfigDialog() {
       </div>
       <div className="flex justify-end gap-2 border-t border-border p-3">
         <Button color="primary" size="sm" onPress={onClose}>
-          Done
+          {t('chart.done')}
         </Button>
       </div>
     </div>

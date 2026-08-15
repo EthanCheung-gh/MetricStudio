@@ -1,10 +1,11 @@
 import { Button, Select, SelectItem, Switch } from '@heroui/react'
+import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
 import type { ColumnMeta } from '@/types/data'
 import type { ChartConfig, ChartOptions, YFieldConfig, FieldType, AggregateType } from '@/types/encoding'
 import { useChartStore } from '@/stores/chartStore'
 import { aggregateOptions } from '@/utils/encodingToPlotly'
-import { chartTypeSpecs, channelLabels, type ChannelKey } from '@/utils/chartTypeSpecs'
+import { chartTypeSpecs, type ChannelKey } from '@/utils/chartTypeSpecs'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 
 interface EncodingPanelProps {
@@ -42,16 +43,20 @@ function YFieldConfigRow({
   onUpdate: (index: number, updated: YFieldConfig) => void
   onRemove: (index: number) => void
 }) {
+  const { t } = useTranslation()
   const fieldItems = columns.map((c) => ({ key: c.name, label: c.name }))
-  const aggItems = aggregateOptions.map((opt) => ({ key: opt.value, label: opt.label }))
+  const aggItems = aggregateOptions.map((opt) => ({
+    key: opt.value,
+    label: opt.value === '' ? t('chart.agg.none') : t(`chart.agg.${opt.value}`),
+  }))
   const axisItems = [
-    { key: 'left', label: '⇐ Left' },
-    { key: 'right', label: 'Right ⇒' },
+    { key: 'left', label: t('chart.axis.left') },
+    { key: 'right', label: t('chart.axis.right') },
   ]
   const normItems = [
-    { key: 'none', label: 'None' },
-    { key: 'perSeries', label: 'Per Series' },
-    { key: 'global', label: 'Global' },
+    { key: 'none', label: t('chart.norm.none') },
+    { key: 'perSeries', label: t('chart.norm.perSeries') },
+    { key: 'global', label: t('chart.norm.global') },
   ]
 
   return (
@@ -64,7 +69,7 @@ function YFieldConfigRow({
             const col = columns.find((c) => c.name === field)
             onUpdate(index, { ...yf, field: field || '', type: (col?.inferredType as FieldType) || 'nominal' })
           }}
-          label="Field"
+          label={t('chart.field')}
         />
       </div>
       <div className="w-24 shrink-0">
@@ -72,7 +77,7 @@ function YFieldConfigRow({
           items={aggItems}
           selectedKey={yf.aggregate || undefined}
           onSelect={(agg) => onUpdate(index, { ...yf, aggregate: (agg as AggregateType) || null })}
-          label="Agg"
+          label={t('chart.agg')}
         />
       </div>
       <div className="w-24 shrink-0">
@@ -80,7 +85,7 @@ function YFieldConfigRow({
           items={axisItems}
           selectedKey={yf.axis}
           onSelect={(axis) => onUpdate(index, { ...yf, axis: (axis as 'left' | 'right') || 'left' })}
-          label="Axis"
+          label={t('chart.axis')}
         />
       </div>
       <div className="w-28 shrink-0">
@@ -88,7 +93,7 @@ function YFieldConfigRow({
           items={normItems}
           selectedKey={yf.normalize || 'none'}
           onSelect={(norm) => onUpdate(index, { ...yf, normalize: (norm as YFieldConfig['normalize']) || 'none' })}
-          label="Norm"
+          label={t('chart.norm')}
         />
       </div>
       <Button isIconOnly size="sm" variant="light" className="h-6 w-6 min-w-0 shrink-0" onPress={() => onRemove(index)}>
@@ -102,16 +107,20 @@ function ChannelSlot({ channel, chart, columns }: {
   channel: ChannelKey
   chart: ChartConfig; columns: ColumnMeta[]
 }) {
+  const { t } = useTranslation()
   const encoding = chart.encoding[channel]
   const updateEncoding = useChartStore((s) => s.updateEncoding)
 
   const fieldItems = columns.map((c) => ({ key: c.name, label: c.name }))
-  const aggItems = aggregateOptions.map((opt) => ({ key: opt.value, label: opt.label }))
+  const aggItems = aggregateOptions.map((opt) => ({
+    key: opt.value,
+    label: opt.value === '' ? t('chart.agg.none') : t(`chart.agg.${opt.value}`),
+  }))
 
   return (
     <div className="flex items-center gap-1">
       <span className="w-12 text-[10px] font-medium text-muted shrink-0">
-        {channelLabels[channel]}
+        {t(`chart.channel.${channel}`)}
       </span>
       <div className="flex-1">
         <SearchableSelect
@@ -142,7 +151,7 @@ function ChannelSlot({ channel, chart, columns }: {
                 x: { ...encoding, aggregate: agg ? (agg as AggregateType) : null },
               })
             }}
-            label="Agg"
+            label={t('chart.agg')}
           />
         </div>
       )}
@@ -188,6 +197,7 @@ function OptionsSection({ chart, specOptions, columns }: {
   specOptions: NonNullable<(typeof chartTypeSpecs)[ChartConfig['encoding']['chartType']]['options']>
   columns: ColumnMeta[]
 }) {
+  const { t } = useTranslation()
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const opts: ChartOptions = chart.encoding.options || {}
   const setOpts = (patch: Partial<ChartOptions>) =>
@@ -196,32 +206,32 @@ function OptionsSection({ chart, specOptions, columns }: {
   const fieldItems = columns.map((c) => ({ key: c.name, label: c.name }))
 
   return (
-    <CollapsibleSection title="Options" defaultOpen={false}>
+    <CollapsibleSection title={t('chart.options')} defaultOpen={false}>
       <div className="flex flex-col gap-1.5">
         {specOptions.includes('barmode') && (
           <SearchableSelect
-            label="Bar Mode"
-            items={[{ key: 'group', label: 'Group' }, { key: 'stack', label: 'Stack' }]}
+            label={t('chart.barMode')}
+            items={[{ key: 'group', label: t('chart.group') }, { key: 'stack', label: t('chart.stack') }]}
             selectedKey={opts.barmode || 'group'}
             onSelect={(v) => setOpts({ barmode: (v as ChartOptions['barmode']) || 'group' })}
           />
         )}
         {specOptions.includes('orientation') && (
           <SearchableSelect
-            label="Orientation"
-            items={[{ key: 'v', label: 'Vertical' }, { key: 'h', label: 'Horizontal' }]}
+            label={t('chart.orientation')}
+            items={[{ key: 'v', label: t('chart.vertical') }, { key: 'h', label: t('chart.horizontal') }]}
             selectedKey={opts.orientation || 'v'}
             onSelect={(v) => setOpts({ orientation: (v as ChartOptions['orientation']) || 'v' })}
           />
         )}
         {specOptions.includes('histnorm') && (
           <SearchableSelect
-            label="Normalize"
+            label={t('chart.normalize')}
             items={[
-              { key: '', label: 'Count (default)' },
-              { key: 'percent', label: 'Percent' },
-              { key: 'probability', label: 'Probability' },
-              { key: 'density', label: 'Density' },
+              { key: '', label: t('chart.countDefault') },
+              { key: 'percent', label: t('chart.percent') },
+              { key: 'probability', label: t('chart.probability') },
+              { key: 'density', label: t('chart.density') },
             ]}
             selectedKey={opts.histnorm || ''}
             onSelect={(v) => setOpts({ histnorm: (v as ChartOptions['histnorm']) || null })}
@@ -229,17 +239,17 @@ function OptionsSection({ chart, specOptions, columns }: {
         )}
         {specOptions.includes('cumulative') && (
           <div className="flex items-center justify-between text-xs">
-            <span>Cumulative</span>
+            <span>{t('chart.cumulative')}</span>
             <Switch size="sm" isSelected={!!opts.cumulative} onValueChange={(v) => setOpts({ cumulative: v })} />
           </div>
         )}
         {specOptions.includes('boxPoints') && (
           <SearchableSelect
-            label="Points"
+            label={t('chart.points')}
             items={[
-              { key: 'outliers', label: 'Outliers (default)' },
-              { key: 'all', label: 'All' },
-              { key: 'none', label: 'None' },
+              { key: 'outliers', label: t('chart.outliers') },
+              { key: 'all', label: t('chart.all') },
+              { key: 'none', label: t('chart.none') },
             ]}
             selectedKey={opts.boxPoints || 'outliers'}
             onSelect={(v) => setOpts({ boxPoints: (v as ChartOptions['boxPoints']) || 'outliers' })}
@@ -248,25 +258,25 @@ function OptionsSection({ chart, specOptions, columns }: {
         {specOptions.includes('marginal') && (
           <>
             <SearchableSelect
-              label="Marginal X"
+              label={t('chart.marginalX')}
               items={[
-                { key: '', label: 'None' },
-                { key: 'histogram', label: 'Histogram' },
-                { key: 'box', label: 'Box' },
-                { key: 'violin', label: 'Violin' },
-                { key: 'rug', label: 'Rug' },
+                { key: '', label: t('chart.none') },
+                { key: 'histogram', label: t('chart.histogram') },
+                { key: 'box', label: t('chart.box') },
+                { key: 'violin', label: t('chart.violin') },
+                { key: 'rug', label: t('chart.rug') },
               ]}
               selectedKey={opts.marginalX || ''}
               onSelect={(v) => setOpts({ marginalX: (v as ChartOptions['marginalX']) || null })}
             />
             <SearchableSelect
-              label="Marginal Y"
+              label={t('chart.marginalY')}
               items={[
-                { key: '', label: 'None' },
-                { key: 'histogram', label: 'Histogram' },
-                { key: 'box', label: 'Box' },
-                { key: 'violin', label: 'Violin' },
-                { key: 'rug', label: 'Rug' },
+                { key: '', label: t('chart.none') },
+                { key: 'histogram', label: t('chart.histogram') },
+                { key: 'box', label: t('chart.box') },
+                { key: 'violin', label: t('chart.violin') },
+                { key: 'rug', label: t('chart.rug') },
               ]}
               selectedKey={opts.marginalY || ''}
               onSelect={(v) => setOpts({ marginalY: (v as ChartOptions['marginalY']) || null })}
@@ -275,26 +285,26 @@ function OptionsSection({ chart, specOptions, columns }: {
         )}
         {specOptions.includes('annotated') && (
           <div className="flex items-center justify-between text-xs">
-            <span>Annotate Cells</span>
+            <span>{t('chart.annotateCells')}</span>
             <Switch size="sm" isSelected={!!opts.annotated} onValueChange={(v) => setOpts({ annotated: v })} />
           </div>
         )}
         {specOptions.includes('corr') && (
           <div className="flex items-center justify-between text-xs">
-            <span>Correlation Matrix</span>
+            <span>{t('chart.corrMatrix')}</span>
             <Switch size="sm" isSelected={!!opts.corr} onValueChange={(v) => setOpts({ corr: v })} />
           </div>
         )}
         {specOptions.includes('ganttFields') && (
           <>
             <SearchableSelect
-              label="Start Field"
+              label={t('chart.startField')}
               items={fieldItems}
               selectedKey={opts.startField}
               onSelect={(v) => setOpts({ startField: v || undefined })}
             />
             <SearchableSelect
-              label="End Field"
+              label={t('chart.endField')}
               items={fieldItems}
               selectedKey={opts.endField}
               onSelect={(v) => setOpts({ endField: v || undefined })}
@@ -307,6 +317,7 @@ function OptionsSection({ chart, specOptions, columns }: {
 }
 
 export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
+  const { t } = useTranslation()
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const yFields = chart.encoding.yFields || []
   const spec = chartTypeSpecs[chart.encoding.chartType]
@@ -337,11 +348,11 @@ export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
   return (
     <div className="flex flex-col gap-2">
       {spec.yFields !== 'none' && (
-        <CollapsibleSection title={`Y Fields (${yFields.length})`} defaultOpen={yFields.length > 0}>
+        <CollapsibleSection title={t('chart.yFields', { count: yFields.length })} defaultOpen={yFields.length > 0}>
           <div className="flex flex-col gap-1">
             {yFields.length === 0 && (
               <div className="rounded border border-dashed border-border p-2 text-center text-xs text-muted">
-                No Y fields
+                {t('chart.noYFields')}
               </div>
             )}
             {yFields.map((yf, idx) => (
@@ -349,14 +360,14 @@ export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
                 onUpdate={updateYField} onRemove={removeYField} />
             ))}
             <Button size="sm" variant="flat" onPress={addYField} className="w-full text-xs" startContent={<Plus className="h-3 w-3" />}>
-              Add Y Field
+              {t('chart.addYField')}
             </Button>
           </div>
         </CollapsibleSection>
       )}
 
       {spec.channels.length > 0 && (
-        <CollapsibleSection title="Encoding Channels" defaultOpen>
+        <CollapsibleSection title={t('chart.encodingChannels')} defaultOpen>
           <div className="flex flex-col gap-1.5">
             {spec.channels.map((ch) => (
               <ChannelSlot key={ch} channel={ch} chart={chart} columns={columns} />
@@ -366,9 +377,12 @@ export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
       )}
 
       {spec.dimensionsLabel && (
-        <CollapsibleSection title={spec.dimensionsLabel} defaultOpen>
+        <CollapsibleSection
+          title={spec.dimensionsLabel === 'Dimensions' ? t('chart.dimensions') : t('chart.tableColumns')}
+          defaultOpen
+        >
           <MultiColumnSelect
-            label={spec.dimensionsLabel}
+            label={spec.dimensionsLabel === 'Dimensions' ? t('chart.dimensions') : t('chart.tableColumns')}
             values={chart.encoding.dimensions || []}
             columns={columns}
             onChange={(dims) => updateEncoding(chart.id, { dimensions: dims })}
@@ -377,9 +391,9 @@ export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
       )}
 
       {spec.path && (
-        <CollapsibleSection title="Hierarchy Path" defaultOpen>
+        <CollapsibleSection title={t('chart.hierarchyPath')} defaultOpen>
           <MultiColumnSelect
-            label="Path (outer → inner)"
+            label={t('chart.pathHint')}
             values={chart.encoding.path || []}
             columns={columns}
             onChange={(p) => updateEncoding(chart.id, { path: p })}

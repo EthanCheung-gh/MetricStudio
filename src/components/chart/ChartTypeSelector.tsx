@@ -1,4 +1,5 @@
 import { Button } from '@heroui/react'
+import { useTranslation } from 'react-i18next'
 import type { ChartType } from '@/types/encoding'
 import { chartTypeOptions } from '@/utils/encodingToPlotly'
 
@@ -8,9 +9,10 @@ interface ChartTypeSelectorProps {
 }
 
 export function ChartTypeSelector({ value, onChange }: ChartTypeSelectorProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-xs font-semibold text-muted">Chart Type</div>
+      <div className="text-xs font-semibold text-muted">{t('chart.chartType')}</div>
       <div className="grid grid-cols-3 gap-1">
         {chartTypeOptions.map((opt) => (
           <Button
@@ -21,7 +23,7 @@ export function ChartTypeSelector({ value, onChange }: ChartTypeSelectorProps) {
             onPress={() => onChange(opt.value)}
             className="text-xs"
           >
-            {opt.label}
+            {t(`chart.type.${opt.value}`)}
           </Button>
         ))}
       </div>

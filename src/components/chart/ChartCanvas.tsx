@@ -47,9 +47,9 @@ export function ChartCanvas() {
       a.download = 'chart.html'
       a.click()
       URL.revokeObjectURL(url)
-      addNotification('success', 'HTML exported')
+      addNotification('success', t('chart.htmlExported'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Export failed')
+      addNotification('error', err instanceof Error ? err.message : t('chart.exportFailed'))
     }
   }
 
@@ -68,9 +68,9 @@ export function ChartCanvas() {
       a.href = url
       a.download = 'chart.png'
       a.click()
-      addNotification('success', 'PNG exported')
+      addNotification('success', t('chart.pngExported'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'PNG export failed')
+      addNotification('error', err instanceof Error ? err.message : t('chart.exportFailed'))
     }
   }
 
@@ -85,9 +85,9 @@ export function ChartCanvas() {
       a.download = 'chart.json'
       a.click()
       URL.revokeObjectURL(url)
-      addNotification('success', 'Chart JSON exported')
+      addNotification('success', t('chart.jsonExported'))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'JSON export failed')
+      addNotification('error', err instanceof Error ? err.message : t('chart.exportFailed'))
     }
   }
 
@@ -136,7 +136,7 @@ export function ChartCanvas() {
             isIconOnly size="sm" variant="light"
             isDisabled={!previewFigure}
             onPress={handleExportHtml}
-            aria-label="Export HTML"
+            aria-label={t('chart.exportHtml')}
           >
             <FileCode className="h-4 w-4" />
           </Button>
@@ -144,7 +144,7 @@ export function ChartCanvas() {
             isIconOnly size="sm" variant="light"
             isDisabled={!previewFigure}
             onPress={handleExportPng}
-            aria-label="Export PNG"
+            aria-label={t('chart.exportPng')}
           >
             <Image className="h-4 w-4" />
           </Button>
@@ -152,7 +152,7 @@ export function ChartCanvas() {
             isIconOnly size="sm" variant="light"
             isDisabled={!previewFigure}
             onPress={handleExportJson}
-            aria-label="Download plotly JSON"
+            aria-label={t('chart.exportJson')}
           >
             <Download className="h-4 w-4" />
           </Button>

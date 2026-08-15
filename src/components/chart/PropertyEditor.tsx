@@ -35,7 +35,7 @@ export function PropertyEditor() {
     updateLayout(chart.id, {
       annotations: [
         ...annotations,
-        { text: 'New annotation', xref: 'paper', yref: 'paper', x: 0.5, y: 1.02, showarrow: false, font: { size: 12, color: '#f5f5f5' } },
+        { text: t('chart.newAnnotation'), xref: 'paper', yref: 'paper', x: 0.5, y: 1.02, showarrow: false, font: { size: 12, color: '#f5f5f5' } },
       ],
     })
   }

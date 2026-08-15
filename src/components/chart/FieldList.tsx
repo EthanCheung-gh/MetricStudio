@@ -1,6 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ColumnMeta } from '@/types/data'
 
 interface FieldListProps {
@@ -33,10 +34,11 @@ function DraggableField({ column }: { column: ColumnMeta }) {
 }
 
 export function FieldList({ columns }: FieldListProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-xs font-semibold text-muted">Fields</div>
-      {columns.length === 0 && <p className="text-xs text-muted">No fields available.</p>}
+      <div className="text-xs font-semibold text-muted">{t('chart.fields')}</div>
+      {columns.length === 0 && <p className="text-xs text-muted">{t('chart.noFields')}</p>}
       <div className="grid grid-cols-1 gap-1">
         {columns.map((col) => (
           <DraggableField key={col.name} column={col} />
