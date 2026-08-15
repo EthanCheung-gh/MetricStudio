@@ -21,12 +21,12 @@ function SearchableSelect({ items, selectedKey, onSelect, label }: {
   return (
     <Select
       size="sm"
-      label={label}
-      placeholder={label}
+      aria-label={label || 'Select'}
+      placeholder={label || 'Select'}
       selectedKeys={selectedKey ? [selectedKey] : []}
       onSelectionChange={(keys) => onSelect(Array.from(keys)[0] as string || null)}
       className="min-w-0"
-      classNames={{ trigger: 'h-7 min-h-7', label: 'text-[10px]', value: 'text-xs' }}
+      classNames={{ trigger: 'h-7 min-h-7', value: 'text-xs' }}
     >
       {items.map((item) => (
         <SelectItem key={item.key} textValue={item.label}>{item.label}</SelectItem>
@@ -67,7 +67,7 @@ function YFieldConfigRow({
           label="Field"
         />
       </div>
-      <div className="w-20 shrink-0">
+      <div className="w-24 shrink-0">
         <SearchableSelect
           items={aggItems}
           selectedKey={yf.aggregate || undefined}
@@ -75,7 +75,7 @@ function YFieldConfigRow({
           label="Agg"
         />
       </div>
-      <div className="w-20 shrink-0">
+      <div className="w-24 shrink-0">
         <SearchableSelect
           items={axisItems}
           selectedKey={yf.axis}
@@ -83,7 +83,7 @@ function YFieldConfigRow({
           label="Axis"
         />
       </div>
-      <div className="w-24 shrink-0">
+      <div className="w-28 shrink-0">
         <SearchableSelect
           items={normItems}
           selectedKey={yf.normalize || 'none'}
@@ -133,7 +133,7 @@ function ChannelSlot({ channel, chart, columns }: {
         />
       </div>
       {encoding && channel === 'x' && (
-        <div className="w-20 shrink-0">
+        <div className="w-24 shrink-0">
           <SearchableSelect
             items={aggItems}
             selectedKey={encoding.aggregate || undefined}
