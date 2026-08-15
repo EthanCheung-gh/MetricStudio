@@ -29,11 +29,13 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.9",
     "framer-motion": "^12.10.0",
+    "i18next": "^26.3.6",
     "lucide-react": "^0.510.0",
     "plotly.js": "^3.0.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-grid-layout": "^2.2.4",
+    "react-i18next": "^17.0.11",
     "react-plotly.js": "^2.6.0",
     "react-resizable-panels": "^3.0.2",
     "zustand": "^5.0.4"

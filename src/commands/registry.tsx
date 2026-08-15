@@ -5,6 +5,7 @@ import {
   FolderOpen,
   FileText,
   FileUp,
+  Languages,
   Lightbulb,
   Monitor,
   Sparkles,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import { loadProjectByPath } from '@/utils/project';
 import { globalUndo, globalRedo } from '@/utils/globalHistory';
+import i18n from '@/i18n';
 import { useDataStore } from '@/stores/dataStore';
 import { useChartStore } from '@/stores/chartStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
@@ -187,6 +189,16 @@ export function getCommands(): Command[] {
       category: 'Settings',
       icon: <Monitor size={14} />,
       run: () => ws.setTheme('system'),
+    },
+    {
+      id: 'language',
+      title: i18n.t('cmd.language'),
+      category: 'Settings',
+      icon: <Languages size={14} />,
+      run: () => {
+        const cur = useUIStore.getState().language;
+        useUIStore.getState().setLanguage(cur === 'zh' ? 'en' : 'zh');
+      },
     },
   ];
 

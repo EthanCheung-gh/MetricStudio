@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Play, Send, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
@@ -16,6 +17,7 @@ export function AICommandBar() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const refreshActiveDataFrame = useDataStore((s) => s.refreshActiveDataFrame)
   const addNotification = useUIStore((s) => s.addNotification)
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('query')
   const [input, setInput] = useState('')
   const [operations, setOperations] = useState<NLOp[] | null>(null)
@@ -48,7 +50,7 @@ export function AICommandBar() {
     setApplying(true)
     try {
       await api.applyBatch(activeDataFrameId, operations)
-      addNotification('success', `已应用 ${operations.length} 个操作`)
+      addNotification('success', `已应用 ${operations.length} {t('ai.operations')}`)
       setOperations(null)
       setInput('')
       await refreshActiveDataFrame()
@@ -63,8 +65,8 @@ export function AICommandBar() {
 
   const placeholder =
     mode === 'query'
-      ? '描述数据清洗需求，如：删除 value>100 的行，然后按 date 排序…'
-      : '向数据提问，如：哪个地区 value 最高？'
+      ? t('ai.cleanPlaceholder')
+      : t('ai.askPlaceholder')
 
   return (
     <div className="fixed bottom-4 left-1/2 z-40 w-[680px] max-w-[92vw] -translate-x-1/2">
@@ -72,7 +74,7 @@ export function AICommandBar() {
       {operations !== null && (
         <div className="mb-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted">{operations.length} 个操作</span>
+            <span className="text-xs font-semibold text-muted">{operations.length} {t('ai.operations')}</span>
             <button className="text-muted hover:text-foreground" onClick={() => setOperations(null)} aria-label="关闭">
               <X className="h-3.5 w-3.5" />
             </button>

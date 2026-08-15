@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Tooltip } from '@heroui/react'
 import { Activity, Cpu, PackageCheck, PackageX, Rows3 } from 'lucide-react'
 import { useDataStore } from '@/stores/dataStore'
@@ -7,6 +8,7 @@ import { api, type DepsReport } from '@/api/client'
 import { fmt } from '@/utils/format'
 
 export function StatusBar() {
+  const { t } = useTranslation();
   const activeId = useDataStore((s) => s.activeDataFrameId)
   const dataFrames = useDataStore((s) => s.dataFrames)
   const preview = useDataStore((s) => s.preview)
@@ -41,7 +43,7 @@ export function StatusBar() {
         <span className="flex items-center gap-1">
           <Activity className="h-3 w-3" />
           <span className={backendConnected ? 'text-success' : 'text-danger'}>
-            {backendConnected ? '后端在线' : backendMessage}
+            {backendConnected ? t('status.backendOnline') : backendMessage}
           </span>
         </span>
         {deps && (
@@ -69,11 +71,11 @@ export function StatusBar() {
           <>
             <span className="flex items-center gap-1">
               <Rows3 className="h-3 w-3" />
-              {fmt(rows)} 行 × {fmt(cols)} 列
+              {fmt(rows)} {t('status.rows')} × {fmt(cols)} {t('status.cols')}
             </span>
             <span className="flex items-center gap-1">
               <Cpu className="h-3 w-3" />
-              引擎: {active.engine ?? 'pandas'}
+              {t('status.engine')}: {active.engine ?? 'pandas'}
             </span>
           </>
         )}

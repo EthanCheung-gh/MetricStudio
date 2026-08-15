@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Database, FileJson, FolderOpen, History, Save, Upload } from 'lucide-react'
 import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input } from '@heroui/react'
 import { useUIStore } from '@/stores/uiStore'
@@ -8,6 +9,7 @@ import { api } from '@/api/client'
 import { loadProjectByPath } from '@/utils/project'
 
 export function TitleBar() {
+  const { t } = useTranslation();
   const setImportModalOpen = useUIStore((s) => s.setImportModalOpen)
   const saveProjectModalOpen = useUIStore((s) => s.saveProjectModalOpen)
   const loadProjectModalOpen = useUIStore((s) => s.loadProjectModalOpen)
@@ -71,17 +73,17 @@ export function TitleBar() {
           <span className="font-semibold text-sm">MetricStudio</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button isIconOnly size="sm" variant="light" aria-label="打开项目" onPress={() => setLoadProjectModalOpen(true)}>
+          <Button isIconOnly size="sm" variant="light" aria-label={t('layout.openProject')} onPress={() => setLoadProjectModalOpen(true)}>
             <FolderOpen className="h-4 w-4" />
           </Button>
-          <Button isIconOnly size="sm" variant="light" aria-label="保存项目" onPress={() => setSaveProjectModalOpen(true)}>
+          <Button isIconOnly size="sm" variant="light" aria-label={t('layout.saveProject')} onPress={() => setSaveProjectModalOpen(true)}>
             <Save className="h-4 w-4" />
           </Button>
           <Button
             isIconOnly
             size="sm"
             variant="light"
-            aria-label="导入数据"
+            aria-label={t('layout.importData')}
             onPress={() => setImportModalOpen(true)}
           >
             <FileJson className="h-4 w-4" />
@@ -91,16 +93,16 @@ export function TitleBar() {
 
       <Modal isOpen={saveProjectModalOpen} onClose={() => setSaveProjectModalOpen(false)}>
         <ModalContent>
-          <ModalHeader>保存项目</ModalHeader>
+          <ModalHeader>{t('layout.saveProject')}</ModalHeader>
           <ModalBody>
             <Input
-              label="项目名称"
+              label={t('layout.projectName')}
               value={projectName}
               onValueChange={setProjectName}
               size="sm"
             />
             <Input
-              label="文件路径"
+              label={t('layout.filePath')}
               value={projectPath}
               onValueChange={setProjectPath}
               size="sm"
@@ -120,7 +122,7 @@ export function TitleBar() {
 
       <Modal isOpen={loadProjectModalOpen} onClose={() => setLoadProjectModalOpen(false)}>
         <ModalContent>
-          <ModalHeader>加载项目</ModalHeader>
+          <ModalHeader>{t('layout.openProject')}</ModalHeader>
           <ModalBody className="gap-3">
             {recentProjects.length > 0 && (
               <div className="flex flex-col gap-1">
@@ -157,11 +159,11 @@ export function TitleBar() {
               onChange={(e) => handleUpload(e.target.files?.[0])}
             />
             <Input
-              label="文件路径"
+              label={t('layout.filePath')}
               value={projectPath}
               onValueChange={setProjectPath}
               size="sm"
-              description="服务端路径（高级）"
+              description={t('layout.serverPath')}
             />
           </ModalBody>
           <ModalFooter>

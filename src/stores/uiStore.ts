@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { generateId } from '@/utils/id';
 import type { ReportTemplate } from '@/types/data';
+import type { Language } from '@/i18n';
 import { persist } from 'zustand/middleware';
 
 export interface Notification {
@@ -28,6 +29,7 @@ interface UIState {
   recentProjects: RecentProject[];
   cleaningScanVersion: number;
   reportTemplates: ReportTemplate[];
+  language: Language;
 
   addNotification: (type: Notification['type'], message: string) => void;
   removeNotification: (id: string) => void;
@@ -43,6 +45,7 @@ interface UIState {
   bumpCleaningScan: () => void;
   saveReportTemplate: (t: Omit<ReportTemplate, 'id'>) => void;
   removeReportTemplate: (id: string) => void;
+  setLanguage: (lang: Language) => void;
 }
 
 let notificationId = 0;
@@ -63,6 +66,7 @@ export const useUIStore = create<UIState>()(
   recentProjects: [],
   cleaningScanVersion: 0,
   reportTemplates: [],
+  language: 'zh',
 
   addNotification: (type, message) => {
     const id = `${++notificationId}`;
@@ -100,6 +104,7 @@ export const useUIStore = create<UIState>()(
     set((s) => ({ reportTemplates: [...s.reportTemplates, { ...t, id: generateId() }] })),
   removeReportTemplate: (id) =>
     set((s) => ({ reportTemplates: s.reportTemplates.filter((t) => t.id !== id) })),
+  setLanguage: (language) => set({ language }),
   setBackendStatus: (connected, message) =>
     set({ backendConnected: connected, backendStatusMessage: message || (connected ? 'Connected' : 'Disconnected') }),
     }),
@@ -110,6 +115,7 @@ export const useUIStore = create<UIState>()(
         chartConfigDialogOpen: state.chartConfigDialogOpen,
         recentProjects: state.recentProjects,
         reportTemplates: state.reportTemplates,
+        language: state.language,
       }),
     },
   ),

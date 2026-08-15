@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button, Card, CardBody, Input, Select, SelectItem } from '@heroui/react'
 import { RotateCcw } from 'lucide-react'
 import { useDataStore } from '@/stores/dataStore'
@@ -18,6 +19,7 @@ const operators = [
 ]
 
 export function TransformPanel() {
+  const { t } = useTranslation();
   const activeId = useDataStore((s) => s.activeDataFrameId)
   const columns = useDataStore((s) => s.columns)
   const setPreview = useDataStore((s) => s.refreshActiveDataFrame)
@@ -366,7 +368,7 @@ export function TransformPanel() {
             </Select>
             <Input
               size="sm"
-              placeholder="To"
+              placeholder={t('transform.to')}
               value={renameTo}
               onValueChange={setRenameTo}
               className="flex-1"
@@ -387,7 +389,7 @@ export function TransformPanel() {
           />
           <Input
             size="sm"
-            placeholder="Expression, e.g. sales - profit"
+            placeholder={t('transform.expression')}
             value={computeExpr}
             onValueChange={setComputeExpr}
           />
@@ -456,7 +458,7 @@ export function TransformPanel() {
               selectedKeys={[pivotAgg]}
               onSelectionChange={(keys) => setPivotAgg(Array.from(keys)[0] as string)}
               className="w-20"
-              aria-label="Aggregation"
+              aria-label={t('transform.aggregation')}
             >
               {['sum', 'mean', 'count', 'min', 'max'].map((a) => (
                 <SelectItem key={a}>{a}</SelectItem>
@@ -490,7 +492,7 @@ export function TransformPanel() {
           <span className="text-[10px] uppercase text-muted">Join</span>
           <Select
             size="sm"
-            placeholder="Right dataset"
+            placeholder={t('transform.rightDataset')}
             selectedKeys={joinRight ? [joinRight] : []}
             onSelectionChange={(keys) => setJoinRight(Array.from(keys)[0] as string)}
           >
@@ -503,7 +505,7 @@ export function TransformPanel() {
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="Key column"
+              placeholder={t('transform.keyColumn')}
               selectedKeys={joinOn ? [joinOn] : []}
               onSelectionChange={(keys) => setJoinOn(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -530,7 +532,7 @@ export function TransformPanel() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Drop Columns</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.drop')}</span>
           <Select
             size="sm"
             selectionMode="multiple"
@@ -548,11 +550,11 @@ export function TransformPanel() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">String Clean</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.strClean')}</span>
           <div className="flex gap-1">
             <Select
               size="sm"
-              placeholder="列"
+              placeholder={t('transform.column')}
               selectedKeys={strCol ? [strCol] : []}
               onSelectionChange={(keys) => setStrCol(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -573,14 +575,14 @@ export function TransformPanel() {
               ))}
             </Select>
           </div>
-          <Input size="sm" placeholder="新列名（可选）" value={strNewCol} onValueChange={setStrNewCol} />
+          <Input size="sm" placeholder={t('transform.newColumn')} value={strNewCol} onValueChange={setStrNewCol} />
           <Button size="sm" color="primary" isLoading={loading} onPress={handleStrClean}>
             字符串清理
           </Button>
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Group By</span>
+          <span className="text-[10px] uppercase text-muted">{t('transform.groupby')}</span>
           <Select
             size="sm"
             selectionMode="multiple"
@@ -609,7 +611,7 @@ export function TransformPanel() {
               selectedKeys={[groupAgg]}
               onSelectionChange={(keys) => setGroupAgg(Array.from(keys)[0] as string)}
               className="w-24"
-              aria-label="聚合"
+              aria-label={t('transform.aggregation')}
             >
               {['sum', 'mean', 'count', 'min', 'max'].map((a) => (
                 <SelectItem key={a}>{a}</SelectItem>
@@ -622,8 +624,8 @@ export function TransformPanel() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase text-muted">Sample</span>
-          <Input size="sm" placeholder="行数" value={sampleN} onValueChange={setSampleN} />
+          <span className="text-[10px] uppercase text-muted">{t('transform.sample')}</span>
+          <Input size="sm" placeholder={t('transform.column')} value={sampleN} onValueChange={setSampleN} />
           <Button size="sm" color="primary" isLoading={loading} onPress={handleSample}>
             随机抽样
           </Button>

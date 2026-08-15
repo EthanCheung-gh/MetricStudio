@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BarChart3, Lightbulb, LineChart, Link2, PieChart, Sparkles, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
@@ -19,6 +20,7 @@ const ICONS: Record<string, React.ReactNode> = {
 }
 
 export function InsightsPanel() {
+  const { t } = useTranslation();
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [insights, setInsights] = useState<Insight[] | null>(null)
   const [narrative, setNarrative] = useState<string | null>(null)

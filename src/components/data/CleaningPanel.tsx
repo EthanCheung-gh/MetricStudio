@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, Play, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react'
 import { Button, Input } from '@heroui/react'
 import { api } from '@/api/client'
@@ -14,6 +15,7 @@ interface RecipePreset {
 }
 
 export function CleaningPanel() {
+  const { t } = useTranslation();
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const refreshActiveDataFrame = useDataStore((s) => s.refreshActiveDataFrame)
   const addNotification = useUIStore((s) => s.addNotification)
@@ -170,7 +172,7 @@ export function CleaningPanel() {
       {/* User-defined recipes */}
       <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">我的配方</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{t('panel.myRecipes')}</span>
           <Button
             size="sm"
             variant="light"

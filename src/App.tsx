@@ -9,6 +9,7 @@ import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useCommandPaletteStore } from '@/stores/commandPaletteStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import i18n from '@/i18n'
 import { globalUndo, globalRedo } from '@/utils/globalHistory'
 import type { FieldType } from '@/types/encoding'
 
@@ -20,6 +21,11 @@ function App() {
   const activeChartId = useChartStore((s) => s.activeChartId)
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const theme = useWorkspaceStore((s) => s.theme)
+  const language = useUIStore((s) => s.language)
+
+  useEffect(() => {
+    i18n.changeLanguage(language)
+  }, [language])
 
   // Apply light/dark theme to the root element
   useEffect(() => {
