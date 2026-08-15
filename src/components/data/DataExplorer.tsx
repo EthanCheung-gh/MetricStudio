@@ -1,8 +1,9 @@
-import { Upload } from 'lucide-react'
-import { Button, Card, CardBody } from '@heroui/react'
+import { Database, Upload } from 'lucide-react'
+import { Button, Card, CardBody, Input, Select, SelectItem } from '@heroui/react'
 import { useRef, useState } from 'react'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
+import { api } from '@/api/client'
 
 export function DataExplorer() {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -10,6 +11,38 @@ export function DataExplorer() {
   const loading = useDataStore((s) => s.loading)
   const addNotification = useUIStore((s) => s.addNotification)
   const [dragOver, setDragOver] = useState(false)
+  const [sqlPath, setSqlPath] = useState('')
+  const [sqlTables, setSqlTables] = useState<string[]>([])
+  const [sqlSelectedTable, setSqlSelectedTable] = useState('')
+  const [sqlLoading, setSqlLoading] = useState(false)
+
+  const listTables = async () => {
+    if (!sqlPath.trim()) return
+    setSqlLoading(true)
+    try {
+      const { tables } = await api.sqlTables(sqlPath.trim())
+      setSqlTables(tables)
+      setSqlSelectedTable('')
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : '列出表失败')
+    } finally {
+      setSqlLoading(false)
+    }
+  }
+
+  const importSqlTable = async () => {
+    if (!sqlPath.trim() || !sqlSelectedTable) return
+    setSqlLoading(true)
+    try {
+      const meta = await api.sqlImport(sqlPath.trim(), sqlSelectedTable)
+      await useDataStore.getState().loadDataFrames()
+      addNotification('success', `已导入 SQLite 表 ${meta.name}`)
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : '导入失败')
+    } finally {
+      setSqlLoading(false)
+    }
+  }
 
   const handleFile = async (file: File) => {
     try {
@@ -61,6 +94,35 @@ export function DataExplorer() {
           >
             浏览
           </Button>
+        </div>
+
+        {/* SQLite 导入 */}
+        <div className="flex flex-col gap-1 rounded border border-border p-2">
+          <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            <Database className="h-3 w-3" />
+            SQLite 导入
+          </div>
+          <Input size="sm" placeholder="数据库文件路径" value={sqlPath} onValueChange={setSqlPath} />
+          <Button size="sm" variant="flat" isLoading={sqlLoading} onPress={listTables}>
+            列出表
+          </Button>
+          {sqlTables.length > 0 && (
+            <>
+              <Select
+                size="sm"
+                placeholder="选择表"
+                selectedKeys={sqlSelectedTable ? [sqlSelectedTable] : []}
+                onSelectionChange={(keys) => setSqlSelectedTable(Array.from(keys)[0] as string)}
+              >
+                {sqlTables.map((t) => (
+                  <SelectItem key={t}>{t}</SelectItem>
+                ))}
+              </Select>
+              <Button size="sm" color="primary" isLoading={sqlLoading} onPress={importSqlTable}>
+                导入表
+              </Button>
+            </>
+          )}
         </div>
       </CardBody>
     </Card>

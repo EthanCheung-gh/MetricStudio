@@ -274,6 +274,18 @@ export const api = {
   chartRecommendations: (id: string) =>
     fetchJson<{ recommendations: ChartRecommendation[] }>(`/api/v1/data/${id}/chart-recommendations`),
 
+  // SQL import
+  sqlTables: (path: string) =>
+    fetchJson<{ tables: string[] }>('/api/v1/sql/tables', {
+      method: 'POST',
+      body: JSON.stringify({ engine: 'sqlite', path }),
+    }),
+  sqlImport: (path: string, table: string, name?: string) =>
+    fetchJson<DataFrameMeta>('/api/v1/sql/import', {
+      method: 'POST',
+      body: JSON.stringify({ engine: 'sqlite', path, table, name }),
+    }),
+
   // System
   checkDeps: () => fetchJson<DepsReport>('/api/v1/system/deps'),
   saveTemplate: (name: string, encoding: ChartEncoding, layout: Record<string, unknown>) =>
