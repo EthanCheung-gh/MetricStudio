@@ -229,6 +229,19 @@ export const api = {
       '/api/v1/nl/transform',
       { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, query }) },
     ),
+  diffDatasets: (leftId: string, rightId: string) =>
+    fetchJson<{
+      left_rows: number; right_rows: number; left_cols: number; right_cols: number;
+      only_left: string[]; only_right: string[];
+      numeric_diff: { column: string; left_mean: number; right_mean: number }[];
+    }>('/api/v1/data/diff', {
+      method: 'POST',
+      body: JSON.stringify({ left_id: leftId, right_id: rightId }),
+    }),
+  timeseries: (id: string, column: string) =>
+    fetchJson<{ ok: boolean; reason?: string; periods?: string[]; values?: number[]; pct_change?: (number | null)[] }>(
+      `/api/v1/data/${id}/timeseries?column=${encodeURIComponent(column)}`
+    ),
   nlNarrate: (datasetId: string) =>
     fetchJson<{ narrative: string }>('/api/v1/nl/narrate', {
       method: 'POST',

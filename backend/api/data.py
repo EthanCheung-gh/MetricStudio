@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+
+import pandas as pd
 from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import Response, StreamingResponse
@@ -91,6 +93,52 @@ async def data_quality(dataset_id: str):
         report = detect_quality(dataset.df)
         report["recipes"] = list_recipes()
         return report
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/diff")
+async def diff_datasets(payload: dict):
+    """Compare two datasets: rows/cols, column-set difference, numeric mean delta."""
+    left_id = payload.get("left_id")
+    right_id = payload.get("right_id")
+    try:
+        left = session.get(left_id).df
+        right = session.get(right_id).df
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    left_cols = set(left.columns)
+    right_cols = set(right.columns)
+    common = [c for c in left.columns if c in right.columns]
+    numeric_diff = []
+    for c in common:
+        if pd.api.types.is_numeric_dtype(left[c]) and pd.api.types.is_numeric_dtype(right[c]):
+            numeric_diff.append({
+                "column": c,
+                "left_mean": round(float(left[c].mean()), 2),
+                "right_mean": round(float(right[c].mean()), 2),
+            })
+
+    return {
+        "left_rows": len(left),
+        "right_rows": len(right),
+        "left_cols": len(left.columns),
+        "right_cols": len(right.columns),
+        "only_left": sorted(left_cols - right_cols),
+        "only_right": sorted(right_cols - left_cols),
+        "numeric_diff": numeric_diff,
+    }
+
+
+@router.get("/{dataset_id}/timeseries")
+async def timeseries(dataset_id: str, column: str):
+    """Monthly aggregation + period-over-period change for a numeric column."""
+    from backend.core.timeseries import analyze_timeseries
+
+    try:
+        dataset = session.get(dataset_id)
+        return analyze_timeseries(dataset.df, column)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

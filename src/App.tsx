@@ -77,6 +77,12 @@ function App() {
         e.preventDefault()
         globalRedo()
       }
+
+      // '?' -> shortcuts panel
+      if (key === '?' && !isTyping) {
+        e.preventDefault()
+        useUIStore.getState().setShortcutsOpen(true)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)

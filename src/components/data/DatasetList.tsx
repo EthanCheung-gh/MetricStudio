@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Database, Download, RefreshCw, Trash2 } from 'lucide-react'
+import { Database, Download, GitCompareArrows, RefreshCw, Trash2 } from 'lucide-react'
 import { Button, Card, CardBody, Chip } from '@heroui/react'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -28,7 +28,21 @@ export const DatasetList = memo(function DatasetList() {
   return (
     <Card className="bg-surface-elevated border-border">
       <CardBody className="gap-2">
-        <div className="text-xs font-semibold text-muted">数据集</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold text-muted">数据集</div>
+          {dataFrames.length >= 2 && (
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              className="h-5 w-5 min-w-0"
+              aria-label="对比数据集"
+              onPress={() => useUIStore.getState().setDiffModalOpen(true)}
+            >
+              <GitCompareArrows className="h-3 w-3 text-primary" />
+            </Button>
+          )}
+        </div>
         {dataFrames.length === 0 && (
           <p className="text-xs text-muted">尚未导入数据集。</p>
         )}

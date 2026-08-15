@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BarChart3, Lightbulb, Link2, PieChart, Sparkles, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { BarChart3, Lightbulb, LineChart, Link2, PieChart, Sparkles, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
@@ -23,7 +23,10 @@ export function InsightsPanel() {
   const [insights, setInsights] = useState<Insight[] | null>(null)
   const [narrative, setNarrative] = useState<string | null>(null)
   const [narrating, setNarrating] = useState(false)
+  const [tsResult, setTsResult] = useState<{ periods?: string[]; values?: number[]; pct_change?: (number | null)[]; ok?: boolean } | null>(null)
+  const [tsLoading, setTsLoading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const columns = useDataStore((s) => s.columns)
 
   const narrate = async () => {
     if (!activeDataFrameId) return
@@ -35,6 +38,20 @@ export function InsightsPanel() {
       setNarrative('生成叙述失败，请检查 LLM 配置')
     } finally {
       setNarrating(false)
+    }
+  }
+
+  const analyzeTs = async () => {
+    if (!activeDataFrameId) return
+    const numericCol = columns.find((c) => c.inferredType === 'quantitative')
+    if (!numericCol) return
+    setTsLoading(true)
+    try {
+      setTsResult(await api.timeseries(activeDataFrameId, numericCol.name))
+    } catch {
+      setTsResult({ ok: false })
+    } finally {
+      setTsLoading(false)
     }
   }
 
@@ -69,6 +86,15 @@ export function InsightsPanel() {
           <Button
             size="sm"
             variant="light"
+            isLoading={tsLoading}
+            startContent={<LineChart className="h-3 w-3" />}
+            onPress={analyzeTs}
+          >
+            环比
+          </Button>
+          <Button
+            size="sm"
+            variant="light"
             isLoading={narrating}
             startContent={<Sparkles className="h-3 w-3" />}
             onPress={narrate}
@@ -80,6 +106,21 @@ export function InsightsPanel() {
           </Button>
         </div>
       </div>
+
+      {tsResult && tsResult.ok && tsResult.periods && (
+        <div className="rounded border border-border/60 bg-surface-elevated/40 p-2">
+          <div className="mb-1 text-[10px] font-semibold uppercase text-muted">月度环比</div>
+          {tsResult.periods.map((p, i) => (
+            <div key={p} className="flex items-center justify-between text-[11px]">
+              <span className="text-muted">{p}</span>
+              <span>{tsResult.values?.[i]}</span>
+              <span className={tsResult.pct_change?.[i] !== null && tsResult.pct_change?.[i] !== undefined && (tsResult.pct_change?.[i] ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
+                {tsResult.pct_change?.[i] !== null && tsResult.pct_change?.[i] !== undefined ? tsResult.pct_change?.[i] + '%' : '—'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {narrative && (
         <div className="rounded border border-primary/30 bg-primary/10 p-2 text-[11px] leading-relaxed">
