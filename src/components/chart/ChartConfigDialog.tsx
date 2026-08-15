@@ -8,7 +8,6 @@ import { api } from '@/api/client'
 import { chartTypeOptions } from '@/utils/encodingToPlotly'
 import { EncodingPanel } from '@/components/chart/EncodingPanel'
 import type { ChartType, ChartTemplate } from '@/types/encoding'
-import type { ColumnMeta } from '@/types/data'
 
 const DIALOG_WIDTH = 680
 const POS_STORAGE_KEY = 'metricstudio-chart-config-pos'

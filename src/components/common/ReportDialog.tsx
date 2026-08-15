@@ -45,7 +45,7 @@ export function ReportDialog() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${(title.trim() || 'report').replace(/[^\w\-]+/g, '_')}.html`
+      a.download = `${(title.trim() || 'report').replace(/[^\w-]+/g, '_')}.html`
       a.click()
       URL.revokeObjectURL(url)
       addNotification('success', `Report generated with ${figures.length} chart(s)`)

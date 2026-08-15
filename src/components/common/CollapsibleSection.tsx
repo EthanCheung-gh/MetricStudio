@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { Button } from '@heroui/react'
 
 interface CollapsibleSectionProps {
   title: string

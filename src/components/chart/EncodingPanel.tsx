@@ -1,4 +1,4 @@
-import { Button, Input, Select, SelectItem, Switch } from '@heroui/react'
+import { Button, Select, SelectItem, Switch } from '@heroui/react'
 import { Plus, X } from 'lucide-react'
 import type { ColumnMeta } from '@/types/data'
 import type { ChartConfig, ChartOptions, YFieldConfig, FieldType, AggregateType } from '@/types/encoding'

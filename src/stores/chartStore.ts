@@ -48,6 +48,8 @@ const defaultEncoding: ChartEncoding = {
   yFields: [],
 };
 
+let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const useChartStore = create<ChartState>()(
   persist(
     (set, get) => ({
@@ -85,10 +87,13 @@ export const useChartStore = create<ChartState>()(
               : chart
           ),
         }));
-        const chart = get().charts.find((c) => c.id === id);
-        if (chart) {
-          get().previewChart(chart.datasetId, { ...chart.encoding, ...encoding }, chart.id);
-        }
+        if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+        previewDebounceTimer = setTimeout(() => {
+          const chart = get().charts.find((c) => c.id === id);
+          if (chart) {
+            get().previewChart(chart.datasetId, chart.encoding, chart.id);
+          }
+        }, 150);
       },
 
       updateLayout: (id, layout) => {
