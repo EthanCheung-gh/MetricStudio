@@ -367,6 +367,7 @@ export default {
   'common.cancel': '取消',
   'common.save': '保存',
   'common.close': '关闭',
+  'common.delete': '删除',
   'common.table': '表格',
   'common.lineage': '血缘',
 };

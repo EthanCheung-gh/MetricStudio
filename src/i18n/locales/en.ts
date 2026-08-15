@@ -367,6 +367,7 @@ export default {
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.close': 'Close',
+  'common.delete': 'Delete',
   'common.table': 'Table',
   'common.lineage': 'Lineage',
 };

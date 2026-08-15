@@ -292,6 +292,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.column')}
+              aria-label={t('transform.column')}
               selectedKeys={filterCol ? [filterCol] : []}
               onSelectionChange={(keys) => setFilterCol(Array.from(keys)[0] as string)}
               className="min-w-[80px]"
@@ -302,6 +303,7 @@ export function TransformPanel() {
             </Select>
             <Select
               size="sm"
+              aria-label={t('transform.filter')}
               selectedKeys={[filterOp]}
               onSelectionChange={(keys) => setFilterOp(Array.from(keys)[0] as string)}
               className="w-16"
@@ -328,6 +330,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.column')}
+              aria-label={t('transform.column')}
               selectedKeys={sortCol ? [sortCol] : []}
               onSelectionChange={(keys) => setSortCol(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -358,6 +361,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.from')}
+              aria-label={t('transform.from')}
               selectedKeys={renameFrom ? [renameFrom] : []}
               onSelectionChange={(keys) => setRenameFrom(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -421,6 +425,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.index')}
+              aria-label={t('transform.index')}
               selectedKeys={pivotIndex ? [pivotIndex] : []}
               onSelectionChange={(keys) => setPivotIndex(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -432,6 +437,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('table.columns')}
+              aria-label={t('table.columns')}
               selectedKeys={pivotColumns ? [pivotColumns] : []}
               onSelectionChange={(keys) => setPivotColumns(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -445,6 +451,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.value')}
+              aria-label={t('transform.value')}
               selectedKeys={pivotValues ? [pivotValues] : []}
               onSelectionChange={(keys) => setPivotValues(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -476,6 +483,7 @@ export function TransformPanel() {
             size="sm"
             selectionMode="multiple"
             placeholder={t('transform.idColumns')}
+            aria-label={t('transform.idColumns')}
             selectedKeys={new Set(meltIdVars)}
             onSelectionChange={(keys) => setMeltIdVars(Array.from(keys) as string[])}
           >
@@ -493,6 +501,7 @@ export function TransformPanel() {
           <Select
             size="sm"
             placeholder={t('transform.rightDataset')}
+            aria-label={t('transform.rightDataset')}
             selectedKeys={joinRight ? [joinRight] : []}
             onSelectionChange={(keys) => setJoinRight(Array.from(keys)[0] as string)}
           >
@@ -506,6 +515,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.keyColumn')}
+              aria-label={t('transform.keyColumn')}
               selectedKeys={joinOn ? [joinOn] : []}
               onSelectionChange={(keys) => setJoinOn(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -537,6 +547,7 @@ export function TransformPanel() {
             size="sm"
             selectionMode="multiple"
             placeholder={t('transform.drop')}
+            aria-label={t('transform.drop')}
             selectedKeys={new Set(dropCols)}
             onSelectionChange={(keys) => setDropCols(Array.from(keys) as string[])}
           >
@@ -555,6 +566,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.column')}
+              aria-label={t('transform.column')}
               selectedKeys={strCol ? [strCol] : []}
               onSelectionChange={(keys) => setStrCol(Array.from(keys)[0] as string)}
               className="flex-1"
@@ -587,6 +599,7 @@ export function TransformPanel() {
             size="sm"
             selectionMode="multiple"
             placeholder={t('transform.groupColumns')}
+            aria-label={t('transform.groupColumns')}
             selectedKeys={new Set(groupByCols)}
             onSelectionChange={(keys) => setGroupByCols(Array.from(keys) as string[])}
           >
@@ -598,6 +611,7 @@ export function TransformPanel() {
             <Select
               size="sm"
               placeholder={t('transform.valueColumn')}
+              aria-label={t('transform.valueColumn')}
               selectedKeys={groupValueCol ? [groupValueCol] : []}
               onSelectionChange={(keys) => setGroupValueCol(Array.from(keys)[0] as string)}
               className="flex-1"

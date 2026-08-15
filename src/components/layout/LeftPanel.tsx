@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Database, ListTree, SlidersHorizontal, Upload, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Database, ListTree, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
 import { Button, Card, CardBody } from '@heroui/react'
 import { DataExplorer } from '@/components/data/DataExplorer'
 import { DatasetList } from '@/components/data/DatasetList'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
+import { useDashboardStore } from '@/stores/dashboardStore'
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
 import type { ChartRecommendation } from '@/types/encoding'
@@ -49,7 +50,9 @@ function ChartsSection() {
   const createChart = useChartStore((s) => s.createChart)
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
+  const removeChart = useChartStore((s) => s.removeChart)
   const openChartTab = useWorkspaceStore((s) => s.openChartTab)
+  const closeChartTab = useWorkspaceStore((s) => s.closeChartTab)
   const setChartConfigDialogOpen = useUIStore((s) => s.setChartConfigDialogOpen)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [recs, setRecs] = useState<ChartRecommendation[] | null>(null)
@@ -70,6 +73,19 @@ function ChartsSection() {
     updateEncoding(chart.id, rec.encoding)
     openChartTab(chart.id)
     setActiveChart(chart.id)
+  }
+
+  const handleDeleteChart = (id: string) => {
+    // Close its tab if open and remove it from any dashboards it belongs to.
+    closeChartTab(id)
+    const dashboards = useDashboardStore.getState().dashboards
+    for (const d of dashboards) {
+      if (d.items.some((i) => i.chartId === id)) {
+        useDashboardStore.getState().removeItem(d.id, id)
+        useDashboardStore.getState().clearBrushSelection(d.id, id)
+      }
+    }
+    removeChart(id)
   }
 
   if (charts.length === 0) {
@@ -140,6 +156,16 @@ function ChartsSection() {
                 }}
               >
                 <SlidersHorizontal className="h-3 w-3" />
+              </button>
+              <button
+                className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-danger/20 hover:text-danger shrink-0"
+                aria-label={t('common.delete')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDeleteChart(chart.id)
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
               </button>
             </div>
           ))}
