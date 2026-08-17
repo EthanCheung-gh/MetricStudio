@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Literal, Union
 from pathlib import Path
 import uuid
@@ -67,6 +68,29 @@ class DataEngine:
         if self.engine == "polars":
             return pl.read_parquet(path)
         return pd.read_parquet(path, engine="pyarrow")
+
+    def read_json(self, path: str | Path) -> pd.DataFrame:
+        """Read JSON: a records array, NDJSON (one object per line), or a single
+        record / column-dict. Nested objects are flattened one level via json_normalize."""
+        path = Path(path)
+        text = path.read_text(encoding="utf-8").strip()
+        if not text:
+            raise ValueError("Empty JSON file")
+        if text.startswith("["):
+            return pd.json_normalize(json.loads(text))
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            # NDJSON: one JSON object per line (a single-object parse fails on the 2nd line)
+            return pd.read_json(path, lines=True)
+        if isinstance(data, dict):
+            try:
+                return pd.DataFrame(data)
+            except ValueError:
+                return pd.json_normalize([data])
+        if isinstance(data, list):
+            return pd.json_normalize(data)
+        raise ValueError("Unsupported JSON structure")
 
     def infer_dtype_category(self, series: pd.Series) -> str:
         dtype = str(series.dtype)

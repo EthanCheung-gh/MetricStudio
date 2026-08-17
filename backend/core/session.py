@@ -87,7 +87,27 @@ class SessionManager:
 
     # ---- dataset operations ----
 
-    def import_file(self, path: str | Path, name: str | None = None, sheet_name: str | None = None) -> list[Dataset]:
+    def import_dataframe(self, df: Any, name: str) -> Dataset:
+        """Register a dataset directly from an in-memory DataFrame.
+
+        Used for clipboard / pasted-text imports that have no refreshable source
+        file. The raw data is still persisted, so the dataset survives restarts.
+        """
+        if not isinstance(df, pd.DataFrame):
+            df = self._to_pandas(df)
+        actual_engine = self.engine.auto_engine(df)
+        dataset = Dataset(df, name=name, engine=actual_engine)
+        self.datasets[dataset.id] = dataset
+        self._persist(dataset)
+        return dataset
+
+    def import_file(
+        self,
+        path: str | Path,
+        name: str | None = None,
+        sheet_name: str | None = None,
+        merge_sheets: bool = False,
+    ) -> list[Dataset]:
         """Import a file. Returns a list of Dataset objects (one per sheet for Excel)."""
         path = Path(path)
         name = name or path.stem
@@ -105,6 +125,21 @@ class SessionManager:
             sheet_names = self.engine.get_excel_sheet_names(path)
             if sheet_name:
                 sheet_names = [s for s in sheet_names if s == sheet_name]
+            if merge_sheets and len(sheet_names) > 1:
+                frames: list[pd.DataFrame] = []
+                for sn in sheet_names:
+                    frame = self.engine.read_excel(path, sheet_name=sn)
+                    if not isinstance(frame, pd.DataFrame):
+                        frame = self._to_pandas(frame)
+                    frames.append(frame)
+                df = pd.concat(frames, ignore_index=True)
+                actual_engine = self.engine.auto_engine(df)
+                dataset = Dataset(df, name=name, engine=actual_engine)
+                self.datasets[dataset.id] = dataset
+                self.sources[dataset.id] = {**source_meta, "sheet_name": None, "merged_sheets": sheet_names}
+                self._persist(dataset)
+                datasets.append(dataset)
+                return datasets
             for sn in sheet_names:
                 df = self.engine.read_excel(path, sheet_name=sn)
                 if not isinstance(df, pd.DataFrame):
@@ -120,6 +155,8 @@ class SessionManager:
                 df = self.engine.read_csv(path)
             elif ext == ".parquet":
                 df = self.engine.read_parquet(path)
+            elif ext == ".json":
+                df = self.engine.read_json(path)
             else:
                 raise ValueError(f"Unsupported file format: {ext}")
             if not isinstance(df, pd.DataFrame):

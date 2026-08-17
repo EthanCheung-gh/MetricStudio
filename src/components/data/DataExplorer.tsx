@@ -1,5 +1,5 @@
-import { ArrowUp, Database, FileText, Folder, Upload } from 'lucide-react'
-import { Button, Card, CardBody, Input, Select, SelectItem } from '@heroui/react'
+import { ArrowUp, ClipboardPaste, Database, FileText, Folder, Upload } from 'lucide-react'
+import { Button, Card, CardBody, Checkbox, Input, Select, SelectItem, Textarea } from '@heroui/react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDataStore } from '@/stores/dataStore'
@@ -17,6 +17,7 @@ export function DataExplorer() {
   const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
   const importFile = useDataStore((s) => s.importFile)
+  const importText = useDataStore((s) => s.importText)
   const loading = useDataStore((s) => s.loading)
   const addNotification = useUIStore((s) => s.addNotification)
   const [dragOver, setDragOver] = useState(false)
@@ -24,9 +25,12 @@ export function DataExplorer() {
   const [sqlTables, setSqlTables] = useState<string[]>([])
   const [sqlSelectedTable, setSqlSelectedTable] = useState('')
   const [sqlLoading, setSqlLoading] = useState(false)
-  const [importMode, setImportMode] = useState<'file' | 'sqlite'>('file')
+  const [importMode, setImportMode] = useState<'file' | 'sqlite' | 'paste'>('file')
   const [browse, setBrowse] = useState<BrowseState | null>(null)
   const [manualPath, setManualPath] = useState(false)
+  const [pasteText, setPasteText] = useState('')
+  const [pasteName, setPasteName] = useState('')
+  const [mergeSheets, setMergeSheets] = useState(false)
 
   const browseDir = async (dir?: string) => {
     setSqlLoading(true)
@@ -79,8 +83,21 @@ export function DataExplorer() {
 
   const handleFile = async (file: File) => {
     try {
-      const meta = await importFile(file)
+      const merge = mergeSheets && /\.(xlsx|xls)$/i.test(file.name)
+      const meta = await importFile(file, merge)
       addNotification('success', t('import.fileImported', { name: meta.name }))
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
+    }
+  }
+
+  const handlePasteImport = async () => {
+    if (!pasteText.trim()) return
+    try {
+      const meta = await importText(pasteName.trim() || t('import.pastedData'), pasteText)
+      addNotification('success', t('import.fileImported', { name: meta.name }))
+      setPasteText('')
+      setPasteName('')
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
     }
@@ -113,9 +130,19 @@ export function DataExplorer() {
             <Database className="mr-1 inline h-3 w-3" />
             SQLite
           </button>
+          <button
+            className={`flex-1 rounded px-2 py-1 text-xs transition-colors ${
+              importMode === 'paste' ? 'bg-primary/20 text-primary' : 'text-muted hover:text-foreground'
+            }`}
+            onClick={() => setImportMode('paste')}
+          >
+            <ClipboardPaste className="mr-1 inline h-3 w-3" />
+            {t('import.paste')}
+          </button>
         </div>
 
-        {importMode === 'file' ? (
+        {importMode === 'file' && (
+          <>
           <div
             className={`rounded border border-dashed p-3 text-center transition-colors ${
               dragOver ? 'border-primary bg-primary/10' : 'border-border'
@@ -154,7 +181,17 @@ export function DataExplorer() {
               {t('import.browse')}
             </Button>
           </div>
-        ) : (
+          <Checkbox
+            size="sm"
+            isSelected={mergeSheets}
+            onValueChange={setMergeSheets}
+            className="mt-1"
+          >
+            <span className="text-xs text-muted">{t('import.mergeSheets')}</span>
+          </Checkbox>
+          </>
+        )}
+        {importMode === 'sqlite' && (
           <div className="flex flex-col gap-1 rounded border border-border p-2">
             {manualPath ? (
               <>
@@ -243,6 +280,32 @@ export function DataExplorer() {
                 </Button>
               </>
             )}
+          </div>
+        )}
+        {importMode === 'paste' && (
+          <div className="flex flex-col gap-2">
+            <Input
+              size="sm"
+              placeholder={t('import.pasteName')}
+              value={pasteName}
+              onValueChange={setPasteName}
+            />
+            <Textarea
+              size="sm"
+              minRows={5}
+              placeholder={t('import.pastePlaceholder')}
+              value={pasteText}
+              onValueChange={setPasteText}
+            />
+            <Button
+              size="sm"
+              color="primary"
+              isLoading={loading}
+              isDisabled={!pasteText.trim()}
+              onPress={handlePasteImport}
+            >
+              {t('import.importText')}
+            </Button>
           </div>
         )}
       </CardBody>

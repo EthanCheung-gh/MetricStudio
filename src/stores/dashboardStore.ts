@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { DashboardConfig, DashboardFilter, DashboardItem, LayoutTemplate } from '@/types/dashboard'
+import type { DashboardConfig, DashboardFilter, DashboardItem, KpiItemConfig, LayoutTemplate } from '@/types/dashboard'
 import type { SelectionFilter } from '@/types/encoding'
 import { generateId } from '@/utils/id'
 
@@ -13,6 +13,10 @@ interface DashboardState {
   renameDashboard: (id: string, name: string) => void
   setActiveDashboard: (id: string | null) => void
   addItem: (dashboardId: string, chartId: string) => void
+  addKpiItem: (dashboardId: string, kpi: KpiItemConfig) => void
+  addTextItem: (dashboardId: string) => void
+  updateItemText: (dashboardId: string, itemId: string, text: string) => void
+  updateItemKpi: (dashboardId: string, itemId: string, kpi: Partial<KpiItemConfig>) => void
   removeItem: (dashboardId: string, chartId: string) => void
   moveItem: (dashboardId: string, chartId: string, x: number, y: number) => void
   resizeItem: (dashboardId: string, chartId: string, w: number, h: number) => void
@@ -81,6 +85,44 @@ export const useDashboardStore = create<DashboardState>()(
             const item: DashboardItem = { chartId, x: 0, y: 0, w: 6, h: 4 }
             return { ...d, items: [...d.items, item], updatedAt: new Date().toISOString() }
           }),
+        })),
+
+      addKpiItem: (dashboardId, kpi) =>
+        set((s) => ({
+          dashboards: touch(s.dashboards, dashboardId, (d) => ({
+            ...d,
+            items: [...d.items, { chartId: generateId(), kind: 'kpi', kpi, x: 0, y: 0, w: 3, h: 2 }],
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      addTextItem: (dashboardId) =>
+        set((s) => ({
+          dashboards: touch(s.dashboards, dashboardId, (d) => ({
+            ...d,
+            items: [...d.items, { chartId: generateId(), kind: 'text', text: '', x: 0, y: 0, w: 4, h: 2 }],
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      updateItemText: (dashboardId, itemId, text) =>
+        set((s) => ({
+          dashboards: touch(s.dashboards, dashboardId, (d) => ({
+            ...d,
+            items: d.items.map((i) => (i.chartId === itemId ? { ...i, text } : i)),
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      updateItemKpi: (dashboardId, itemId, kpi) =>
+        set((s) => ({
+          dashboards: touch(s.dashboards, dashboardId, (d) => ({
+            ...d,
+            items: d.items.map((i) =>
+              i.chartId === itemId && i.kpi ? { ...i, kpi: { ...i.kpi, ...kpi } } : i,
+            ),
+            updatedAt: new Date().toISOString(),
+          })),
         })),
 
       removeItem: (dashboardId, chartId) =>

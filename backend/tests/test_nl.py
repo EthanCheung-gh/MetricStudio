@@ -149,3 +149,52 @@ def test_narrate_endpoint(client, monkeypatch):
     assert "上升" in resp.json()["narrative"]
     # prompt carries insight text
     assert "均值" in captured["prompt"]
+
+
+def test_explain_chart_endpoint(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "date,value\n2024-01-01,100\n2024-02-01,200\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    captured = {}
+
+    def fake_chat(messages):
+        captured["prompt"] = messages[0]["content"]
+        return "value 从 100 上升到 200，接近翻倍。"
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post(
+        "/api/v1/nl/explain-chart",
+        json={
+            "dataset_id": dsid,
+            "encoding": {
+                "chartType": "line",
+                "x": {"field": "date"},
+                "yFields": [{"field": "value", "aggregate": "sum"}],
+            },
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert "上升" in resp.json()["explanation"]
+    # prompt carries both chart config and data context
+    assert "line" in captured["prompt"]
+    assert "value" in captured["prompt"]
+
+
+def test_explain_chart_llm_unavailable(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "a\n1\n2\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    monkeypatch.setattr(nl_module, "chat", lambda messages: (_ for _ in ()).throw(RuntimeError("no llm")))
+    resp = client.post("/api/v1/nl/explain-chart", json={"dataset_id": dsid, "encoding": {}})
+    assert resp.status_code == 502
+
+
+def test_explain_chart_unknown_dataset(client):
+    resp = client.post("/api/v1/nl/explain-chart", json={"dataset_id": "nope", "encoding": {}})
+    assert resp.status_code == 404

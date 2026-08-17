@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Database, ListTree, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Database, ListTree, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
 import { Button, Card, CardBody } from '@heroui/react'
 import { DataExplorer } from '@/components/data/DataExplorer'
 import { DatasetList } from '@/components/data/DatasetList'
@@ -51,6 +51,7 @@ function ChartsSection() {
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
   const removeChart = useChartStore((s) => s.removeChart)
+  const duplicateChart = useChartStore((s) => s.duplicateChart)
   const openChartTab = useWorkspaceStore((s) => s.openChartTab)
   const closeChartTab = useWorkspaceStore((s) => s.closeChartTab)
   const setChartConfigDialogOpen = useUIStore((s) => s.setChartConfigDialogOpen)
@@ -73,6 +74,11 @@ function ChartsSection() {
     updateEncoding(chart.id, rec.encoding)
     openChartTab(chart.id)
     setActiveChart(chart.id)
+  }
+
+  const handleDuplicateChart = (id: string) => {
+    const copy = duplicateChart(id)
+    if (copy) openChartTab(copy.id)
   }
 
   const handleDeleteChart = (id: string) => {
@@ -145,6 +151,16 @@ function ChartsSection() {
                   {chart.encoding.yFields.length}Y
                 </span>
               )}
+              <button
+                className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary/20 hover:text-primary shrink-0"
+                aria-label={`Duplicate ${chart.name}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDuplicateChart(chart.id)
+                }}
+              >
+                <Copy className="h-3 w-3" />
+              </button>
               <button
                 className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary/20 hover:text-primary shrink-0"
                 aria-label={`Configure ${chart.name}`}

@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { Button } from '@heroui/react'
-import { Download, Plus, Save, X } from 'lucide-react'
+import { Download, Plus, Presentation, Save, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -11,6 +11,8 @@ import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
 import { DashboardChartCard, type DashboardCardFilter } from './DashboardChartCard'
 import { DashboardFilterBar } from './DashboardFilterBar'
+import { KpiCard } from './KpiCard'
+import { TextCard } from './TextCard'
 
 const Grid = WidthProvider(GridLayout)
 
@@ -20,6 +22,10 @@ export function DashboardView() {
   const createDashboard = useDashboardStore((s) => s.createDashboard)
   const setActiveDashboard = useDashboardStore((s) => s.setActiveDashboard)
   const addItem = useDashboardStore((s) => s.addItem)
+  const addKpiItem = useDashboardStore((s) => s.addKpiItem)
+  const addTextItem = useDashboardStore((s) => s.addTextItem)
+  const updateItemText = useDashboardStore((s) => s.updateItemText)
+  const updateItemKpi = useDashboardStore((s) => s.updateItemKpi)
   const removeItem = useDashboardStore((s) => s.removeItem)
   const moveItem = useDashboardStore((s) => s.moveItem)
   const resizeItem = useDashboardStore((s) => s.resizeItem)
@@ -41,9 +47,43 @@ export function DashboardView() {
   const [exporting, setExporting] = useState(false)
   const [selectedChart, setSelectedChart] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState('')
+  const [presenting, setPresenting] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const dashboard = dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0]
   const activeBrushes = dashboard ? (brushSelections[dashboard.id] ?? {}) : {}
+
+  // Presentation mode: fullscreen the canvas, auto-cycle dashboards, hide chrome.
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setPresenting(false)
+    }
+    document.addEventListener('fullscreenchange', onFsChange)
+    return () => document.removeEventListener('fullscreenchange', onFsChange)
+  }, [])
+
+  useEffect(() => {
+    if (!presenting || dashboards.length < 2) return
+    const timer = setInterval(() => {
+      const idx = dashboards.findIndex((d) => d.id === activeDashboardId)
+      setActiveDashboard(dashboards[(idx + 1) % dashboards.length].id)
+    }, 8000)
+    return () => clearInterval(timer)
+  }, [presenting, dashboards, activeDashboardId, setActiveDashboard])
+
+  const togglePresent = async () => {
+    if (!presenting) {
+      try {
+        await containerRef.current?.requestFullscreen()
+        setPresenting(true)
+      } catch {
+        // Fullscreen unavailable; ignore.
+      }
+    } else {
+      await document.exitFullscreen().catch(() => {})
+      setPresenting(false)
+    }
+  }
 
   if (!dashboard) {
     return (
@@ -124,7 +164,17 @@ export function DashboardView() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-2 p-2">
+    <div ref={containerRef} className="relative flex h-full flex-col gap-2 bg-surface p-2">
+      {presenting && (
+        <button
+          className="absolute right-3 top-3 z-10 rounded bg-surface-elevated p-1.5 text-muted hover:text-foreground"
+          onClick={togglePresent}
+          aria-label="Exit presentation"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+      {!presenting && (
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <select
@@ -170,6 +220,15 @@ export function DashboardView() {
           >
             Export
           </Button>
+          <Button
+            size="sm"
+            variant="light"
+            isDisabled={dashboard.items.length === 0}
+            startContent={<Presentation className="h-3 w-3" />}
+            onPress={togglePresent}
+          >
+            Present
+          </Button>
           {layoutTemplates.length > 0 && (
             <select
               className="rounded border border-border bg-surface px-2 py-1 text-[11px]"
@@ -192,27 +251,45 @@ export function DashboardView() {
             </select>
           )}
         </div>
-        {availableCharts.length > 0 && (
-          <select
-            className="rounded border border-border bg-surface px-2 py-1 text-xs"
-            value={selectedChart}
-            onChange={(e) => {
-              if (e.target.value) {
-                addItem(dashboard.id, e.target.value)
-              }
-              setSelectedChart('')
-            }}
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="light"
+            isDisabled={!activeDataFrameId}
+            onPress={() =>
+              activeDataFrameId &&
+              addKpiItem(dashboard.id, { datasetId: activeDataFrameId, field: '', aggregate: 'sum' })
+            }
           >
-            <option value="">+ Add chart…</option>
-            {availableCharts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        )}
+            + KPI
+          </Button>
+          <Button size="sm" variant="light" onPress={() => addTextItem(dashboard.id)}>
+            + Text
+          </Button>
+          {availableCharts.length > 0 && (
+            <select
+              className="rounded border border-border bg-surface px-2 py-1 text-xs"
+              value={selectedChart}
+              onChange={(e) => {
+                if (e.target.value) {
+                  addItem(dashboard.id, e.target.value)
+                }
+                setSelectedChart('')
+              }}
+            >
+              <option value="">+ Add chart…</option>
+              {availableCharts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
+      )}
 
+      {!presenting && (
       <DashboardFilterBar
         dashboardId={dashboard.id}
         filters={dashboard.filters}
@@ -220,6 +297,7 @@ export function DashboardView() {
         preview={preview}
         datasetId={activeDataFrameId}
       />
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto">
         <Grid
@@ -239,6 +317,29 @@ export function DashboardView() {
           }}
         >
           {dashboard.items.map((item) => {
+            const kind = item.kind ?? 'chart'
+            if (kind === 'kpi') {
+              return (
+                <div key={item.chartId} className="h-full">
+                  <KpiCard
+                    item={item}
+                    onRemove={() => removeItem(dashboard.id, item.chartId)}
+                    onConfigure={(kpi) => updateItemKpi(dashboard.id, item.chartId, kpi)}
+                  />
+                </div>
+              )
+            }
+            if (kind === 'text') {
+              return (
+                <div key={item.chartId} className="h-full">
+                  <TextCard
+                    item={item}
+                    onRemove={() => removeItem(dashboard.id, item.chartId)}
+                    onChange={(text) => updateItemText(dashboard.id, item.chartId, text)}
+                  />
+                </div>
+              )
+            }
             const chart = charts.find((c) => c.id === item.chartId)
             if (!chart) return <div key={item.chartId} />
             return (

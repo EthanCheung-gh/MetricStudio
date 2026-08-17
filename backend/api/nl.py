@@ -51,6 +51,11 @@ class LLMConfig(BaseModel):
     api_key: str = ""
 
 
+class ExplainChartRequest(BaseModel):
+    dataset_id: str
+    encoding: dict[str, Any] = {}
+
+
 def _build_prompt(dataset: Any, query: str) -> str:
     columns = [(c.name, c.dtype) for c in dataset.meta.columns]
     col_desc = ", ".join(f"{name}({dtype})" for name, dtype in columns)
@@ -178,6 +183,52 @@ async def nl_narrate(payload: dict):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
     return {"narrative": narrative}
+
+
+def _describe_encoding(enc: dict[str, Any]) -> str:
+    """Human-readable summary of a chart encoding for the LLM prompt."""
+    if not enc:
+        return "(no chart config provided)"
+    parts = [f"chart type: {enc.get('chartType', '?')}"]
+    x = enc.get("x")
+    if isinstance(x, dict) and x.get("field"):
+        parts.append(f"x = {x['field']}")
+    yfs = enc.get("yFields") or []
+    if yfs:
+        parts.append(
+            "y = "
+            + ", ".join(
+                f"{y.get('field')}({y.get('aggregate') or 'raw'})" for y in yfs if isinstance(y, dict)
+            )
+        )
+    color = enc.get("color")
+    if isinstance(color, dict) and color.get("field"):
+        parts.append(f"color = {color['field']}")
+    return "; ".join(parts)
+
+
+@router.post("/explain-chart")
+async def explain_chart(request: ExplainChartRequest):
+    """Generate a Chinese natural-language interpretation of a chart."""
+    try:
+        dataset = session.get(request.dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    context = _build_data_context(dataset)
+    chart_desc = _describe_encoding(request.encoding)
+    prompt = (
+        "用户在一个数据分析工具中创建了一张图表。请基于下面的数据上下文与图表配置，"
+        "用简体中文写 2-4 句解读：主要趋势 / 分布 / 异常，以及一个值得进一步探索的方向。"
+        "只基于提供的数据，引用具体数字，不要编造。\n\n"
+        f"数据上下文:\n{context}\n\n"
+        f"图表配置:\n{chart_desc}\n\n"
+        "解读:"
+    )
+    try:
+        explanation = chat([{"role": "user", "content": prompt}])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
+    return {"explanation": explanation}
 
 
 @router.get("/config")

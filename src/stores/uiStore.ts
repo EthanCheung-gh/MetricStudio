@@ -15,6 +15,12 @@ export interface RecentProject {
   name: string;
 }
 
+export interface ShortcutKey {
+  key: string;
+  mod: boolean;
+  shift?: boolean;
+}
+
 interface UIState {
   notifications: Notification[];
   importModalOpen: boolean;
@@ -30,8 +36,11 @@ interface UIState {
   cleaningScanVersion: number;
   reportTemplates: ReportTemplate[];
   language: Language;
+  shortcutOverrides: Record<string, ShortcutKey | null>;
 
   addNotification: (type: Notification['type'], message: string) => void;
+  setShortcutOverride: (actionId: string, key: ShortcutKey | null) => void;
+  resetShortcuts: () => void;
   removeNotification: (id: string) => void;
   setImportModalOpen: (open: boolean) => void;
   setChartConfigDialogOpen: (open: boolean) => void;
@@ -67,6 +76,7 @@ export const useUIStore = create<UIState>()(
   cleaningScanVersion: 0,
   reportTemplates: [],
   language: 'zh',
+  shortcutOverrides: {},
 
   addNotification: (type, message) => {
     const id = `${++notificationId}`;
@@ -111,6 +121,9 @@ export const useUIStore = create<UIState>()(
   },
   setBackendStatus: (connected, message) =>
     set({ backendConnected: connected, backendStatusMessage: message || (connected ? 'Connected' : 'Disconnected') }),
+  setShortcutOverride: (actionId, key) =>
+    set((s) => ({ shortcutOverrides: { ...s.shortcutOverrides, [actionId]: key } })),
+  resetShortcuts: () => set({ shortcutOverrides: {} }),
     }),
     {
       name: 'metricstudio-ui',
@@ -120,6 +133,7 @@ export const useUIStore = create<UIState>()(
         recentProjects: state.recentProjects,
         reportTemplates: state.reportTemplates,
         language: state.language,
+        shortcutOverrides: state.shortcutOverrides,
       }),
     },
   ),

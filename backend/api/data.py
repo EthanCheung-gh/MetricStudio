@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 from tempfile import NamedTemporaryFile
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
 from backend.core.session import session
@@ -15,18 +15,53 @@ router = APIRouter(prefix="/api/v1/data", tags=["data"])
 
 
 @router.post("/import", response_model=list[DataFrameMeta], response_model_by_alias=True)
-async def import_file(file: UploadFile = File(...)):
+async def import_file(file: UploadFile = File(...), merge_sheets: bool = Form(False)):
     suffix = Path(file.filename or "data.csv").suffix
     try:
         contents = await file.read()
         with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             tmp.write(contents)
             tmp_path = tmp.name
-        datasets = session.import_file(tmp_path, name=file.filename)
+        datasets = session.import_file(tmp_path, name=file.filename, merge_sheets=merge_sheets)
         Path(tmp_path).unlink(missing_ok=True)
         return [ds.to_meta() for ds in datasets]
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _parse_pasted_text(text: str) -> pd.DataFrame:
+    """Parse pasted text: a JSON array/object, or delimited text (comma/tab/semicolon)."""
+    s = text.strip()
+    if s.startswith("[") or s.startswith("{"):
+        import json as _json
+
+        try:
+            data = _json.loads(s)
+        except _json.JSONDecodeError:
+            # NDJSON: one JSON object per line
+            return pd.read_json(io.StringIO(s), lines=True)
+        if isinstance(data, list):
+            return pd.json_normalize(data)
+        return pd.json_normalize([data])
+    # Delimited text: let pandas sniff the separator (tab for Excel copies, comma, etc.)
+    return pd.read_csv(io.StringIO(s), sep=None, engine="python")
+
+
+@router.post("/import-text", response_model=list[DataFrameMeta], response_model_by_alias=True)
+async def import_text(payload: dict):
+    """Import pasted text (CSV / TSV / JSON records) as a new dataset (no source file)."""
+    name = str(payload.get("name") or "Pasted data")
+    text = str(payload.get("text") or "")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="No text provided")
+    try:
+        df = _parse_pasted_text(text)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse pasted text: {exc}") from exc
+    if df.empty:
+        raise HTTPException(status_code=400, detail="Pasted text produced no rows")
+    dataset = session.import_dataframe(df, name=name)
+    return [dataset.to_meta()]
 
 
 @router.get("/list", response_model=list[DataFrameMeta], response_model_by_alias=True)
@@ -180,6 +215,41 @@ async def describe_dataframe(dataset_id: str):
 async def delete_dataframe(dataset_id: str):
     session.delete_dataset(dataset_id)
     return {"ok": True}
+
+
+@router.get("/{dataset_id}/aggregate")
+async def aggregate_value(dataset_id: str, field: str, agg: str = "sum"):
+    """Single aggregate value for a field (drives dashboard KPI cards)."""
+    try:
+        dataset = session.get(dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    df = dataset.df
+    if field not in df.columns:
+        raise HTTPException(status_code=404, detail=f"Column not found: {field}")
+    series = df[field]
+    try:
+        if agg == "sum":
+            val = series.sum()
+        elif agg == "mean":
+            val = series.mean()
+        elif agg == "count":
+            val = int(series.count())
+        elif agg == "min":
+            val = series.min()
+        elif agg == "max":
+            val = series.max()
+        elif agg == "nunique":
+            val = int(series.nunique())
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported agg: {agg}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Aggregation failed: {exc}") from exc
+    if val is None or (isinstance(val, float) and val != val):  # None or NaN
+        return {"value": None}
+    return {"value": float(val)}
 
 
 @router.get("/{dataset_id}/export")

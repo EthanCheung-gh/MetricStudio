@@ -25,7 +25,8 @@ interface DataState {
 
   setActiveDataFrame: (id: string | null) => void;
   loadDataFrames: () => Promise<void>;
-  importFile: (file: File) => Promise<DataFrameMeta>;
+  importFile: (file: File, mergeSheets?: boolean) => Promise<DataFrameMeta>;
+  importText: (name: string, text: string) => Promise<DataFrameMeta>;
   refreshActiveDataFrame: () => Promise<void>;
   removeDataFrame: (id: string) => Promise<void>;
   setNarrative: (id: string, text: string) => void;
@@ -61,10 +62,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  importFile: async (file) => {
+  importFile: async (file, mergeSheets = false) => {
     set({ loading: true, error: null });
     try {
-      const results: DataFrameMeta[] = await api.importFile(file);
+      const results: DataFrameMeta[] = await api.importFile(file, mergeSheets);
       set((state) => ({
         dataFrames: [...state.dataFrames, ...results],
         activeDataFrameId: results[0]?.id || state.activeDataFrameId,
@@ -77,6 +78,27 @@ export const useDataStore = create<DataState>((set, get) => ({
       }
       if (results.length > 1) {
         useUIStore.getState().addNotification('success', `Imported ${results.length} sheets from ${file.name}`);
+      }
+      return results[0];
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Import failed', loading: false });
+      throw err;
+    }
+  },
+
+  importText: async (name, text) => {
+    set({ loading: true, error: null });
+    try {
+      const results: DataFrameMeta[] = await api.importText(name, text);
+      set((state) => ({
+        dataFrames: [...state.dataFrames, ...results],
+        activeDataFrameId: results[0]?.id || state.activeDataFrameId,
+        loading: false,
+      }));
+      if (results[0]) {
+        setTimeout(() => {
+          get().setActiveDataFrame(results[0].id);
+        }, 0);
       }
       return results[0];
     } catch (err) {

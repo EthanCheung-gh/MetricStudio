@@ -20,6 +20,7 @@ interface ChartState {
   error: string | null;
 
   createChart: (datasetId: string, name?: string) => ChartConfig;
+  duplicateChart: (id: string) => ChartConfig | null;
   setActiveChart: (id: string | null) => void;
   updateEncoding: (id: string, encoding: Partial<ChartEncoding>) => void;
   updateLayout: (id: string, layout: Record<string, unknown>) => void;
@@ -75,6 +76,22 @@ export const useChartStore = create<ChartState>()(
           activeChartId: chart.id,
         }));
         return chart;
+      },
+
+      duplicateChart: (id) => {
+        const source = get().charts.find((c) => c.id === id);
+        if (!source) return null;
+        const copy: ChartConfig = {
+          ...source,
+          id: generateId(),
+          name: `${source.name} copy`,
+          encoding: JSON.parse(JSON.stringify(source.encoding)),
+          layout: JSON.parse(JSON.stringify(source.layout)),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        set((state) => ({ charts: [...state.charts, copy], activeChartId: copy.id }));
+        return copy;
       },
 
       setActiveChart: (id) => set({ activeChartId: id }),

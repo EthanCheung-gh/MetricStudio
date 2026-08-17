@@ -7,10 +7,9 @@ import { useBackend } from '@/hooks/useBackend'
 import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
-import { useCommandPaletteStore } from '@/stores/commandPaletteStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useTranslation } from 'react-i18next'
-import { globalUndo, globalRedo } from '@/utils/globalHistory'
+import { getEffectiveBindings, matchShortcut } from '@/utils/shortcuts'
 import type { FieldType } from '@/types/encoding'
 
 function App() {
@@ -55,44 +54,19 @@ function App() {
   const everConnectedRef = useRef(false)
   if (connected) everConnectedRef.current = true
 
-  // Global keyboard shortcuts (Ctrl/Cmd+K palette, Ctrl+Z undo, Ctrl+S save, …)
+  // Global keyboard shortcuts, driven by the rebindable registry (utils/shortcuts).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey
-      if (!mod) return
       const target = e.target as HTMLElement
       const isTyping =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-      const key = e.key.toLowerCase()
-
-      // Ctrl+K / Ctrl+P -> command palette
-      if (key === 'k' || key === 'p') {
+      const bindings = getEffectiveBindings(useUIStore.getState().shortcutOverrides)
+      for (const b of bindings) {
+        if (!matchShortcut(e, b.key)) continue
+        if (isTyping && !b.allowTyping) continue
         e.preventDefault()
-        useCommandPaletteStore.getState().toggle()
+        b.run()
         return
-      }
-      // Ctrl+S -> save project dialog
-      if (key === 's' && !isTyping) {
-        e.preventDefault()
-        useUIStore.getState().setSaveProjectModalOpen(true)
-        return
-      }
-      // Ctrl+Z -> global undo (skip while typing in a field)
-      if (key === 'z' && !e.shiftKey && !isTyping) {
-        e.preventDefault()
-        globalUndo()
-        return
-      }
-      // Ctrl+Shift+Z / Ctrl+Y -> global redo
-      if ((key === 'z' && e.shiftKey) || key === 'y') {
-        e.preventDefault()
-        globalRedo()
-      }
-
-      // '?' -> shortcuts panel
-      if (key === '?' && !isTyping) {
-        e.preventDefault()
-        useUIStore.getState().setShortcutsOpen(true)
       }
     }
     window.addEventListener('keydown', onKeyDown)

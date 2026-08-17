@@ -97,11 +97,17 @@ export const api = {
   health: () => fetchJson<{ status: string }>('/health'),
 
   // Data
-  importFile: (file: File) => {
+  importFile: (file: File, mergeSheets = false) => {
     const formData = new FormData();
     formData.append('file', file);
+    if (mergeSheets) formData.append('merge_sheets', 'true');
     return postForm<DataFrameMeta[]>('/api/v1/data/import', formData);
   },
+  importText: (name: string, text: string) =>
+    fetchJson<DataFrameMeta[]>('/api/v1/data/import-text', {
+      method: 'POST',
+      body: JSON.stringify({ name, text }),
+    }),
   listDataFrames: () => fetchJson<DataFrameMeta[]>('/api/v1/data/list'),
   lineage: () => fetchJson<LineageResponse>('/api/v1/data/lineage'),
   quality: (id: string) => fetchJson<QualityReport>(`/api/v1/data/${id}/quality`),
@@ -119,6 +125,10 @@ export const api = {
   insights: (id: string) =>
     fetchJson<{ insights: { type: string; text: string; evidence: Record<string, unknown> }[] }>(
       `/api/v1/data/${id}/insights`
+    ),
+  aggregateValue: (id: string, field: string, agg: string) =>
+    fetchJson<{ value: number | null }>(
+      `/api/v1/data/${id}/aggregate?field=${encodeURIComponent(field)}&agg=${agg}`
     ),
   getDataFrame: (id: string) => fetchJson<DataFrameMeta>(`/api/v1/data/${id}`),
   previewDataFrame: (id: string, limit = 100, at?: number) =>
@@ -251,6 +261,11 @@ export const api = {
     fetchJson<{ answer: string }>('/api/v1/nl/ask', {
       method: 'POST',
       body: JSON.stringify({ dataset_id: datasetId, question }),
+    }),
+  explainChart: (datasetId: string, encoding: ChartEncoding) =>
+    fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {
+      method: 'POST',
+      body: JSON.stringify({ dataset_id: datasetId, encoding }),
     }),
   getLLMConfig: () =>
     fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config'),
