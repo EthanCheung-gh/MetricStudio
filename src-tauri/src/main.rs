@@ -1,6 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, State};
 use tauri_plugin_shell::ShellExt;
@@ -36,18 +35,7 @@ fn start_sidecar(app: &tauri::AppHandle, port: u16) -> Result<(), String> {
     let shell = app.shell();
     // In production, the sidecar binary is bundled as `python-sidecar`.
     // In development, we spawn `python backend/main.py` from the project root.
-    let (command, args): (std::borrow::Cow<str>, Vec<std::borrow::Cow<str>>) = if cfg!(dev) {
-        (
-            "python".into(),
-            vec!["backend/main.py".into()],
-        )
-    } else {
-        (
-            "python-sidecar".into(),
-            vec![],
-        )
-    };
-
+    let command: &str = if cfg!(dev) { "python" } else { "python-sidecar" };
     let sidecar = shell.sidecar(command).map_err(|e| e.to_string())?;
     let (_rx, child) = sidecar
         .env("METRICSTUDIO_PORT", port.to_string())
@@ -55,13 +43,15 @@ fn start_sidecar(app: &tauri::AppHandle, port: u16) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     let state: State<'_, SidecarState> = app.state();
-    *state.child.lock().unwrap() = Some(child);
+    let mut guard = state.child.lock().unwrap();
+    *guard = Some(child);
     Ok(())
 }
 
 fn stop_sidecar(app: &tauri::AppHandle) {
     let state: State<'_, SidecarState> = app.state();
-    if let Some(child) = state.child.lock().unwrap().take() {
+    let mut guard = state.child.lock().unwrap();
+    if let Some(child) = guard.take() {
         let _ = child.kill();
     }
 }
@@ -74,16 +64,16 @@ fn main() {
             port,
             child: Arc::new(Mutex::new(None)),
         })
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
             start_sidecar(&handle, port).map_err(|e| {
                 eprintln!("Failed to start sidecar: {}", e);
             }).ok();
             Ok(())
         })
-        .on_window_event(|app, event| {
+        .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                stop_sidecar(app);
+                stop_sidecar(window.app_handle());
             }
         })
         .invoke_handler(tauri::generate_handler![get_backend_port, restart_sidecar])
