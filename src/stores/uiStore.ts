@@ -37,6 +37,7 @@ interface UIState {
   reportTemplates: ReportTemplate[];
   language: Language;
   shortcutOverrides: Record<string, ShortcutKey | null>;
+  sampleWizardDismissed: boolean;
 
   addNotification: (type: Notification['type'], message: string) => void;
   setShortcutOverride: (actionId: string, key: ShortcutKey | null) => void;
@@ -55,6 +56,7 @@ interface UIState {
   saveReportTemplate: (t: Omit<ReportTemplate, 'id'>) => void;
   removeReportTemplate: (id: string) => void;
   setLanguage: (lang: Language) => void;
+  setSampleWizardDismissed: (dismissed: boolean) => void;
 }
 
 let notificationId = 0;
@@ -77,6 +79,7 @@ export const useUIStore = create<UIState>()(
   reportTemplates: [],
   language: 'zh',
   shortcutOverrides: {},
+  sampleWizardDismissed: false,
 
   addNotification: (type, message) => {
     const id = `${++notificationId}`;
@@ -119,6 +122,7 @@ export const useUIStore = create<UIState>()(
     // Drive i18next directly so switching never depends on a component-level effect
     void i18n.changeLanguage(language);
   },
+  setSampleWizardDismissed: (sampleWizardDismissed) => set({ sampleWizardDismissed }),
   setBackendStatus: (connected, message) =>
     set({ backendConnected: connected, backendStatusMessage: message || (connected ? 'Connected' : 'Disconnected') }),
   setShortcutOverride: (actionId, key) =>
@@ -134,6 +138,7 @@ export const useUIStore = create<UIState>()(
         reportTemplates: state.reportTemplates,
         language: state.language,
         shortcutOverrides: state.shortcutOverrides,
+        sampleWizardDismissed: state.sampleWizardDismissed,
       }),
     },
   ),

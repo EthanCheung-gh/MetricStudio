@@ -7,6 +7,16 @@ import pandas as pd
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+def test_sample_import_is_idempotent(client):
+    first = client.post("/api/v1/data/sample")
+    second = client.post("/api/v1/data/sample")
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["id"] == second.json()["id"]
+    assert first.json()["name"] == "MetricStudio Sample"
+    assert first.json()["rows"] > 0
+
+
 def test_import_text_tsv(client):
     """Pasted TSV (an Excel copy) is parsed via separator sniffing."""
     tsv = "name\tvalue\na\t10\nb\t20\n"

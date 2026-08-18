@@ -29,6 +29,7 @@ interface DataState {
   loadDataFrames: () => Promise<void>;
   importFile: (file: File, mergeSheets?: boolean) => Promise<DataFrameMeta>;
   importText: (name: string, text: string) => Promise<DataFrameMeta>;
+  importSample: () => Promise<DataFrameMeta>;
   refreshActiveDataFrame: () => Promise<void>;
   loadPreviewPage: (query: PreviewQuery) => Promise<void>;
   removeDataFrame: (id: string) => Promise<void>;
@@ -106,6 +107,28 @@ export const useDataStore = create<DataState>((set, get) => ({
       return results[0];
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Import failed', loading: false });
+      throw err;
+    }
+  },
+
+  importSample: async () => {
+    set({ loading: true, error: null });
+    try {
+      const sample = await api.importSample();
+      set((state) => ({
+        dataFrames: state.dataFrames.some((dataset) => dataset.id === sample.id)
+          ? state.dataFrames
+          : [...state.dataFrames, sample],
+        activeDataFrameId: sample.id,
+        preview: null,
+        describe: null,
+        columns: [],
+        loading: false,
+      }));
+      await get().refreshActiveDataFrame();
+      return sample;
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Sample import failed', loading: false });
       throw err;
     }
   },

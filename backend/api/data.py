@@ -49,6 +49,27 @@ def _parse_pasted_text(text: str) -> pd.DataFrame:
     return pd.read_csv(io.StringIO(s), sep=None, engine="python")
 
 
+@router.post("/sample", response_model=DataFrameMeta, response_model_by_alias=True)
+async def import_sample():
+    """Import the bundled sample once, returning the existing sample on repeated calls."""
+    try:
+        for dataset_id, source in session.sources.items():
+            if source.get("kind") == "sample" and dataset_id in session.datasets:
+                return session.get(dataset_id).to_meta()
+        sample_path = Path(__file__).resolve().parents[2] / "sample_data.csv"
+        if not sample_path.exists():
+            # PyInstaller onefile extracts bundled data under sys._MEIPASS.
+            import sys
+
+            sample_path = Path(getattr(sys, "_MEIPASS", "")) / "sample_data.csv"
+        dataset = session.import_file(sample_path, name="MetricStudio Sample")[0]
+        session.sources[dataset.id]["kind"] = "sample"
+        session._persist(dataset)
+        return dataset.to_meta()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/import-text", response_model=list[DataFrameMeta], response_model_by_alias=True)
 async def import_text(payload: dict):
     """Import pasted text (CSV / TSV / JSON records) as a new dataset (no source file)."""

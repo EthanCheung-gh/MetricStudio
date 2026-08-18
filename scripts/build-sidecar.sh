@@ -40,6 +40,7 @@ mkdir -p "$OUT_DIR"
 
 # --distpath/--workpath/--specpath keep intermediates out of the repo root.
 "$PY" -m PyInstaller --onefile --name python-sidecar --paths . \
+  --add-data "sample_data.csv:." \
   --distpath dist --workpath build --specpath build backend/main.py
 
 cp "dist/python-sidecar" "$OUT_DIR/python-sidecar-${TRIPLE}"

@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Database, X, Plus, SlidersHorizontal, LayoutDashboard } from 'lucide-react'
+import { Database, X, Plus, SlidersHorizontal, LayoutDashboard, Sparkles } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { DataView } from '@/components/data/DataView'
 import { ChartCanvas } from '@/components/chart/ChartCanvas'
@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
+import { useDashboardStore } from '@/stores/dashboardStore'
 import { useUIStore } from '@/stores/uiStore'
 
 export function CenterArea() {
@@ -26,6 +27,37 @@ export function CenterArea() {
   const charts = useChartStore((s) => s.charts)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const setChartConfigDialogOpen = useUIStore((s) => s.setChartConfigDialogOpen)
+  const backendConnected = useUIStore((s) => s.backendConnected)
+  const sampleWizardDismissed = useUIStore((s) => s.sampleWizardDismissed)
+  const setSampleWizardDismissed = useUIStore((s) => s.setSampleWizardDismissed)
+  const addNotification = useUIStore((s) => s.addNotification)
+  const importSample = useDataStore((s) => s.importSample)
+  const dashboards = useDashboardStore((s) => s.dashboards)
+
+  const startSampleTour = async () => {
+    try {
+      const sample = await importSample()
+      let chart = useChartStore.getState().charts.find((item) => item.datasetId === sample.id && item.name === t('sample.chartName'))
+      if (!chart) {
+        chart = useChartStore.getState().createChart(sample.id, t('sample.chartName'))
+        useChartStore.getState().updateEncoding(chart.id, {
+          chartType: 'bar',
+          x: { field: 'category', type: 'nominal' },
+          yFields: [{ field: 'value', type: 'quantitative', aggregate: 'sum', axis: 'left', normalize: 'none' }],
+          color: { field: 'region', type: 'nominal' },
+        })
+      }
+      let dashboard = useDashboardStore.getState().dashboards.find((item) => item.items.some((entry) => entry.chartId === chart.id))
+      if (!dashboard) dashboard = useDashboardStore.getState().createDashboard()
+      useDashboardStore.getState().addItem(dashboard.id, chart.id)
+      useWorkspaceStore.getState().openChartTab(chart.id)
+      useWorkspaceStore.getState().setActiveTab('chart')
+      setSampleWizardDismissed(true)
+      addNotification('success', t('sample.ready'))
+    } catch (error) {
+      addNotification('error', error instanceof Error ? error.message : t('sample.failed'))
+    }
+  }
 
   if (loading && dataFrames.length === 0) {
     return (
@@ -36,11 +68,38 @@ export function CenterArea() {
   }
 
   if (dataFrames.length === 0) {
+    const showWizard = !sampleWizardDismissed && charts.length === 0 && dashboards.length === 0
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-background text-muted">
+      <div className="flex h-full flex-col items-center justify-center gap-3 bg-background px-6 text-muted">
         <Database className="h-12 w-12 opacity-20" />
-        <p className="text-sm">{t('layout.noDataset')}</p>
-        <p className="text-xs">{t('layout.importHint')}</p>
+        <p className="text-sm font-semibold text-foreground">{showWizard ? t('sample.welcome') : t('layout.noDataset')}</p>
+        <p className="max-w-lg text-center text-xs">{showWizard ? t('sample.description') : t('layout.importHint')}</p>
+        <div className="flex gap-2">
+          <Button
+            color="primary"
+            startContent={<Sparkles className="h-4 w-4" />}
+            isDisabled={!backendConnected}
+            isLoading={loading}
+            onPress={startSampleTour}
+          >
+            {t('sample.start')}
+          </Button>
+          <Button variant="light" onPress={() => useUIStore.getState().setImportModalOpen(true)}>
+            {t('sample.importOwn')}
+          </Button>
+          {showWizard && <Button variant="light" onPress={() => setSampleWizardDismissed(true)}>{t('sample.skip')}</Button>}
+        </div>
+        {!backendConnected && <p className="text-xs text-warning">{t('sample.backendRequired')}</p>}
+        {showWizard && (
+          <div className="mt-2 grid max-w-2xl grid-cols-3 gap-3 text-xs">
+            {[t('sample.stepData'), t('sample.stepChart'), t('sample.stepDashboard')].map((step, index) => (
+              <div key={step} className="rounded border border-border bg-surface p-3 text-center">
+                <div className="mb-1 font-semibold text-primary">{index + 1}</div>
+                <div>{step}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     )
   }

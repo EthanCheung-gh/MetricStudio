@@ -127,6 +127,7 @@ export const api = {
     if (mergeSheets) formData.append('merge_sheets', 'true');
     return postForm<DataFrameMeta[]>('/api/v1/data/import', formData);
   },
+  importSample: () => fetchJson<DataFrameMeta>('/api/v1/data/sample', { method: 'POST' }),
   importText: (name: string, text: string) =>
     fetchJson<DataFrameMeta[]>('/api/v1/data/import-text', {
       method: 'POST',
