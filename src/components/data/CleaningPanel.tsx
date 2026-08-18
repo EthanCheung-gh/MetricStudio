@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, Play, RefreshCw, Save, Sparkles, Trash2 } from 'lucide-react'
-import { Button, Input } from '@heroui/react'
+import { Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
-import type { QualityReport, UserRecipe } from '@/types/data'
+import type { QualityFixPlan, QualityReport, UserRecipe } from '@/types/data'
 
 interface RecipePreset {
   id: string
@@ -27,6 +27,9 @@ export function CleaningPanel() {
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [savingRecipe, setSavingRecipe] = useState(false)
+  const [fixPlan, setFixPlan] = useState<QualityFixPlan | null>(null)
+  const [planningFix, setPlanningFix] = useState(false)
+  const [applyingFix, setApplyingFix] = useState(false)
 
   const load = useCallback(async () => {
     if (!activeDataFrameId) return
@@ -50,6 +53,7 @@ export function CleaningPanel() {
 
   useEffect(() => {
     setReport(null)
+    setFixPlan(null)
     load()
     loadRecipes()
   }, [load, loadRecipes, cleaningScanVersion])
@@ -65,6 +69,38 @@ export function CleaningPanel() {
       addNotification('error', err instanceof Error ? err.message : 'Recipe failed')
     } finally {
       setApplying(null)
+    }
+  }
+
+  const previewSuggestedFixes = async () => {
+    if (!activeDataFrameId) return
+    setPlanningFix(true)
+    try {
+      const plan = await api.qualityFixPreview(activeDataFrameId)
+      if (plan.operations.length === 0) {
+        addNotification('info', t('clean.noSafeFixes'))
+        return
+      }
+      setFixPlan(plan)
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('clean.fixPreviewFailed'))
+    } finally {
+      setPlanningFix(false)
+    }
+  }
+
+  const applySuggestedFixes = async () => {
+    if (!activeDataFrameId || !fixPlan || fixPlan.datasetId !== activeDataFrameId) return
+    setApplyingFix(true)
+    try {
+      await api.applyBatch(activeDataFrameId, fixPlan.operations)
+      setFixPlan(null)
+      await Promise.all([load(), refreshActiveDataFrame()])
+      addNotification('success', t('clean.fixesApplied'))
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('clean.fixApplyFailed'))
+    } finally {
+      setApplyingFix(false)
     }
   }
 
@@ -120,6 +156,19 @@ export function CleaningPanel() {
       </div>
 
       {loading && !report && <div className="text-[11px] text-muted">{t('clean.scanning')}</div>}
+
+      {report && report.issues.some((issue) => ['missing', 'duplicates', 'outliers', 'type'].includes(issue.id)) && (
+        <Button
+          size="sm"
+          color="primary"
+          variant="flat"
+          isLoading={planningFix}
+          startContent={<Sparkles className="h-3.5 w-3.5" />}
+          onPress={previewSuggestedFixes}
+        >
+          {t('clean.previewSuggestedFixes')}
+        </Button>
+      )}
 
       {report && report.issues.length === 0 && (
         <div className="flex items-center gap-1.5 text-[11px] text-success">
@@ -229,6 +278,59 @@ export function CleaningPanel() {
           <div className="text-[11px] text-muted">{t('clean.recipeHint')}</div>
         )}
       </div>
+
+      <Modal isOpen={!!fixPlan} onClose={() => setFixPlan(null)} size="2xl" scrollBehavior="inside">
+        <ModalContent>
+          <ModalHeader>{t('clean.fixPreviewTitle')}</ModalHeader>
+          <ModalBody className="gap-3 text-xs">
+            {fixPlan && (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {fixPlan.issues.map((issue) => (
+                    <div key={`${issue.id}-${issue.columns.join(',')}`} className="rounded border border-border p-2">
+                      <div className="font-semibold">{issue.title}</div>
+                      <div className="text-muted">{t('clean.affectedCount', { count: fixPlan.affected[issue.id] ?? 0 })}</div>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <div className="mb-1 font-semibold">{t('clean.operationPlan')}</div>
+                  <div className="max-h-36 overflow-auto rounded border border-border p-2 font-mono text-[11px]">
+                    {fixPlan.operations.map((operation, index) => (
+                      <div key={`${operation.type}-${index}`}>{index + 1}. {operation.type} {JSON.stringify(operation.params)}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-4 text-muted">
+                  <span>{t('diff.rows')}: {fixPlan.diff.left_rows} → {fixPlan.diff.right_rows}</span>
+                  <span>{t('diff.cols')}: {fixPlan.diff.left_cols} → {fixPlan.diff.right_cols}</span>
+                </div>
+                <div>
+                  <div className="mb-1 font-semibold">{t('clean.resultPreview')}</div>
+                  <div className="overflow-auto rounded border border-border">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-surface-elevated text-left text-muted">
+                        <tr>{fixPlan.preview.columns.map((column) => <th key={column} className="px-2 py-1">{column}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {fixPlan.preview.rows.slice(0, 8).map((row, rowIndex) => (
+                          <tr key={rowIndex} className="border-t border-border">
+                            {row.map((value, columnIndex) => <td key={columnIndex} className="px-2 py-1">{String(value ?? '')}</td>)}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={() => setFixPlan(null)}>{t('common.cancel')}</Button>
+            <Button color="primary" isLoading={applyingFix} onPress={applySuggestedFixes}>{t('clean.applySuggestedFixes')}</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

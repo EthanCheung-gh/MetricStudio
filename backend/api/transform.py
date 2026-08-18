@@ -22,7 +22,7 @@ from backend.models.transform import (
     GroupbyRequest,
     SampleRequest,
 )
-from backend.core.recipes import recipe_steps_for_issue
+from backend.core.recipes import build_quality_fix_plan, recipe_steps_for_issue
 
 router = APIRouter(prefix="/api/v1/transform", tags=["transform"])
 
@@ -181,6 +181,33 @@ async def undo(dataset_id: str, request: UndoRequest):
         return DataPreview(**dataset.preview(100))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/quality-fix/preview")
+async def quality_fix_preview(dataset_id: str, payload: dict):
+    """Build and execute a quality-fix plan on a scratch dataset without changing history."""
+    from backend.core.dataframe import Dataset
+    from backend.api.data import _diff_frames
+
+    try:
+        dataset = session.get(dataset_id)
+        issue_ids = payload.get("issue_ids")
+        if issue_ids is not None and not isinstance(issue_ids, list):
+            raise ValueError("issue_ids must be a list")
+        plan = build_quality_fix_plan(dataset.df, issue_ids)
+        scratch = Dataset(dataset.df.copy(), name=f"{dataset.name}-quality-preview", engine=dataset.engine)
+        for operation in plan["operations"]:
+            scratch.apply(operation)
+        return {
+            "datasetId": dataset_id,
+            **plan,
+            "preview": DataPreview(**scratch.preview(20)).model_dump(by_alias=True),
+            "diff": _diff_frames(dataset.df, scratch.df),
+        }
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{dataset_id}/batch", response_model=DataPreview, response_model_by_alias=True)

@@ -75,6 +75,65 @@ def test_batch_endpoint(dirty_dataset, client):
     assert r.status_code == 200 and r.json()["totalRows"] == 9
 
 
+def test_quality_fix_preview_is_read_only_and_excludes_destructive_dropna(dirty_dataset, client):
+    dsid = dirty_dataset["id"]
+    history_before = client.get(f"/api/v1/transform/{dsid}/history").json()
+
+    response = client.post(f"/api/v1/transform/{dsid}/quality-fix/preview", json={})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    operation_types = [operation["type"] for operation in body["operations"]]
+    assert "dedupe" in operation_types
+    assert "fillna" in operation_types
+    assert "clip" in operation_types
+    assert "parse_numeric" in operation_types
+    assert body["datasetId"] == dsid
+    assert "dropna" not in operation_types
+    assert body["diff"]["left_rows"] == 10
+    assert body["diff"]["right_rows"] == 9
+    assert body["preview"]["totalRows"] == 9
+    assert client.get(f"/api/v1/transform/{dsid}/history").json() == history_before
+
+
+def test_quality_fix_preview_operations_apply_as_one_batch(dirty_dataset, client):
+    dsid = dirty_dataset["id"]
+    plan = client.post(f"/api/v1/transform/{dsid}/quality-fix/preview", json={}).json()
+    applied = client.post(
+        f"/api/v1/transform/{dsid}/batch",
+        json={"operations": plan["operations"]},
+    )
+    assert applied.status_code == 200, applied.text
+    remaining = {issue["id"] for issue in client.get(f"/api/v1/data/{dsid}/quality").json()["issues"]}
+    assert "duplicates" not in remaining
+    assert "missing" not in remaining
+    assert "outliers" not in remaining
+    assert "type" not in remaining
+
+
+def test_quality_fix_preview_skips_all_nan_numeric_columns(client):
+    csv = "value\n\n\n"
+    imported = client.post(
+        "/api/v1/data/import",
+        files={"file": ("empty-numeric.csv", csv.encode(), "text/csv")},
+    )
+    dataset_id = imported.json()[0]["id"]
+    response = client.post(f"/api/v1/transform/{dataset_id}/quality-fix/preview", json={})
+    assert response.status_code == 200, response.text
+    assert all(
+        not (operation["type"] == "fillna" and operation["params"].get("column") == "value")
+        for operation in response.json()["operations"]
+    )
+
+
+def test_quality_fix_preview_rejects_invalid_issue_ids_shape(dirty_dataset, client):
+    response = client.post(
+        f"/api/v1/transform/{dirty_dataset['id']}/quality-fix/preview",
+        json={"issue_ids": "missing"},
+    )
+    assert response.status_code == 400
+
+
 def test_recipe_matches_rule_detection(dirty_dataset, client):
     """The applied recipe must actually fix what the detector reported."""
     dsid = dirty_dataset["id"]

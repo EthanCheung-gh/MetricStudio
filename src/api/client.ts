@@ -11,6 +11,7 @@ import type {
   TransformHistoryItem,
   LineageResponse,
   QualityReport,
+  QualityFixPlan,
   UserRecipe,
 } from '@/types/data';
 import type { PlotlyFigure } from '@/types/plotly';
@@ -134,6 +135,11 @@ export const api = {
   listDataFrames: () => fetchJson<DataFrameMeta[]>('/api/v1/data/list'),
   lineage: () => fetchJson<LineageResponse>('/api/v1/data/lineage'),
   quality: (id: string) => fetchJson<QualityReport>(`/api/v1/data/${id}/quality`),
+  qualityFixPreview: (id: string, issueIds?: string[]) =>
+    fetchJson<QualityFixPlan>(`/api/v1/transform/${id}/quality-fix/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ issue_ids: issueIds }),
+    }),
   listRecipes: () =>
     fetchJson<{ presets: { id: string; name: string; description: string; dynamic: boolean }[]; custom: UserRecipe[] }>(
       '/api/v1/recipes'

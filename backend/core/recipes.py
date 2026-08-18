@@ -61,8 +61,9 @@ def build_steps(recipe_id: str, df: pd.DataFrame) -> list[dict[str, Any]]:
         steps = []
         for col in df.select_dtypes(include="number").columns:
             if df[col].isna().any():
-                median = float(df[col].median())
-                steps.append({"type": "fillna", "params": {"column": col, "value": median}})
+                median = df[col].median()
+                if pd.notna(median):
+                    steps.append({"type": "fillna", "params": {"column": col, "value": float(median)}})
         return steps
     if recipe_id == "clip-outliers":
         steps = []
@@ -89,6 +90,63 @@ def build_steps(recipe_id: str, df: pd.DataFrame) -> list[dict[str, Any]]:
                     steps.append({"type": "parse_numeric", "params": {"column": col}})
         return steps
     return []
+
+
+SAFE_QUALITY_RECIPES = {
+    "duplicates": "dedupe",
+    "missing": "fillna-median-numeric",
+    "outliers": "clip-outliers",
+    "type": "coerce-numeric",
+}
+
+
+def build_quality_fix_plan(
+    df: pd.DataFrame,
+    issue_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build a deterministic, non-destructive-by-default quality repair plan."""
+    from backend.core.dataframe import Dataset, parse_numeric_series
+    from backend.core.quality import detect_quality
+
+    report = detect_quality(df)
+    selected = set(issue_ids) if issue_ids is not None else set(SAFE_QUALITY_RECIPES)
+    available = {issue["id"] for issue in report["issues"]}
+    selected &= available
+
+    affected: dict[str, int] = {}
+    if "duplicates" in selected:
+        affected["duplicates"] = int(df.duplicated().sum())
+    if "missing" in selected:
+        affected["missing"] = int(df.select_dtypes(include="number").isna().sum().sum())
+    if "outliers" in selected:
+        count = 0
+        for col in df.select_dtypes(include="number").columns:
+            q1, q3 = df[col].quantile(0.25), df[col].quantile(0.75)
+            iqr = q3 - q1
+            if iqr and iqr != 0:
+                count += int(((df[col] < q1 - 1.5 * iqr) | (df[col] > q3 + 1.5 * iqr)).sum())
+        affected["outliers"] = count
+    if "type" in selected:
+        count = 0
+        for col in df.columns:
+            if pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(df[col]):
+                parsed = parse_numeric_series(df[col])
+                if parsed.notna().sum() >= 1 and parsed.notna().mean() >= 0.8:
+                    count += int(df[col].notna().sum())
+        affected["type"] = count
+
+    scratch = Dataset(df.copy(), name="quality-preview")
+    operations: list[dict[str, Any]] = []
+    for issue_id in ("duplicates", "missing", "outliers", "type"):
+        if issue_id not in selected:
+            continue
+        steps = build_steps(SAFE_QUALITY_RECIPES[issue_id], scratch.df)
+        for step in steps:
+            scratch.apply(step)
+        operations.extend(steps)
+
+    issues = [issue for issue in report["issues"] if issue["id"] in selected]
+    return {"operations": operations, "issues": issues, "affected": affected}
 
 
 def recipe_steps_for_issue(df: pd.DataFrame, recipe_id: str) -> list[dict[str, Any]]:

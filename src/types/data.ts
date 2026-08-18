@@ -143,3 +143,12 @@ export interface QualityReport {
   summary: { missing_cells: number; duplicate_rows: number; columns: number; rows: number };
   recipes: CleaningRecipe[];
 }
+
+export interface QualityFixPlan {
+  datasetId: string;
+  operations: { type: string; params: Record<string, unknown> }[];
+  issues: QualityIssue[];
+  affected: Record<string, number>;
+  preview: DataPreview;
+  diff: DataDiffResult;
+}
