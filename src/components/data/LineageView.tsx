@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Button, Select, SelectItem } from '@heroui/react'
 import { GitBranch } from 'lucide-react'
 import { api } from '@/api/client'
-import type { DataPreview, LineageEdge, LineageNode, LineageResponse } from '@/types/data'
+import type { DataDiffResult, DataPreview, LineageEdge, LineageNode, LineageResponse } from '@/types/data'
 
 const NODE_W = 84
 const NODE_H = 34
@@ -38,15 +40,21 @@ interface ChainItem {
 }
 
 export function LineageView({ datasetId }: { datasetId: string | null }) {
+  const { t } = useTranslation()
   const [lineage, setLineage] = useState<LineageResponse | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
+  const [baselineStep, setBaselineStep] = useState(-1)
   const [preview, setPreview] = useState<DataPreview | null>(null)
+  const [diffResult, setDiffResult] = useState<DataDiffResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
+  const [loadingDiff, setLoadingDiff] = useState(false)
 
   useEffect(() => {
     setLineage(null)
     setSelected(null)
+    setBaselineStep(-1)
     setPreview(null)
+    setDiffResult(null)
     if (!datasetId) return
     api
       .lineage()
@@ -74,6 +82,7 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
   const selectNode = async (item: ChainItem) => {
     setSelected(item.node.step)
     setPreview(null)
+    setDiffResult(null)
     if (!datasetId) return
     setLoadingPreview(true)
     try {
@@ -83,6 +92,18 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
       /* ignore */
     } finally {
       setLoadingPreview(false)
+    }
+  }
+
+  const compareSteps = async () => {
+    if (!datasetId || selected === null || selected === baselineStep) return
+    setLoadingDiff(true)
+    try {
+      setDiffResult(await api.diffSteps(datasetId, baselineStep, selected))
+    } catch {
+      setDiffResult(null)
+    } finally {
+      setLoadingDiff(false)
     }
   }
 
@@ -237,6 +258,66 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
             {selectedNode.rows !== null && (
               <div className="text-muted">
                 {selectedNode.rows} rows × {selectedNode.cols} cols
+              </div>
+            )}
+            <div className="flex flex-wrap items-end gap-2 rounded border border-border bg-surface p-2">
+              <Select
+                size="sm"
+                className="w-56"
+                label={t('diff.baselineStep')}
+                selectedKeys={[String(baselineStep)]}
+                onSelectionChange={(keys) => {
+                  const value = Array.from(keys)[0]
+                  if (value !== undefined) {
+                    setBaselineStep(Number(value))
+                    setDiffResult(null)
+                  }
+                }}
+              >
+                {chain.map((item) => (
+                  <SelectItem key={String(item.node.step)} textValue={item.node.step === -1 ? t('diff.importStep') : t('diff.stepLabel', { step: item.node.step + 1, op: item.node.op })}>
+                    {item.node.step === -1
+                      ? t('diff.importStep')
+                      : t('diff.stepLabel', { step: item.node.step + 1, op: item.node.op })}
+                  </SelectItem>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                color="primary"
+                isLoading={loadingDiff}
+                isDisabled={selected === baselineStep}
+                onPress={compareSteps}
+              >
+                {t('diff.compareSteps')}
+              </Button>
+              {selected === baselineStep && <span className="text-muted">{t('diff.sameVersion')}</span>}
+            </div>
+            {diffResult && (
+              <div className="flex flex-col gap-2 rounded border border-border p-2">
+                <div className="flex flex-wrap gap-4 text-muted">
+                  <span>{t('diff.rows')}: {diffResult.left_rows} → {diffResult.right_rows}</span>
+                  <span>{t('diff.cols')}: {diffResult.left_cols} → {diffResult.right_cols}</span>
+                </div>
+                {(diffResult.only_left.length > 0 || diffResult.only_right.length > 0) ? (
+                  <div className="flex flex-wrap gap-4">
+                    <span className="text-danger">{t('diff.onlyLeft')}: {diffResult.only_left.join(', ') || '—'}</span>
+                    <span className="text-success">{t('diff.onlyRight')}: {diffResult.only_right.join(', ') || '—'}</span>
+                  </div>
+                ) : diffResult.left_rows === diffResult.right_rows && diffResult.left_cols === diffResult.right_cols ? (
+                  <span className="text-muted">{t('diff.noStructuralChanges')}</span>
+                ) : null}
+                {diffResult.numeric_diff.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <span className="font-semibold text-muted">{t('diff.numericMeanDiff')}</span>
+                    {diffResult.numeric_diff.map((item) => (
+                      <div key={item.column} className="flex gap-4">
+                        <span className="w-24">{item.column}</span>
+                        <span>{item.left_mean} → {item.right_mean}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {loadingPreview && <div className="text-muted">Loading preview…</div>}

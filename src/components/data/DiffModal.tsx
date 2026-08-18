@@ -4,16 +4,7 @@ import { Button, Modal, ModalBody, ModalContent, ModalHeader, Select, SelectItem
 import { useUIStore } from '@/stores/uiStore'
 import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
-
-interface DiffResult {
-  left_rows: number
-  right_rows: number
-  left_cols: number
-  right_cols: number
-  only_left: string[]
-  only_right: string[]
-  numeric_diff: { column: string; left_mean: number; right_mean: number }[]
-}
+import type { DataDiffResult } from '@/types/data'
 
 export function DiffModal() {
   const { t } = useTranslation()
@@ -22,7 +13,7 @@ export function DiffModal() {
   const dataFrames = useDataStore((s) => s.dataFrames)
   const [leftId, setLeftId] = useState('')
   const [rightId, setRightId] = useState('')
-  const [result, setResult] = useState<DiffResult | null>(null)
+  const [result, setResult] = useState<DataDiffResult | null>(null)
   const [loading, setLoading] = useState(false)
 
   const diff = async () => {

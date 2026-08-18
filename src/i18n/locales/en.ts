@@ -330,6 +330,12 @@ export default {
   'diff.onlyLeft': 'Left only',
   'diff.onlyRight': 'Right only',
   'diff.numericMeanDiff': 'Numeric mean differences',
+  'diff.compareSteps': 'Compare versions',
+  'diff.baselineStep': 'Baseline version',
+  'diff.importStep': 'Import state',
+  'diff.stepLabel': 'Step {{step}} · {{op}}',
+  'diff.sameVersion': 'Select two different versions to compare',
+  'diff.noStructuralChanges': 'No row or column structure changes',
   // Cleaning
   'clean.refresh': 'Refresh quality report',
   'clean.scanning': 'Scanning…',

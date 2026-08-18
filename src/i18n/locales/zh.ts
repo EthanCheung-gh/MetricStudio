@@ -330,6 +330,12 @@ export default {
   'diff.onlyLeft': '仅左侧',
   'diff.onlyRight': '仅右侧',
   'diff.numericMeanDiff': '数值均值差异',
+  'diff.compareSteps': '对比版本',
+  'diff.baselineStep': '基线版本',
+  'diff.importStep': '导入状态',
+  'diff.stepLabel': '步骤 {{step}} · {{op}}',
+  'diff.sameVersion': '请选择不同的版本进行对比',
+  'diff.noStructuralChanges': '行列结构没有变化',
   // 清洗
   'clean.refresh': '刷新质量报告',
   'clean.scanning': '扫描中…',

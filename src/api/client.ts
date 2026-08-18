@@ -1,6 +1,7 @@
 import type {
   DataFrameMeta,
   DataPreview,
+  DataDiffResult,
   DescribeResponse,
   FilterParams,
   SortParams,
@@ -261,13 +262,14 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, query }) },
     ),
   diffDatasets: (leftId: string, rightId: string) =>
-    fetchJson<{
-      left_rows: number; right_rows: number; left_cols: number; right_cols: number;
-      only_left: string[]; only_right: string[];
-      numeric_diff: { column: string; left_mean: number; right_mean: number }[];
-    }>('/api/v1/data/diff', {
+    fetchJson<DataDiffResult>('/api/v1/data/diff', {
       method: 'POST',
       body: JSON.stringify({ left_id: leftId, right_id: rightId }),
+    }),
+  diffSteps: (datasetId: string, stepA: number, stepB: number) =>
+    fetchJson<DataDiffResult>(`/api/v1/data/${datasetId}/diff-steps`, {
+      method: 'POST',
+      body: JSON.stringify({ step_a: stepA, step_b: stepB }),
     }),
   timeseries: (id: string, column: string) =>
     fetchJson<{ ok: boolean; reason?: string; periods?: string[]; values?: number[]; pct_change?: (number | null)[] }>(

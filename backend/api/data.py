@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import math
+
 import pandas as pd
 from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
@@ -95,6 +97,8 @@ async def preview_dataframe(dataset_id: str, limit: int = 100, at: int | None = 
         return DataPreview(**preview)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/columns", response_model=list[ColumnMeta], response_model_by_alias=True)
@@ -132,27 +136,19 @@ async def data_quality(dataset_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-@router.post("/diff")
-async def diff_datasets(payload: dict):
-    """Compare two datasets: rows/cols, column-set difference, numeric mean delta."""
-    left_id = payload.get("left_id")
-    right_id = payload.get("right_id")
-    try:
-        left = session.get(left_id).df
-        right = session.get(right_id).df
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
+def _diff_frames(left: pd.DataFrame, right: pd.DataFrame) -> dict:
     left_cols = set(left.columns)
     right_cols = set(right.columns)
     common = [c for c in left.columns if c in right.columns]
     numeric_diff = []
     for c in common:
         if pd.api.types.is_numeric_dtype(left[c]) and pd.api.types.is_numeric_dtype(right[c]):
+            left_mean = float(left[c].mean())
+            right_mean = float(right[c].mean())
             numeric_diff.append({
                 "column": c,
-                "left_mean": round(float(left[c].mean()), 2),
-                "right_mean": round(float(right[c].mean()), 2),
+                "left_mean": round(left_mean, 2) if math.isfinite(left_mean) else None,
+                "right_mean": round(right_mean, 2) if math.isfinite(right_mean) else None,
             })
 
     return {
@@ -164,6 +160,36 @@ async def diff_datasets(payload: dict):
         "only_right": sorted(right_cols - left_cols),
         "numeric_diff": numeric_diff,
     }
+
+
+@router.post("/diff")
+async def diff_datasets(payload: dict):
+    """Compare two datasets: rows/cols, column-set difference, numeric mean delta."""
+    left_id = payload.get("left_id")
+    right_id = payload.get("right_id")
+    try:
+        left = session.get(left_id).df
+        right = session.get(right_id).df
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _diff_frames(left, right)
+
+
+@router.post("/{dataset_id}/diff-steps")
+async def diff_steps(dataset_id: str, payload: dict):
+    """Compare two immutable operation-chain states of the same dataset."""
+    step_a = payload.get("step_a")
+    step_b = payload.get("step_b")
+    if type(step_a) is not int or type(step_b) is not int:
+        raise HTTPException(status_code=400, detail="step_a and step_b must be integers")
+    try:
+        left = session.df_at_step(dataset_id, step_a)
+        right = session.df_at_step(dataset_id, step_b)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"left_step": step_a, "right_step": step_b, **_diff_frames(left, right)}
 
 
 @router.get("/{dataset_id}/timeseries")

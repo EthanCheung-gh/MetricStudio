@@ -376,15 +376,24 @@ class SessionManager:
                         edges.append({"source": prev_id, "target": target, "op": "join", "cross": True})
         return {"nodes": nodes, "edges": edges}
 
-    def preview_at(self, dataset_id: str, step: int, limit: int = 100) -> dict[str, Any]:
-        """Read-only preview of a dataset as it was after `step` operations (-1 = import state)."""
+    def df_at_step(self, dataset_id: str, step: int) -> pd.DataFrame:
+        """Rebuild a dataset after `step` operations without mutating session state (-1 = import)."""
         dataset = self.get(dataset_id)
         if step < -1 or step >= len(dataset.history):
             raise ValueError(f"step out of range: {step}")
         tmp = Dataset(dataset.raw_df, name=dataset.name, engine=dataset.engine)
         if step >= 0:
-            self._replay(tmp, dataset.history[: step + 1])
-        return tmp.preview(limit)
+            operations = dataset.history[: step + 1]
+            self._replay(tmp, operations)
+            if len(tmp.history) != len(operations):
+                raise ValueError(f"could not rebuild dataset at step: {step}")
+        return tmp.df
+
+    def preview_at(self, dataset_id: str, step: int, limit: int = 100) -> dict[str, Any]:
+        """Read-only preview of a dataset as it was after `step` operations (-1 = import state)."""
+        dataset = self.get(dataset_id)
+        snapshot = Dataset(self.df_at_step(dataset_id, step), name=dataset.name, engine=dataset.engine)
+        return snapshot.preview(limit)
 
     def restore_dataset(
         self,

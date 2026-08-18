@@ -25,6 +25,18 @@ export interface DataPreview {
   totalCols: number;
 }
 
+export interface DataDiffResult {
+  left_rows: number;
+  right_rows: number;
+  left_cols: number;
+  right_cols: number;
+  only_left: string[];
+  only_right: string[];
+  numeric_diff: { column: string; left_mean: number | null; right_mean: number | null }[];
+  left_step?: number;
+  right_step?: number;
+}
+
 export interface DescribeResponse {
   columns: string[];
   stats: Record<string, Record<string, number | null>>;
