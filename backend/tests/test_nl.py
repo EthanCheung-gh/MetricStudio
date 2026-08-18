@@ -195,6 +195,42 @@ def test_explain_chart_llm_unavailable(client, monkeypatch):
     assert resp.status_code == 502
 
 
+def test_llm_config_round_trip(client, monkeypatch, tmp_path):
+    import backend.core.llm as llm_module
+
+    config_path = tmp_path / "llm-config.json"
+    monkeypatch.setattr(llm_module, "CONFIG_PATH", config_path)
+    monkeypatch.setattr("backend.api.nl.load_config", llm_module.load_config)
+    monkeypatch.setattr("backend.api.nl.save_config", llm_module.save_config)
+
+    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret"}
+    response = client.post("/api/v1/nl/config", json=payload)
+    assert response.status_code == 200, response.text
+    public_payload = {**payload, "api_key": ""}
+    assert response.json() == public_payload
+    assert client.get("/api/v1/nl/config").json() == public_payload
+    assert llm_module.load_config() == payload
+    assert config_path.exists()
+    assert config_path.stat().st_mode & 0o777 == 0o600
+    assert not config_path.with_suffix(".tmp").exists()
+
+    # Leaving the key blank updates endpoint/model without erasing the saved secret.
+    updated = {"base_url": "https://other.invalid/v1", "model": "other-model", "api_key": ""}
+    response = client.post("/api/v1/nl/config", json=updated)
+    assert response.status_code == 200
+    assert response.json() == updated
+    assert llm_module.load_config()["api_key"] == "secret"
+
+    response = client.post("/api/v1/nl/config", json={**updated, "api_key": " ", "clear_api_key": True})
+    assert response.status_code == 200
+    assert llm_module.load_config()["api_key"] == ""
+
+
+def test_llm_config_rejects_empty_endpoint_and_model(client):
+    response = client.post("/api/v1/nl/config", json={"base_url": " ", "model": "", "api_key": ""})
+    assert response.status_code == 422
+
+
 def test_explain_chart_unknown_dataset(client):
     resp = client.post("/api/v1/nl/explain-chart", json={"dataset_id": "nope", "encoding": {}})
     assert resp.status_code == 404

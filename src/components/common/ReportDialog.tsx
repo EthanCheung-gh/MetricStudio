@@ -15,7 +15,7 @@ export function ReportDialog() {
   const addNotification = useUIStore((s) => s.addNotification)
   const charts = useChartStore((s) => s.charts)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
-  const [title, setTitle] = useState('Untitled Report')
+  const [title, setTitle] = useState('')
   const [selected, setSelected] = useState<string[]>([])
   const [notes, setNotes] = useState('')
   const [includeInsights, setIncludeInsights] = useState(true)
@@ -37,24 +37,26 @@ export function ReportDialog() {
         const figure = await api.previewChart(chart.datasetId, chart.encoding)
         figures.push({ name: chart.name, figure: applyPlotlyUserStyle(figure, chart.layout) })
       }
+      const reportTitle = title.trim() || t('report.defaultTitle')
       const { html } = await api.generateReport({
-        title: title.trim() || 'Untitled Report',
+        title: reportTitle,
         dataset_id: activeDataFrameId ?? undefined,
         charts: figures,
         notes,
         include_insights: includeInsights,
+        locale: useUIStore.getState().language,
       })
       const blob = new Blob([html], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${(title.trim() || 'report').replace(/[^\w-]+/g, '_')}.html`
+      a.download = `${(title.trim() || t('report.fileName')).replace(/[^\w\u4e00-\u9fff-]+/g, '_')}.html`
       a.click()
       URL.revokeObjectURL(url)
-      addNotification('success', `Report generated with ${figures.length} chart(s)`)
+      addNotification('success', t('report.generated', { count: figures.length }))
       setOpen(false)
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Report generation failed')
+      addNotification('error', err instanceof Error ? err.message : t('report.generationFailed'))
     } finally {
       setGenerating(false)
     }
@@ -63,7 +65,7 @@ export function ReportDialog() {
   return (
     <Modal isOpen={open} onClose={() => setOpen(false)} size="lg">
       <ModalContent>
-        <ModalHeader>Generate Report</ModalHeader>
+        <ModalHeader>{t('report.generate')}</ModalHeader>
         <ModalBody className="gap-3">
           {reportTemplates.length > 0 && (
             <select
@@ -88,7 +90,8 @@ export function ReportDialog() {
             </select>
           )}
           <Input
-            label="Report title"
+            label={t('report.title')}
+            placeholder={t('report.defaultTitle')}
             value={title}
             onValueChange={setTitle}
             size="sm"
@@ -96,7 +99,7 @@ export function ReportDialog() {
           {charts.length > 0 && (
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                Charts ({selected.length}/{charts.length})
+                {t('report.charts')} ({selected.length}/{charts.length})
               </span>
               {charts.map((chart) => (
                 <label
@@ -118,7 +121,7 @@ export function ReportDialog() {
             </div>
           )}
           <Textarea
-            label="Notes (rendered in the report)"
+            label={t('report.notes')}
             value={notes}
             onValueChange={setNotes}
             minRows={3}
@@ -129,7 +132,7 @@ export function ReportDialog() {
             onValueChange={setIncludeInsights}
             isDisabled={!activeDataFrameId}
           >
-            Include data insights (active dataset)
+            {t('report.includeInsights')}
           </Checkbox>
         </ModalBody>
         <ModalFooter>
@@ -161,10 +164,10 @@ export function ReportDialog() {
             </Button>
           </div>
           <Button variant="light" onPress={() => setOpen(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button color="primary" isLoading={generating} startContent={<FileText className="h-4 w-4" />} onPress={generate}>
-            Generate & Download
+            {t('report.generateDownload')}
           </Button>
         </ModalFooter>
       </ModalContent>

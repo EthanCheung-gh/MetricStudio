@@ -4,6 +4,7 @@ import { BarChart3, Lightbulb, LineChart, Link2, PieChart, Sparkles, TrendingUp,
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore, type TsResult } from '@/stores/dataStore'
+import { useUIStore } from '@/stores/uiStore'
 
 interface Insight {
   type: string
@@ -22,6 +23,7 @@ const ICONS: Record<string, React.ReactNode> = {
 export function InsightsPanel() {
   const { t } = useTranslation();
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
+  const language = useUIStore((s) => s.language)
   const [insights, setInsights] = useState<Insight[] | null>(null)
   const narrative = useDataStore((s) => (activeDataFrameId ? (s.narratives[activeDataFrameId] ?? null) : null))
   const tsResult = useDataStore((s) => (activeDataFrameId ? (s.tsResults[activeDataFrameId] ?? null) : null))
@@ -61,14 +63,14 @@ export function InsightsPanel() {
     if (!activeDataFrameId) return
     setLoading(true)
     try {
-      const body = await api.insights(activeDataFrameId)
+      const body = await api.insights(activeDataFrameId, language)
       setInsights(body.insights)
     } catch {
       /* ignore */
     } finally {
       setLoading(false)
     }
-  }, [activeDataFrameId])
+  }, [activeDataFrameId, language])
 
   useEffect(() => {
     setInsights(null)

@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from backend.core.llm import chat, load_config, save_config
 from backend.core.session import session
@@ -49,6 +49,15 @@ class LLMConfig(BaseModel):
     base_url: str
     model: str
     api_key: str = ""
+    clear_api_key: bool = False
+
+    @field_validator("base_url", "model")
+    @classmethod
+    def require_value(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value must not be empty")
+        return value
 
 
 class ExplainChartRequest(BaseModel):
@@ -233,11 +242,17 @@ async def explain_chart(request: ExplainChartRequest):
 
 @router.get("/config")
 async def get_llm_config():
-    return load_config()
+    config = load_config()
+    return {**config, "api_key": ""}
 
 
 @router.post("/config")
 async def set_llm_config(config: LLMConfig):
-    data = config.model_dump()
+    data = config.model_dump(exclude={"clear_api_key"})
+    data["api_key"] = data["api_key"].strip()
+    if config.clear_api_key:
+        data["api_key"] = ""
+    elif not data["api_key"]:
+        data["api_key"] = load_config().get("api_key", "")
     save_config(data)
-    return data
+    return {**data, "api_key": ""}

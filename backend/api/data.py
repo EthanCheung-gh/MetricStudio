@@ -290,13 +290,13 @@ async def chart_recommendations(dataset_id: str):
 
 
 @router.get("/{dataset_id}/insights")
-async def data_insights(dataset_id: str):
+async def data_insights(dataset_id: str, locale: str = "zh"):
     """Rule-based data insights; each item carries data evidence for verification."""
     from backend.core.insights import generate_insights
 
     try:
         dataset = session.get(dataset_id)
-        return {"insights": generate_insights(dataset.df)}
+        return {"insights": generate_insights(dataset.df, locale="en" if locale == "en" else "zh")}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

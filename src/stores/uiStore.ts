@@ -28,6 +28,7 @@ interface UIState {
   saveProjectModalOpen: boolean;
   loadProjectModalOpen: boolean;
   reportDialogOpen: boolean;
+  settingsOpen: boolean;
   shortcutsOpen: boolean;
   diffModalOpen: boolean;
   backendConnected: boolean;
@@ -48,6 +49,7 @@ interface UIState {
   setSaveProjectModalOpen: (open: boolean) => void;
   setLoadProjectModalOpen: (open: boolean) => void;
   setReportDialogOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
   setDiffModalOpen: (open: boolean) => void;
   setBackendStatus: (connected: boolean, message?: string) => void;
@@ -70,6 +72,7 @@ export const useUIStore = create<UIState>()(
   saveProjectModalOpen: false,
   loadProjectModalOpen: false,
   reportDialogOpen: false,
+  settingsOpen: false,
   shortcutsOpen: false,
   diffModalOpen: false,
   backendConnected: false,
@@ -103,6 +106,7 @@ export const useUIStore = create<UIState>()(
   setSaveProjectModalOpen: (open) => set({ saveProjectModalOpen: open }),
   setLoadProjectModalOpen: (open) => set({ loadProjectModalOpen: open }),
   setReportDialogOpen: (open) => set({ reportDialogOpen: open }),
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
   setDiffModalOpen: (open) => set({ diffModalOpen: open }),
   addRecentProject: (project) =>

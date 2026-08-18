@@ -23,6 +23,11 @@ async def generate_report(payload: dict):
     text_cards = payload.get("text_cards", [])  # [{text}]
     notes = payload.get("notes", "")
     include_insights = bool(payload.get("include_insights", True))
+    locale = "en" if payload.get("locale") == "en" else "zh"
+    labels = {
+        "zh": {"insights": "洞察", "kpis": "关键指标", "notes": "注释", "rows": "行", "cols": "列", "engine": "引擎", "chart": "图表"},
+        "en": {"insights": "Insights", "kpis": "Key metrics", "notes": "Notes", "rows": "rows", "cols": "cols", "engine": "engine", "chart": "Chart"},
+    }[locale]
 
     dataset_meta = None
     insights_html = ""
@@ -39,12 +44,12 @@ async def generate_report(payload: dict):
             if include_insights:
                 from backend.core.insights import generate_insights
 
-                insights = generate_insights(dataset.df)
+                insights = generate_insights(dataset.df, locale=locale)
                 if insights:
                     items = "".join(
                         f"<li>{html.escape(i['text'])}</li>" for i in insights
                     )
-                    insights_html = f"<section><h2>洞察</h2><ul>{items}</ul></section>"
+                    insights_html = f"<section><h2>{labels['insights']}</h2><ul>{items}</ul></section>"
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -52,8 +57,8 @@ async def generate_report(payload: dict):
     if dataset_meta:
         meta_html = (
             f'<p class="meta">{html.escape(dataset_meta["name"])} '
-            f"&middot; {dataset_meta['rows']} rows &times; {dataset_meta['cols']} cols "
-            f"&middot; engine: {dataset_meta['engine']}</p>"
+            f"&middot; {dataset_meta['rows']} {labels['rows']} &times; {dataset_meta['cols']} {labels['cols']} "
+            f"&middot; {labels['engine']}: {dataset_meta['engine']}</p>"
         )
 
     def script_json(value) -> str:
@@ -62,7 +67,7 @@ async def generate_report(payload: dict):
     chart_divs = ""
     chart_scripts = ""
     for i, chart in enumerate(charts):
-        name = html.escape(str(chart.get("name", f"Chart {i + 1}")))
+        name = html.escape(str(chart.get("name", f"{labels['chart']} {i + 1}")))
         figure = chart.get("figure", {})
         div_id = f"chart-{i}"
         chart_divs += (
@@ -84,7 +89,7 @@ async def generate_report(payload: dict):
             "</div>"
             for kpi in kpis
         )
-        kpi_html = f'<section><h2>关键指标</h2><div class="kpi-grid">{cards}</div></section>'
+        kpi_html = f'<section><h2>{labels["kpis"]}</h2><div class="kpi-grid">{cards}</div></section>'
 
     text_html = "".join(
         f'<section class="text-card"><p>{html.escape(str(card.get("text", "")))}</p></section>'
@@ -92,11 +97,11 @@ async def generate_report(payload: dict):
         if str(card.get("text", "")).strip()
     )
     notes_html = (
-        f"<section><h2>注释</h2><p>{html.escape(notes)}</p></section>" if notes else ""
+        f"<section><h2>{labels['notes']}</h2><p>{html.escape(notes)}</p></section>" if notes else ""
     )
 
     document = f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="{locale}">
 <head>
 <meta charset="utf-8">
 <title>{html.escape(title)}</title>

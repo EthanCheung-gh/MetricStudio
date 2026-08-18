@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Database, FileJson, FolderOpen, History, Minus, Save, Square, Upload, X } from 'lucide-react'
+import { Database, FileJson, FolderOpen, History, Menu, Minus, Save, Square, Upload, X } from 'lucide-react'
 import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input } from '@heroui/react'
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
@@ -18,6 +18,7 @@ export function TitleBar() {
   const loadProjectModalOpen = useUIStore((s) => s.loadProjectModalOpen)
   const setSaveProjectModalOpen = useUIStore((s) => s.setSaveProjectModalOpen)
   const setLoadProjectModalOpen = useUIStore((s) => s.setLoadProjectModalOpen)
+  const setSettingsOpen = useUIStore((s) => s.setSettingsOpen)
   const recentProjects = useUIStore((s) => s.recentProjects)
   const addNotification = useUIStore((s) => s.addNotification)
   const [projectPath, setProjectPath] = useState('project.metricstudio')
@@ -97,6 +98,9 @@ export function TitleBar() {
             onPress={() => setImportModalOpen(true)}
           >
             <FileJson className="h-4 w-4" />
+          </Button>
+          <Button isIconOnly size="sm" variant="light" aria-label={t('settings.open')} onPress={() => setSettingsOpen(true)}>
+            <Menu className="h-4 w-4" />
           </Button>
         </div>
         {isTauri && (

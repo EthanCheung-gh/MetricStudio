@@ -84,3 +84,11 @@ def test_insights_endpoint(client, dirty_dataset):
     body = resp.json()
     assert isinstance(body["insights"], list)
     assert all("text" in i and "evidence" in i for i in body["insights"])
+
+
+def test_insights_endpoint_supports_english(client, dirty_dataset):
+    resp = client.get(f"/api/v1/data/{dirty_dataset['id']}/insights?locale=en")
+    assert resp.status_code == 200
+    texts = " ".join(item["text"] for item in resp.json()["insights"])
+    assert "mean" in texts or "missing values" in texts or "of rows" in texts
+    assert "均值" not in texts and "缺失值" not in texts and "的行属于" not in texts

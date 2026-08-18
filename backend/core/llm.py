@@ -7,6 +7,7 @@ OpenAI-compatible remote API. Config persists under ~/.metricstudio/llm-config.j
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,15 @@ def load_config() -> dict[str, str]:
 
 def save_config(config: dict[str, str]) -> None:
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path = CONFIG_PATH.with_suffix(".tmp")
+    fd = os.open(temp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(config, stream, ensure_ascii=False, indent=2)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+    temp_path.replace(CONFIG_PATH)
 
 
 def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -> str:

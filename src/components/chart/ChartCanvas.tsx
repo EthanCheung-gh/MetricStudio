@@ -58,7 +58,7 @@ export function ChartCanvas() {
     if (!activeChart) return
     setAnnotating(true)
     try {
-      const { insights } = await api.insights(activeChart.datasetId)
+      const { insights } = await api.insights(activeChart.datasetId, useUIStore.getState().language)
       if (!insights || insights.length === 0) {
         addNotification('info', t('chart.noInsights'))
         return

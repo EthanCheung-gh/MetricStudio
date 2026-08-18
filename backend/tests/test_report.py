@@ -40,6 +40,28 @@ def test_generate_report_with_insights_and_charts(client, dirty_dataset):
     assert "Plotly.newPlot('chart-0'" in doc
 
 
+def test_generate_report_uses_requested_locale(client, dirty_dataset):
+    resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "English report",
+            "dataset_id": dirty_dataset["id"],
+            "charts": [],
+            "notes": "A note",
+            "include_insights": True,
+            "locale": "en",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    doc = resp.json()["html"]
+    assert '<html lang="en">' in doc
+    assert "Insights" in doc and "Notes" in doc
+    assert "rows" in doc and "cols" in doc and "engine" in doc
+    assert "mean" in doc or "missing values" in doc or "of rows" in doc
+    assert "洞察" not in doc and "注释" not in doc
+    assert "均值" not in doc and "缺失值" not in doc and "的行属于" not in doc
+
+
 def test_generate_report_without_insights_and_notes(client, dirty_dataset):
     figure = _make_chart(client, dirty_dataset["id"])
     resp = client.post(
@@ -56,6 +78,7 @@ def test_generate_report_without_insights_and_notes(client, dirty_dataset):
     doc = resp.json()["html"]
     assert "洞察" not in doc
     assert "<section><h2>注释</h2>" not in doc
+    assert '<html lang="zh">' in doc
 
 
 def test_generate_report_includes_kpis_and_text_cards(client):

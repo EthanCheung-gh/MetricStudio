@@ -9,6 +9,7 @@ import { ReportDialog } from '@/components/common/ReportDialog'
 import { AICommandBar } from '@/components/ai/AICommandBar'
 import { ShortcutsPanel } from '@/components/common/ShortcutsPanel'
 import { DiffModal } from '@/components/data/DiffModal'
+import { SettingsDialog } from '@/components/common/SettingsDialog'
 
 export function AppShell() {
   return (
@@ -25,6 +26,7 @@ export function AppShell() {
       <ReportDialog />
       <AICommandBar />
       <ShortcutsPanel />
+      <SettingsDialog />
       <DiffModal />
     </div>
   )

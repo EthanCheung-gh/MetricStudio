@@ -32,14 +32,19 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MetricStudio Backend",
-    version="0.2.0",
+    version="0.2.1",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -95,4 +100,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("METRICSTUDIO_PORT", "8123"))
     # Pass the app object directly (not "backend.main:app" string) so the same
     # entry works under PyInstaller, where this module is __main__, not backend.main.
-    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
+    uvicorn.run(app, host="127.0.0.1", port=port, reload=False)

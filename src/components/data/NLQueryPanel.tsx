@@ -20,8 +20,6 @@ export function NLQueryPanel() {
   const [operations, setOperations] = useState<NLOp[] | null>(null)
   const [generating, setGenerating] = useState(false)
   const [applying, setApplying] = useState(false)
-  const [showConfig, setShowConfig] = useState(false)
-  const [config, setConfig] = useState({ base_url: '', model: '', api_key: '' })
 
   const generate = async () => {
     if (!activeDataFrameId || !query.trim()) return
@@ -53,25 +51,6 @@ export function NLQueryPanel() {
     }
   }
 
-  const loadConfig = async () => {
-    try {
-      setConfig(await api.getLLMConfig())
-      setShowConfig((v) => !v)
-    } catch {
-      addNotification('error', 'Failed to load LLM config')
-    }
-  }
-
-  const saveConfig = async () => {
-    try {
-      await api.setLLMConfig(config)
-      addNotification('success', 'LLM config saved')
-      setShowConfig(false)
-    } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Save config failed')
-    }
-  }
-
   if (!activeDataFrameId) return null
 
   return (
@@ -81,21 +60,16 @@ export function NLQueryPanel() {
           <Sparkles className="h-3.5 w-3.5" />
           {t('panel.nlQuery')}
         </div>
-        <Button isIconOnly size="sm" variant="light" onPress={loadConfig} aria-label={t('nlq.llmSettings')}>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          onPress={() => useUIStore.getState().setSettingsOpen(true)}
+          aria-label={t('nlq.llmSettings')}
+        >
           <Settings className="h-3.5 w-3.5" />
         </Button>
       </div>
-
-      {showConfig && (
-        <div className="flex flex-col gap-1 rounded border border-border/60 p-2">
-          <Input size="sm" label={t('nlq.baseUrl')} value={config.base_url} onValueChange={(v) => setConfig({ ...config, base_url: v })} />
-          <Input size="sm" label={t('nlq.model')} value={config.model} onValueChange={(v) => setConfig({ ...config, model: v })} />
-          <Input size="sm" label={t('nlq.apiKey')} type="password" value={config.api_key} onValueChange={(v) => setConfig({ ...config, api_key: v })} />
-          <Button size="sm" color="primary" onPress={saveConfig}>
-            {t('nlq.saveConfig')}
-          </Button>
-        </div>
-      )}
 
       <Input
         size="sm"

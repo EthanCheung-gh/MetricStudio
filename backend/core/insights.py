@@ -47,7 +47,10 @@ def _nominal_cols(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in numeric and c not in _temporal_cols(df)]
 
 
-def generate_insights(df: pd.DataFrame, max_insights: int = 8) -> list[dict[str, Any]]:
+def generate_insights(
+    df: pd.DataFrame, max_insights: int = 8, locale: str = "zh"
+) -> list[dict[str, Any]]:
+    english = locale == "en"
     insights: list[dict[str, Any]] = []
     numeric = _numeric_cols(df)
     temporal = _temporal_cols(df)
@@ -63,12 +66,16 @@ def generate_insights(df: pd.DataFrame, max_insights: int = 8) -> list[dict[str,
             if abs(start) > 1e-12:
                 pct = (end - start) / abs(start) * 100
                 direction = "rose" if end > start else "fell"
+                text = (
+                    f"{ncol} mean {direction} {abs(pct):.0f}% from {monthly.index[0]} ({start:.1f}) "
+                    f"to {monthly.index[-1]} ({end:.1f})"
+                    if english
+                    else f"{ncol} 均值从 {monthly.index[0]}（{start:.1f}）到 {monthly.index[-1]}（{end:.1f}）"
+                    f"{'上升' if end > start else '下降'} {abs(pct):.0f}%"
+                )
                 insights.append({
                     "type": "trend",
-                    "text": (
-                        f"{ncol} 均值从 {monthly.index[0]}（{start:.1f}）到 {monthly.index[-1]}（{end:.1f}）"
-                        f"{'上升' if end > start else '下降'} {abs(pct):.0f}%"
-                    ),
+                    "text": text,
                     "evidence": {
                         "metric": "monthly_mean",
                         "field": ncol,
@@ -89,7 +96,10 @@ def generate_insights(df: pd.DataFrame, max_insights: int = 8) -> list[dict[str,
         if share >= 0.4:
             insights.append({
                 "type": "concentration",
-                "text": f"{col} 中 {share * 100:.0f}% 的行属于“{top}”",
+                "text": (
+                    f'{share * 100:.0f}% of rows in {col} are "{top}"'
+                    if english else f"{col} 中 {share * 100:.0f}% 的行属于“{top}”"
+                ),
                 "evidence": {"field": col, "top_value": str(top), "share": round(share, 3)},
             })
 
@@ -102,7 +112,10 @@ def generate_insights(df: pd.DataFrame, max_insights: int = 8) -> list[dict[str,
         if ratio >= 0.3:
             insights.append({
                 "type": "skew",
-                "text": f"{col} 均值（{mean:.1f}）{'高于' if mean > med else '低于'}中位数（{med:.1f}）",
+                "text": (
+                    f"{col} mean ({mean:.1f}) is {'above' if mean > med else 'below'} the median ({med:.1f})"
+                    if english else f"{col} 均值（{mean:.1f}）{'高于' if mean > med else '低于'}中位数（{med:.1f}）"
+                ),
                 "evidence": {"field": col, "mean": round(mean, 1), "median": round(med, 1)},
             })
 
@@ -119,7 +132,10 @@ def generate_insights(df: pd.DataFrame, max_insights: int = 8) -> list[dict[str,
             v, a, b = max(pairs)
             insights.append({
                 "type": "correlation",
-                "text": f"{a} 与 {b} 强相关（|r| = {v:.2f}）",
+                "text": (
+                    f"{a} and {b} are strongly correlated (|r| = {v:.2f})"
+                    if english else f"{a} 与 {b} 强相关（|r| = {v:.2f}）"
+                ),
                 "evidence": {"a": a, "b": b, "r": round(v, 2)},
             })
 
@@ -130,7 +146,10 @@ def generate_insights(df: pd.DataFrame, max_insights: int = 8) -> list[dict[str,
         pct = round(float(missing_ratio[worst]) * 100)
         insights.append({
             "type": "missing",
-            "text": f"{worst} 有 {pct}% 缺失值",
+            "text": (
+                f"{worst} has {pct}% missing values"
+                if english else f"{worst} 有 {pct}% 缺失值"
+            ),
             "evidence": {"field": worst, "missing_pct": pct},
         })
 

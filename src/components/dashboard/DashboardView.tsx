@@ -192,6 +192,7 @@ export function DashboardView() {
         text_cards: textCards,
         notes: '',
         include_insights: false,
+        locale: useUIStore.getState().language,
       })
       const blob = new Blob([html], { type: 'text/html' })
       const url = URL.createObjectURL(blob)

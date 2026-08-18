@@ -71,7 +71,7 @@ function getBaseUrl(): string {
   if (import.meta.env.VITE_BACKEND_PORT) {
     return `http://${window.location.hostname}:${import.meta.env.VITE_BACKEND_PORT}`;
   }
-  // Tauri production: the sidecar listens on 0.0.0.0 — reach it over loopback,
+  // Tauri production: the sidecar listens on loopback — use its injected port,
   // because the webview hostname is a virtual Tauri domain, not resolvable.
   if (backendPort !== null) {
     return `http://127.0.0.1:${backendPort}`;
@@ -160,9 +160,9 @@ export const api = {
     }),
   deleteRecipe: (id: string) =>
     fetchJson<{ deleted: boolean }>(`/api/v1/recipes/${id}`, { method: 'DELETE' }),
-  insights: (id: string) =>
+  insights: (id: string, locale: 'zh' | 'en' = 'zh') =>
     fetchJson<{ insights: { type: string; text: string; evidence: Record<string, unknown> }[] }>(
-      `/api/v1/data/${id}/insights`
+      `/api/v1/data/${id}/insights?locale=${locale}`
     ),
   aggregateValue: (
     id: string,
@@ -347,7 +347,7 @@ export const api = {
     }),
   getLLMConfig: () =>
     fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config'),
-  setLLMConfig: (config: { base_url: string; model: string; api_key: string }) =>
+  setLLMConfig: (config: { base_url: string; model: string; api_key: string; clear_api_key?: boolean }) =>
     fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config', {
       method: 'POST',
       body: JSON.stringify(config),
@@ -450,6 +450,7 @@ export const api = {
     text_cards?: { text: string }[];
     notes: string;
     include_insights: boolean;
+    locale?: 'zh' | 'en';
   }) =>
     fetchJson<{ html: string }>('/api/v1/report/generate', {
       method: 'POST',

@@ -1,7 +1,7 @@
 {
   "name": "metricstudio",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,8 @@
     "test:backend": ".venv/bin/python -m pytest backend/tests -q",
     "preview": "vite preview",
     "tauri": "tauri",
-    "backend:dev": ".venv/bin/uvicorn backend.main:app --reload --host 0.0.0.0 --port 8123",
-    "backend:start": ".venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8123"
+    "backend:dev": ".venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8123",
+    "backend:start": ".venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8123"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
