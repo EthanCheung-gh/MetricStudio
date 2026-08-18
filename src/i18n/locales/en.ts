@@ -374,6 +374,12 @@ export default {
   // Dataset
   'dataset.compare': 'Compare datasets',
   'dataset.empty': 'No datasets imported yet.',
+  'dataset.refreshed': 'Refreshed {{name}} and replayed its transforms',
+  'dataset.changed': 'Source changed',
+  'dataset.sourceMissing': 'Source missing',
+  'import.livePath': 'Absolute path on the backend host',
+  'import.liveImport': 'Live import',
+  'import.liveHint': 'Live import retains the original path and detects changes; uploads keep only a copy.',
   // Shortcuts
   'shortcut.title': 'Shortcuts',
   'shortcut.commandPalette': 'Command palette',

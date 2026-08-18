@@ -82,6 +82,15 @@ async def import_table(request: ImportRequest):
         actual_engine = session.engine.auto_engine(df)
         dataset = Dataset(df, name=request.name or request.table, engine=actual_engine)
         session.datasets[dataset.id] = dataset
+        stat = Path(request.path).stat()
+        session.sources[dataset.id] = {
+            "kind": "sqlite",
+            "path": request.path,
+            "original_path": request.path,
+            "original_mtime_ns": stat.st_mtime_ns,
+            "original_size": stat.st_size,
+            "table": request.table,
+        }
         session._persist(dataset)
         return dataset.to_meta()
     except Exception as exc:

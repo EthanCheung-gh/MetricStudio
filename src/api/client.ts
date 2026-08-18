@@ -1,5 +1,6 @@
 import type {
   DataFrameMeta,
+  SourceStatus,
   DataPreview,
   DataDiffResult,
   PreviewQuery,
@@ -128,6 +129,12 @@ export const api = {
     return postForm<DataFrameMeta[]>('/api/v1/data/import', formData);
   },
   importSample: () => fetchJson<DataFrameMeta>('/api/v1/data/sample', { method: 'POST' }),
+  importPath: (path: string, mergeSheets = false) =>
+    fetchJson<DataFrameMeta[]>('/api/v1/data/import-path', {
+      method: 'POST',
+      body: JSON.stringify({ path, merge_sheets: mergeSheets }),
+    }),
+  sourceStatus: () => fetchJson<SourceStatus[]>('/api/v1/data/sources/status'),
   importText: (name: string, text: string) =>
     fetchJson<DataFrameMeta[]>('/api/v1/data/import-text', {
       method: 'POST',

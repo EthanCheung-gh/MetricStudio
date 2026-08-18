@@ -5,6 +5,7 @@ import { PlotlyRenderer, type PlotlySelection } from '@/components/chart/PlotlyR
 import type { ChartConfig, SelectionFilter } from '@/types/encoding'
 import type { PlotlyFigure } from '@/types/plotly'
 import { api } from '@/api/client'
+import { useDataStore } from '@/stores/dataStore'
 
 export type DashboardCardFilter = {
   datasetId: string
@@ -33,6 +34,7 @@ export function DashboardChartCard({
   onBrushChange,
 }: DashboardChartCardProps) {
   const [figure, setFigure] = useState<PlotlyFigure | null>(null)
+  const dataVersion = useDataStore((state) => state.dataVersions[chart.datasetId] || 0)
   const [highlight, setHighlight] = useState(false)
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters])
   const brushesKey = useMemo(() => JSON.stringify(externalBrushes), [externalBrushes])
@@ -66,7 +68,7 @@ export function DashboardChartCard({
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chart.datasetId, chart.encoding, filtersKey, brushesKey])
+  }, [chart.datasetId, chart.encoding, filtersKey, brushesKey, dataVersion])
 
   const handleSelected = (sel: PlotlySelection) => {
     if (!sel.xRange && !sel.yRange) return

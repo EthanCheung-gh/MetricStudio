@@ -16,6 +16,26 @@ from backend.models.data import DataFrameMeta, DataPreview, DescribeResponse, Co
 router = APIRouter(prefix="/api/v1/data", tags=["data"])
 
 
+@router.post("/import-path", response_model=list[DataFrameMeta], response_model_by_alias=True)
+async def import_path(payload: dict):
+    """Import a server-local file while retaining its original path for change detection."""
+    path = Path(str(payload.get("path") or "")).expanduser()
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail="Source file does not exist")
+    try:
+        return [
+            dataset.to_meta()
+            for dataset in session.import_file(
+                path,
+                name=payload.get("name") or path.name,
+                merge_sheets=bool(payload.get("merge_sheets", False)),
+                original_path=path,
+            )
+        ]
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/import", response_model=list[DataFrameMeta], response_model_by_alias=True)
 async def import_file(file: UploadFile = File(...), merge_sheets: bool = Form(False)):
     suffix = Path(file.filename or "data.csv").suffix
@@ -85,6 +105,11 @@ async def import_text(payload: dict):
         raise HTTPException(status_code=400, detail="Pasted text produced no rows")
     dataset = session.import_dataframe(df, name=name)
     return [dataset.to_meta()]
+
+
+@router.get("/sources/status")
+async def source_status():
+    return session.source_status()
 
 
 @router.get("/list", response_model=list[DataFrameMeta], response_model_by_alias=True)

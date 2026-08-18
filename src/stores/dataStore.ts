@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta, PreviewQuery } from '@/types/data';
+import type { DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta, PreviewQuery, SourceStatus } from '@/types/data';
 import { api } from '@/api/client';
 import { useUIStore } from './uiStore';
 
@@ -20,6 +20,8 @@ interface DataState {
   columns: ColumnMeta[];
   loading: boolean;
   error: string | null;
+  sourceStatuses: Record<string, SourceStatus>;
+  dataVersions: Record<string, number>;
   /** Per-dataset AI narrative, keyed by DataFrame id (survives dataset switches). */
   narratives: Record<string, string>;
   /** Per-dataset MoM/timeseries result, keyed by DataFrame id. */
@@ -32,6 +34,8 @@ interface DataState {
   importSample: () => Promise<DataFrameMeta>;
   refreshActiveDataFrame: () => Promise<void>;
   loadPreviewPage: (query: PreviewQuery) => Promise<void>;
+  loadSourceStatuses: () => Promise<void>;
+  refreshSource: (id: string) => Promise<void>;
   removeDataFrame: (id: string) => Promise<void>;
   setNarrative: (id: string, text: string) => void;
   setTsResult: (id: string, result: TsResult) => void;
@@ -46,6 +50,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   columns: [],
   loading: false,
   error: null,
+  sourceStatuses: {},
+  dataVersions: {},
   narratives: {},
   tsResults: {},
 
@@ -169,6 +175,22 @@ export const useDataStore = create<DataState>((set, get) => ({
         set({ error: err instanceof Error ? err.message : 'Failed to load preview', loading: false });
       }
     }
+  },
+
+  loadSourceStatuses: async () => {
+    try {
+      const statuses = await api.sourceStatus();
+      set({ sourceStatuses: Object.fromEntries(statuses.map((status) => [status.dataset_id, status])) });
+    } catch {
+      set({ sourceStatuses: {} });
+    }
+  },
+
+  refreshSource: async (id) => {
+    await api.refreshDataset(id);
+    set((state) => ({ dataVersions: { ...state.dataVersions, [id]: (state.dataVersions[id] || 0) + 1 } }));
+    await Promise.all([get().loadDataFrames(), get().loadSourceStatuses()]);
+    if (get().activeDataFrameId === id) await get().refreshActiveDataFrame();
   },
 
   removeDataFrame: async (id) => {

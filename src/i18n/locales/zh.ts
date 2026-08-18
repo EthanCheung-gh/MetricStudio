@@ -374,6 +374,12 @@ export default {
   // 数据集
   'dataset.compare': '对比数据集',
   'dataset.empty': '尚未导入数据集。',
+  'dataset.refreshed': '已刷新 {{name}} 并重放变换链',
+  'dataset.changed': '源已变更',
+  'dataset.sourceMissing': '源文件丢失',
+  'import.livePath': '服务器本地文件绝对路径',
+  'import.liveImport': '动态导入',
+  'import.liveHint': '动态导入会保留原始路径，并检测文件变化；普通上传仅保存副本。',
   // 快捷键
   'shortcut.title': '快捷键',
   'shortcut.commandPalette': '命令面板',

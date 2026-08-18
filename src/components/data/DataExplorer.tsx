@@ -31,6 +31,7 @@ export function DataExplorer() {
   const [pasteText, setPasteText] = useState('')
   const [pasteName, setPasteName] = useState('')
   const [mergeSheets, setMergeSheets] = useState(false)
+  const [sourcePath, setSourcePath] = useState('')
 
   const browseDir = async (dir?: string) => {
     setSqlLoading(true)
@@ -86,6 +87,18 @@ export function DataExplorer() {
       const merge = mergeSheets && /\.(xlsx|xls)$/i.test(file.name)
       const meta = await importFile(file, merge)
       addNotification('success', t('import.fileImported', { name: meta.name }))
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
+    }
+  }
+
+  const importLivePath = async () => {
+    if (!sourcePath.trim()) return
+    try {
+      const results = await api.importPath(sourcePath.trim(), mergeSheets)
+      await useDataStore.getState().loadDataFrames()
+      if (results[0]) useDataStore.getState().setActiveDataFrame(results[0].id)
+      addNotification('success', t('import.fileImported', { name: results[0]?.name || sourcePath }))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
     }
@@ -181,6 +194,17 @@ export function DataExplorer() {
               {t('import.browse')}
             </Button>
           </div>
+          <div className="mt-1 flex gap-1">
+            <Input
+              size="sm"
+              value={sourcePath}
+              onValueChange={setSourcePath}
+              placeholder={t('import.livePath')}
+              className="flex-1"
+            />
+            <Button size="sm" variant="flat" onPress={importLivePath}>{t('import.liveImport')}</Button>
+          </div>
+          <p className="text-[10px] text-muted">{t('import.liveHint')}</p>
           <Checkbox
             size="sm"
             isSelected={mergeSheets}

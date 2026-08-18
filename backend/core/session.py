@@ -107,6 +107,7 @@ class SessionManager:
         name: str | None = None,
         sheet_name: str | None = None,
         merge_sheets: bool = False,
+        original_path: str | Path | None = None,
     ) -> list[Dataset]:
         """Import a file. Returns a list of Dataset objects (one per sheet for Excel)."""
         path = Path(path)
@@ -119,7 +120,17 @@ class SessionManager:
         source_id = str(uuid.uuid4())
         source_path = SOURCES_DIR / f"{source_id}{ext}"
         shutil.copyfile(path, source_path)
-        source_meta = {"path": str(source_path), "original_name": name, "ext": ext}
+        original = Path(original_path).expanduser().resolve() if original_path else None
+        stat = original.stat() if original and original.exists() else None
+        source_meta = {
+            "path": str(source_path),
+            "original_name": name,
+            "ext": ext,
+            "kind": "file",
+            "original_path": str(original) if original else None,
+            "original_mtime_ns": stat.st_mtime_ns if stat else None,
+            "original_size": stat.st_size if stat else None,
+        }
 
         if ext in (".xlsx", ".xls"):
             sheet_names = self.engine.get_excel_sheet_names(path)
@@ -177,12 +188,45 @@ class SessionManager:
         if not source:
             raise ValueError("No data source for this dataset")
         source_path = Path(source["path"])
+        if source.get("kind") == "sqlite":
+            from backend.core.sql import read_table
+
+            if not source_path.exists():
+                raise ValueError("Original SQLite source file is missing")
+            df = read_table("sqlite", str(source_path), source["table"])
+            if not isinstance(df, pd.DataFrame):
+                df = self._to_pandas(df)
+            history = list(dataset.history)
+            candidate = Dataset(df.copy(), name=dataset.name, engine=dataset.engine)
+            self._replay(candidate, history)
+            if len(candidate.history) != len(history):
+                raise ValueError("Could not replay all transforms against the refreshed SQLite source")
+            dataset.raw_df = candidate.raw_df
+            dataset._df = candidate.df
+            dataset.history = candidate.history
+            source_stat = source_path.stat()
+            source["original_mtime_ns"] = source_stat.st_mtime_ns
+            source["original_size"] = source_stat.st_size
+            dataset._build_meta()
+            self._persist(dataset)
+            return dataset
+        original_path = Path(source["original_path"]) if source.get("original_path") else None
+        if original_path is not None:
+            if not original_path.exists():
+                raise ValueError("Original source file is missing")
+            temp_source = source_path.with_suffix(source_path.suffix + ".refreshing")
+            shutil.copyfile(original_path, temp_source)
+            temp_source.replace(source_path)
+            stat = original_path.stat()
         if not source_path.exists():
             raise ValueError("Source file is missing")
 
         ext = source.get("ext") or source_path.suffix.lower()
         sheet_name = source.get("sheet_name")
-        if ext in (".xlsx", ".xls"):
+        if ext in (".xlsx", ".xls") and source.get("merged_sheets"):
+            frames = [self.engine.read_excel(source_path, sheet_name=sheet) for sheet in source["merged_sheets"]]
+            df = pd.concat([frame if isinstance(frame, pd.DataFrame) else self._to_pandas(frame) for frame in frames], ignore_index=True)
+        elif ext in (".xlsx", ".xls"):
             df = self.engine.read_excel(source_path, sheet_name=sheet_name)
         elif ext == ".csv":
             df = self.engine.read_csv(source_path)
@@ -194,13 +238,45 @@ class SessionManager:
             df = self._to_pandas(df)
 
         history = list(dataset.history)
-        dataset.raw_df = df.copy()
-        dataset._df = df.copy()
-        dataset.history = []
-        self._replay(dataset, history)
+        candidate = Dataset(df.copy(), name=dataset.name, engine=dataset.engine)
+        self._replay(candidate, history)
+        if len(candidate.history) != len(history):
+            raise ValueError("Could not replay all transforms against the refreshed source")
+        dataset.raw_df = candidate.raw_df
+        dataset._df = candidate.df
+        dataset.history = candidate.history
+        if original_path is not None:
+            source["original_mtime_ns"] = stat.st_mtime_ns
+            source["original_size"] = stat.st_size
         dataset._build_meta()
         self._persist(dataset)
         return dataset
+
+    def source_status(self) -> list[dict[str, Any]]:
+        statuses = []
+        for dataset_id, dataset in self.datasets.items():
+            source = self.sources.get(dataset_id)
+            original_path = Path(source["original_path"]) if source and source.get("original_path") else None
+            exists = original_path.exists() if original_path else None
+            changed = False
+            if original_path and exists:
+                stat = original_path.stat()
+                known_mtime = source.get("original_mtime_ns")
+                known_size = source.get("original_size")
+                changed = (
+                    known_mtime is not None
+                    and known_size is not None
+                    and (stat.st_mtime_ns != known_mtime or stat.st_size != known_size)
+                )
+            statuses.append({
+                "dataset_id": dataset_id,
+                "dataset_name": dataset.name,
+                "refreshable": bool(source),
+                "source_path": str(original_path) if original_path else (source.get("path") if source else None),
+                "original_exists": exists,
+                "changed": changed,
+            })
+        return statuses
 
     def _to_pandas(self, df: Any) -> Any:
         if hasattr(df, "to_pandas"):
@@ -217,6 +293,11 @@ class SessionManager:
 
     def delete_dataset(self, dataset_id: str) -> None:
         self.datasets.pop(dataset_id, None)
+        source = self.sources.pop(dataset_id, None)
+        if source and source.get("kind") != "sqlite":
+            source_path = Path(source["path"])
+            if not any(meta.get("path") == str(source_path) for meta in self.sources.values()):
+                source_path.unlink(missing_ok=True)
         self._remove_persisted(dataset_id)
 
     def _apply_one(self, dataset: Dataset, operation: dict[str, Any]) -> None:

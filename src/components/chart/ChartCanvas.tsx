@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useChartStore } from '@/stores/chartStore'
+import { useDataStore } from '@/stores/dataStore'
 import { PlotlyRenderer, type PlotlySelection } from './PlotlyRenderer'
 import { Button, Card, CardBody, Input } from '@heroui/react'
 import { Download, Image, FileCode, FileText, Filter, Lightbulb, Sparkles, X } from 'lucide-react'
@@ -32,6 +33,11 @@ export function ChartCanvas() {
   }, [activeChartId])
 
   const activeChart = charts.find((c) => c.id === activeChartId)
+  const dataVersion = useDataStore((state) => activeChart ? state.dataVersions[activeChart.datasetId] || 0 : 0)
+
+  useEffect(() => {
+    if (activeChart) useChartStore.getState().previewChart(activeChart.datasetId, activeChart.encoding, activeChart.id)
+  }, [activeChart, dataVersion])
 
   const handleExplain = async () => {
     if (!activeChart) return

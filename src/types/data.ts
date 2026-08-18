@@ -8,6 +8,15 @@ export interface ColumnMeta {
   uniqueCount?: number;
 }
 
+export interface SourceStatus {
+  dataset_id: string;
+  dataset_name: string;
+  refreshable: boolean;
+  source_path: string | null;
+  original_exists: boolean | null;
+  changed: boolean;
+}
+
 export interface DataFrameMeta {
   id: string;
   name: string;

@@ -27,6 +27,7 @@ const selectCls = 'rounded border border-border bg-surface px-2 py-1 text-xs'
 export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
   const kpi = item.kpi
   const dataFrames = useDataStore((s) => s.dataFrames)
+  const dataVersion = useDataStore((s) => (kpi?.datasetId ? s.dataVersions[kpi.datasetId] || 0 : 0))
   const [value, setValue] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [configuring, setConfiguring] = useState(!item.kpi?.field)
@@ -46,7 +47,7 @@ export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
       .catch(() => { if (!cancelled) setValue(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [kpi?.datasetId, kpi?.field, kpi?.aggregate])
+  }, [kpi?.datasetId, kpi?.field, kpi?.aggregate, dataVersion])
 
   // Load the dataset's columns only while the config panel is open.
   useEffect(() => {

@@ -77,12 +77,29 @@ function App() {
     if (connected) {
       // (Re)load on startup AND on recovery after a disconnect (spec §3.3)
       loadDataFrames()
-        .then(() => useDataStore.getState().refreshActiveDataFrame())
+        .then(() => Promise.all([
+          useDataStore.getState().refreshActiveDataFrame(),
+          useDataStore.getState().loadSourceStatuses(),
+        ]))
         .catch((err) => {
           addNotification('error', err.message)
         })
     }
   }, [connected, loadDataFrames, addNotification])
+
+  useEffect(() => {
+    if (!connected) return
+    const checkSources = () => useDataStore.getState().loadSourceStatuses()
+    const interval = window.setInterval(checkSources, 30_000)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkSources()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [connected])
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
