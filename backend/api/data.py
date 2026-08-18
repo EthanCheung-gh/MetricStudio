@@ -316,14 +316,14 @@ async def delete_dataframe(dataset_id: str):
     return {"ok": True}
 
 
-@router.get("/{dataset_id}/aggregate")
-async def aggregate_value(dataset_id: str, field: str, agg: str = "sum"):
-    """Single aggregate value for a field (drives dashboard KPI cards)."""
+def _aggregate_value(dataset_id: str, field: str, agg: str, filters: list | None = None):
+    """Compute a single aggregate value after applying dashboard filters."""
+    from backend.api.chart import _filter_by_filters
     try:
         dataset = session.get(dataset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    df = dataset.df
+    df = _filter_by_filters(dataset.df, filters or [])
     if field not in df.columns:
         raise HTTPException(status_code=404, detail=f"Column not found: {field}")
     series = df[field]
@@ -349,6 +349,28 @@ async def aggregate_value(dataset_id: str, field: str, agg: str = "sum"):
     if val is None or (isinstance(val, float) and val != val):  # None or NaN
         return {"value": None}
     return {"value": float(val)}
+
+
+@router.get("/{dataset_id}/aggregate")
+async def aggregate_value_legacy(dataset_id: str, field: str, agg: str = "sum"):
+    """Backward-compatible unfiltered KPI aggregate."""
+    return _aggregate_value(dataset_id, field, agg)
+
+
+@router.post("/{dataset_id}/aggregate")
+async def aggregate_value(dataset_id: str, payload: dict):
+    """KPI aggregate with Dashboard filter support."""
+    from backend.models.chart import FilterSpec
+
+    field = str(payload.get("field") or "")
+    agg = str(payload.get("agg") or "sum")
+    if not field:
+        raise HTTPException(status_code=400, detail="field is required")
+    try:
+        filters = [FilterSpec.model_validate(item) for item in (payload.get("filters") or [])]
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid filters: {exc}") from exc
+    return _aggregate_value(dataset_id, field, agg, filters)
 
 
 @router.get("/{dataset_id}/export")

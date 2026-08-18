@@ -33,6 +33,14 @@ export interface DashboardFilter {
   value: unknown // category: string[] | null; range/date: [string, string] | null
 }
 
+export interface DashboardDataFilter {
+  datasetId: string
+  field: string
+  op: 'range' | 'in'
+  range?: [string, string]
+  values?: string[]
+}
+
 export interface LayoutTemplate {
   id: string
   name: string

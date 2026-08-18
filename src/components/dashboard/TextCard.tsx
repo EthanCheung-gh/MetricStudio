@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardBody, Textarea } from '@heroui/react'
 import { Pencil, X } from 'lucide-react'
 import type { DashboardItem } from '@/types/dashboard'
@@ -10,23 +11,24 @@ export interface TextCardProps {
 }
 
 export function TextCard({ item, onRemove, onChange }: TextCardProps) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(!item.text)
   return (
     <Card className="h-full border-border bg-surface">
       <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1">
-        <span className="drag-handle flex-1 cursor-grab truncate text-xs font-medium text-muted">Text</span>
+        <span className="drag-handle flex-1 cursor-grab truncate text-xs font-medium text-muted">{t('dashboard.textCard')}</span>
         <div className="flex shrink-0 items-center gap-0.5">
           <button
             className="rounded p-0.5 hover:bg-surface-elevated"
             onClick={() => setEditing((e) => !e)}
-            aria-label="Edit text"
+            aria-label={t('dashboard.editText')}
           >
             <Pencil className="h-3.5 w-3.5 text-muted" />
           </button>
           <button
             className="rounded p-0.5 hover:bg-danger/20 hover:text-danger"
             onClick={onRemove}
-            aria-label="Remove from dashboard"
+            aria-label={t('dashboard.removeCard')}
           >
             <X className="h-3.5 w-3.5 text-muted" />
           </button>
@@ -37,12 +39,12 @@ export function TextCard({ item, onRemove, onChange }: TextCardProps) {
           <Textarea
             size="sm"
             minRows={3}
-            placeholder="Write a note…"
+            placeholder={t('dashboard.textPlaceholder')}
             value={item.text || ''}
             onValueChange={onChange}
           />
         ) : (
-          <p className="whitespace-pre-wrap text-sm">{item.text || 'Empty note'}</p>
+          <p className="whitespace-pre-wrap text-sm">{item.text || t('dashboard.emptyText')}</p>
         )}
       </CardBody>
     </Card>

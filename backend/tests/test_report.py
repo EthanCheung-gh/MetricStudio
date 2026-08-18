@@ -58,6 +58,61 @@ def test_generate_report_without_insights_and_notes(client, dirty_dataset):
     assert "<section><h2>注释</h2>" not in doc
 
 
+def test_generate_report_includes_kpis_and_text_cards(client):
+    resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "Dashboard",
+            "charts": [],
+            "kpis": [{"label": "Revenue", "value": "270", "detail": "sum · value"}],
+            "text_cards": [{"text": "North region only"}],
+            "notes": "",
+            "include_insights": False,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    doc = resp.json()["html"]
+    assert "关键指标" in doc
+    assert "Revenue" in doc and "270" in doc and "sum · value" in doc
+    assert "North region only" in doc
+
+
+def test_report_escapes_script_end_tags_in_figure_json(client):
+    attack = "</script><script>alert(1)</script>"
+    resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "Safe chart",
+            "charts": [{"name": "Chart", "figure": {"data": [{"x": [attack], "y": [1]}], "layout": {}}}],
+            "notes": "",
+            "include_insights": False,
+        },
+    )
+    assert resp.status_code == 200
+    doc = resp.json()["html"]
+    assert attack not in doc
+    assert "\\u003c/script\\u003e" in doc
+
+
+def test_report_escapes_kpis_and_text_cards(client):
+    malicious = "<img src=x onerror=alert(1)>"
+    resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "Safe",
+            "charts": [],
+            "kpis": [{"label": malicious, "value": malicious, "detail": malicious}],
+            "text_cards": [{"text": malicious}],
+            "notes": "",
+            "include_insights": False,
+        },
+    )
+    assert resp.status_code == 200
+    doc = resp.json()["html"]
+    assert malicious not in doc
+    assert "&lt;img" in doc
+
+
 def test_report_escapes_user_content(client, dirty_dataset):
     figure = _make_chart(client, dirty_dataset["id"])
     malicious = "<script>alert('xss')</script>"

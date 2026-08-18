@@ -102,6 +102,42 @@ def test_multi_brush_selections_combine(client):
     assert ys and all(100 <= v <= 200 for v in ys)
 
 
+def test_kpi_aggregate_applies_dashboard_filters(client):
+    dsid = _import_sample(client)
+    resp = client.post(
+        f"/api/v1/data/{dsid}/aggregate",
+        json={
+            "field": "value",
+            "agg": "sum",
+            "filters": [{"field": "region", "op": "in", "values": ["North"]}],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"value": 270.0}
+
+
+def test_kpi_aggregate_supports_range_and_empty_result(client):
+    dsid = _import_sample(client)
+    ranged = client.post(
+        f"/api/v1/data/{dsid}/aggregate",
+        json={
+            "field": "value",
+            "agg": "mean",
+            "filters": [{"field": "value", "op": "range", "range": [150, 180]}],
+        },
+    )
+    empty = client.post(
+        f"/api/v1/data/{dsid}/aggregate",
+        json={
+            "field": "value",
+            "agg": "mean",
+            "filters": [{"field": "region", "op": "in", "values": ["Missing"]}],
+        },
+    )
+    assert ranged.status_code == 200 and ranged.json() == {"value": 163.33333333333334}
+    assert empty.status_code == 200 and empty.json() == {"value": None}
+
+
 def test_selection_and_filters_together(client):
     """filters (global) + selections (brush) both apply."""
     dsid = _import_sample(client)

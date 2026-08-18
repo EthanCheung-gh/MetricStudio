@@ -10,7 +10,8 @@ import { useDataStore } from '@/stores/dataStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
-import { DashboardChartCard, type DashboardCardFilter } from './DashboardChartCard'
+import { DashboardChartCard } from './DashboardChartCard'
+import type { DashboardDataFilter } from '@/types/dashboard'
 import { DashboardFilterBar } from './DashboardFilterBar'
 import { KpiCard } from './KpiCard'
 import { TextCard } from './TextCard'
@@ -119,8 +120,8 @@ export function DashboardView() {
     minH: 3,
   }))
 
-  const filters: DashboardCardFilter[] = dashboard.filters
-    .map((f): DashboardCardFilter | null => {
+  const filters: DashboardDataFilter[] = dashboard.filters
+    .map((f): DashboardDataFilter | null => {
       if (f.value === null || f.value === undefined) return null
       if (f.kind === 'category') {
         const values = f.value as string[]
@@ -130,7 +131,7 @@ export function DashboardView() {
       if (range.length !== 2 || (range[0] === '' && range[1] === '')) return null
       return { datasetId: f.datasetId, field: f.field, op: 'range', range }
     })
-    .filter((f): f is DashboardCardFilter => f !== null)
+    .filter((f): f is DashboardDataFilter => f !== null)
 
   const availableCharts = charts.filter((c) => !dashboard.items.some((i) => i.chartId === c.id))
 
@@ -145,7 +146,28 @@ export function DashboardView() {
     setExporting(true)
     try {
       const figures = []
+      const kpis = []
+      const textCards = []
       for (const item of dashboard.items) {
+        if (item.kind === 'kpi' && item.kpi?.field) {
+          const relevantFilters = filters.filter((filter) => filter.datasetId === item.kpi?.datasetId)
+          const result = await api.aggregateValue(
+            item.kpi.datasetId,
+            item.kpi.field,
+            item.kpi.aggregate,
+            relevantFilters,
+          )
+          kpis.push({
+            label: item.kpi.label || item.kpi.field,
+            value: result.value === null ? '—' : String(result.value),
+            detail: `${item.kpi.aggregate} · ${item.kpi.field}`,
+          })
+          continue
+        }
+        if (item.kind === 'text') {
+          if (item.text?.trim()) textCards.push({ text: item.text })
+          continue
+        }
         const chart = charts.find((c) => c.id === item.chartId)
         if (!chart) continue
         const externalBrushes = dashboard.items
@@ -156,7 +178,7 @@ export function DashboardView() {
           chart.datasetId,
           chart.encoding,
           undefined,
-          filters,
+          filters.filter((filter) => filter.datasetId === chart.datasetId),
           externalBrushes,
         )
         figures.push({ name: chart.name, figure })
@@ -165,6 +187,8 @@ export function DashboardView() {
         title: dashboard.name,
         dataset_id: activeDataFrameId ?? undefined,
         charts: figures,
+        kpis,
+        text_cards: textCards,
         notes: '',
         include_insights: false,
       })
@@ -175,9 +199,9 @@ export function DashboardView() {
       a.download = `${dashboard.name.replace(/[^\w-]+/g, '_')}.html`
       a.click()
       URL.revokeObjectURL(url)
-      addNotification('success', `Dashboard exported with ${figures.length} chart(s)`)
+      addNotification('success', t('dashboard.exported', { charts: figures.length, kpis: kpis.length, texts: textCards.length }))
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Dashboard export failed')
+      addNotification('error', err instanceof Error ? err.message : t('dashboard.exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -408,6 +432,7 @@ export function DashboardView() {
                 <div key={item.chartId} className="h-full">
                   <KpiCard
                     item={item}
+                    filters={filters}
                     onRemove={() => removeItem(dashboard.id, item.chartId)}
                     onConfigure={(kpi) => updateItemKpi(dashboard.id, item.chartId, kpi)}
                   />

@@ -19,6 +19,8 @@ async def generate_report(payload: dict):
     title = payload.get("title", "未命名报告")
     dataset_id = payload.get("dataset_id")
     charts = payload.get("charts", [])  # [{name, figure}]
+    kpis = payload.get("kpis", [])  # [{label, value, detail}]
+    text_cards = payload.get("text_cards", [])  # [{text}]
     notes = payload.get("notes", "")
     include_insights = bool(payload.get("include_insights", True))
 
@@ -54,6 +56,9 @@ async def generate_report(payload: dict):
             f"&middot; engine: {dataset_meta['engine']}</p>"
         )
 
+    def script_json(value) -> str:
+        return json.dumps(value).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
     chart_divs = ""
     chart_scripts = ""
     for i, chart in enumerate(charts):
@@ -65,10 +70,27 @@ async def generate_report(payload: dict):
             f'<div id="{div_id}" class="chart"></div></section>'
         )
         chart_scripts += (
-            f"Plotly.newPlot('{div_id}', {json.dumps(figure.get('data', []))}, "
-            f"{json.dumps(figure.get('layout', {}))}, {{responsive: true, displaylogo: false}});"
+            f"Plotly.newPlot('{div_id}', {script_json(figure.get('data', []))}, "
+            f"{script_json(figure.get('layout', {}))}, {{responsive: true, displaylogo: false}});"
         )
 
+    kpi_html = ""
+    if kpis:
+        cards = "".join(
+            '<div class="kpi">'
+            f'<div class="kpi-value">{html.escape(str(kpi.get("value", "—")))}</div>'
+            f'<div class="kpi-label">{html.escape(str(kpi.get("label", "KPI")))}</div>'
+            f'<div class="kpi-detail">{html.escape(str(kpi.get("detail", "")))}</div>'
+            "</div>"
+            for kpi in kpis
+        )
+        kpi_html = f'<section><h2>关键指标</h2><div class="kpi-grid">{cards}</div></section>'
+
+    text_html = "".join(
+        f'<section class="text-card"><p>{html.escape(str(card.get("text", "")))}</p></section>'
+        for card in text_cards
+        if str(card.get("text", "")).strip()
+    )
     notes_html = (
         f"<section><h2>注释</h2><p>{html.escape(notes)}</p></section>" if notes else ""
     )
@@ -89,13 +111,21 @@ async def generate_report(payload: dict):
   li {{ margin: 4px 0; }}
   section p {{ font-size: 13px; line-height: 1.7; white-space: pre-wrap; }}
   section.chart-block h2 {{ color: #e5e7eb; }}
+  .kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }}
+  .kpi {{ border: 1px solid #26292f; border-radius: 8px; padding: 16px; }}
+  .kpi-value {{ font-size: 28px; font-weight: 700; }}
+  .kpi-label {{ margin-top: 5px; font-size: 12px; color: #9ca3af; }}
+  .kpi-detail {{ margin-top: 3px; font-size: 11px; color: #6b7280; }}
+  .text-card {{ border: 1px solid #26292f; border-radius: 8px; padding: 4px 16px; margin-top: 12px; }}
 </style>
 </head>
 <body>
 <h1>{html.escape(title)}</h1>
 {meta_html}
 {insights_html}
+{kpi_html}
 {chart_divs}
+{text_html}
 {notes_html}
 <script>
 {chart_scripts}

@@ -163,10 +163,16 @@ export const api = {
     fetchJson<{ insights: { type: string; text: string; evidence: Record<string, unknown> }[] }>(
       `/api/v1/data/${id}/insights`
     ),
-  aggregateValue: (id: string, field: string, agg: string) =>
-    fetchJson<{ value: number | null }>(
-      `/api/v1/data/${id}/aggregate?field=${encodeURIComponent(field)}&agg=${agg}`
-    ),
+  aggregateValue: (
+    id: string,
+    field: string,
+    agg: string,
+    filters: { field: string; op: 'range' | 'in'; range?: [string, string]; values?: string[] }[] = [],
+  ) =>
+    fetchJson<{ value: number | null }>(`/api/v1/data/${id}/aggregate`, {
+      method: 'POST',
+      body: JSON.stringify({ field, agg, filters }),
+    }),
   getDataFrame: (id: string) => fetchJson<DataFrameMeta>(`/api/v1/data/${id}`),
   previewDataFrame: (id: string, query: PreviewQuery | number = {}) => {
     const options = typeof query === 'number' ? { limit: query } : query
@@ -418,6 +424,8 @@ export const api = {
     title: string;
     dataset_id?: string;
     charts: { name: string; figure: PlotlyFigure }[];
+    kpis?: { label: string; value: string; detail: string }[];
+    text_cards?: { text: string }[];
     notes: string;
     include_insights: boolean;
   }) =>

@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardBody } from '@heroui/react'
 import { Settings2, X } from 'lucide-react'
 import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
-import type { DashboardItem, KpiAggregate, KpiItemConfig } from '@/types/dashboard'
+import type { DashboardDataFilter, DashboardItem, KpiAggregate, KpiItemConfig } from '@/types/dashboard'
 import type { ColumnMeta } from '@/types/data'
 
 const AGGS: KpiAggregate[] = ['sum', 'mean', 'count', 'min', 'max', 'nunique']
 
 export interface KpiCardProps {
   item: DashboardItem
+  filters: DashboardDataFilter[]
   onRemove: () => void
   onConfigure: (kpi: Partial<KpiItemConfig>) => void
 }
@@ -24,7 +26,8 @@ function formatValue(v: number | null): string {
 
 const selectCls = 'rounded border border-border bg-surface px-2 py-1 text-xs'
 
-export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
+export function KpiCard({ item, filters, onRemove, onConfigure }: KpiCardProps) {
+  const { t } = useTranslation()
   const kpi = item.kpi
   const dataFrames = useDataStore((s) => s.dataFrames)
   const dataVersion = useDataStore((s) => (kpi?.datasetId ? s.dataVersions[kpi.datasetId] || 0 : 0))
@@ -32,8 +35,13 @@ export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
   const [loading, setLoading] = useState(false)
   const [configuring, setConfiguring] = useState(!item.kpi?.field)
   const [columns, setColumns] = useState<ColumnMeta[]>([])
+  const applicableFilters = useMemo(
+    () => filters.filter((filter) => filter.datasetId === kpi?.datasetId),
+    [filters, kpi?.datasetId],
+  )
+  const filtersKey = useMemo(() => JSON.stringify(applicableFilters), [applicableFilters])
 
-  // Fetch the aggregate whenever the KPI config changes.
+  // Fetch the aggregate whenever the KPI config or dashboard filters change.
   useEffect(() => {
     if (!kpi?.datasetId || !kpi?.field) {
       setValue(null)
@@ -42,12 +50,12 @@ export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
     let cancelled = false
     setLoading(true)
     api
-      .aggregateValue(kpi.datasetId, kpi.field, kpi.aggregate)
+      .aggregateValue(kpi.datasetId, kpi.field, kpi.aggregate, applicableFilters)
       .then((r) => { if (!cancelled) setValue(r.value) })
       .catch(() => { if (!cancelled) setValue(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [kpi?.datasetId, kpi?.field, kpi?.aggregate, dataVersion])
+  }, [kpi?.datasetId, kpi?.field, kpi?.aggregate, applicableFilters, filtersKey, dataVersion])
 
   // Load the dataset's columns only while the config panel is open.
   useEffect(() => {
@@ -67,14 +75,14 @@ export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
           <button
             className="rounded p-0.5 hover:bg-surface-elevated"
             onClick={() => setConfiguring((c) => !c)}
-            aria-label="Configure KPI"
+            aria-label={t('dashboard.configureKpi')}
           >
             <Settings2 className="h-3.5 w-3.5 text-muted" />
           </button>
           <button
             className="rounded p-0.5 hover:bg-danger/20 hover:text-danger"
             onClick={onRemove}
-            aria-label="Remove from dashboard"
+            aria-label={t('dashboard.removeCard')}
           >
             <X className="h-3.5 w-3.5 text-muted" />
           </button>
@@ -88,7 +96,7 @@ export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
               value={kpi?.datasetId ?? ''}
               onChange={(e) => onConfigure({ datasetId: e.target.value, field: '' })}
             >
-              <option value="">Dataset…</option>
+              <option value="">{t('dashboard.datasetPlaceholder')}</option>
               {dataFrames.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
@@ -98,7 +106,7 @@ export function KpiCard({ item, onRemove, onConfigure }: KpiCardProps) {
               value={kpi?.field ?? ''}
               onChange={(e) => onConfigure({ field: e.target.value })}
             >
-              <option value="">Field…</option>
+              <option value="">{t('dashboard.fieldPlaceholder')}</option>
               {numericCols.map((c) => (
                 <option key={c.name} value={c.name}>{c.name}</option>
               ))}

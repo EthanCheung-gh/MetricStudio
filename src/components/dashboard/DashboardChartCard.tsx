@@ -3,21 +3,14 @@ import { Card, CardBody } from '@heroui/react'
 import { Settings2, X } from 'lucide-react'
 import { PlotlyRenderer, type PlotlySelection } from '@/components/chart/PlotlyRenderer'
 import type { ChartConfig, SelectionFilter } from '@/types/encoding'
+import type { DashboardDataFilter } from '@/types/dashboard'
 import type { PlotlyFigure } from '@/types/plotly'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 
-export type DashboardCardFilter = {
-  datasetId: string
-  field: string
-  op: 'range' | 'in'
-  range?: [string, string]
-  values?: string[]
-}
-
 export interface DashboardChartCardProps {
   chart: ChartConfig
-  filters: DashboardCardFilter[]
+  filters: DashboardDataFilter[]
   /** Brushes from OTHER cards in the dashboard (applied as selections). */
   externalBrushes: SelectionFilter[]
   onRemove: () => void

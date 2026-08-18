@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Input, Select, SelectItem } from '@heroui/react'
 import { Eraser, X } from 'lucide-react'
@@ -28,6 +28,24 @@ function RangeInputs({
   onChange: (range: [string, string]) => void
   type?: 'text' | 'date'
 }) {
+  const [draft, setDraft] = useState(value)
+  const onChangeRef = useRef(onChange)
+  const externalKey = `${value[0]}\u0000${value[1]}`
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  useEffect(() => {
+    setDraft(externalKey.split('\u0000') as [string, string])
+  }, [externalKey])
+
+  useEffect(() => {
+    if (draft[0] === value[0] && draft[1] === value[1]) return
+    const timer = setTimeout(() => onChangeRef.current(draft), 300)
+    return () => clearTimeout(timer)
+  }, [draft, value])
+
   return (
     <div className="flex items-center gap-1">
       <Input
@@ -36,8 +54,8 @@ function RangeInputs({
         className={type === 'date' ? 'w-36' : 'w-24'}
         placeholder={type === 'date' ? undefined : 'min'}
         aria-label={type === 'date' ? 'Start date' : 'Minimum value'}
-        value={value[0]}
-        onValueChange={(v) => onChange([v, value[1]])}
+        value={draft[0]}
+        onValueChange={(v) => setDraft([v, draft[1]])}
       />
       <Input
         size="sm"
@@ -45,8 +63,8 @@ function RangeInputs({
         className={type === 'date' ? 'w-36' : 'w-24'}
         placeholder={type === 'date' ? undefined : 'max'}
         aria-label={type === 'date' ? 'End date' : 'Maximum value'}
-        value={value[1]}
-        onValueChange={(v) => onChange([value[0], v])}
+        value={draft[1]}
+        onValueChange={(v) => setDraft([draft[0], v])}
       />
     </div>
   )
