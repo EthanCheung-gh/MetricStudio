@@ -116,6 +116,7 @@ async def load_project(payload: dict):
 @router.post("/export/html")
 async def export_html(payload: dict):
     figure = payload.get("figure", {})
+    figure_json = json.dumps(figure).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -125,7 +126,7 @@ async def export_html(payload: dict):
 <body>
     <div id="chart"></div>
     <script>
-        var figure = {json.dumps(figure)};
+        var figure = {figure_json};
         Plotly.newPlot('chart', figure.data, figure.layout, {{responsive: true}});
     </script>
 </body>

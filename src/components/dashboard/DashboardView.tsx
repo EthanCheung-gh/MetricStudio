@@ -12,6 +12,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
 import { DashboardChartCard } from './DashboardChartCard'
 import type { DashboardDataFilter } from '@/types/dashboard'
+import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
 import { DashboardFilterBar } from './DashboardFilterBar'
 import { KpiCard } from './KpiCard'
 import { TextCard } from './TextCard'
@@ -181,7 +182,7 @@ export function DashboardView() {
           filters.filter((filter) => filter.datasetId === chart.datasetId),
           externalBrushes,
         )
-        figures.push({ name: chart.name, figure })
+        figures.push({ name: chart.name, figure: applyPlotlyUserStyle(figure, chart.layout) })
       }
       const { html } = await api.generateReport({
         title: dashboard.name,

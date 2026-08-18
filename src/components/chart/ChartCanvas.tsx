@@ -7,6 +7,7 @@ import { Button, Card, CardBody, Input } from '@heroui/react'
 import { Download, Image, FileCode, FileText, Filter, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
+import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
 
 declare const Plotly: {
   toImage: (el: HTMLElement, opts: { format: string; height: number; width: number }) => Promise<string>
@@ -97,7 +98,8 @@ export function ChartCanvas() {
   const handleExportHtml = async () => {
     if (!previewFigure) return
     try {
-      const { html } = await api.exportHtml(previewFigure)
+      const figure = applyPlotlyUserStyle(previewFigure, activeChart?.layout)
+      const { html } = await api.exportHtml(figure)
       const blob = new Blob([html], { type: 'text/html' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -135,7 +137,7 @@ export function ChartCanvas() {
   const handleExportJson = () => {
     if (!previewFigure) return
     try {
-      const json = JSON.stringify(previewFigure, null, 2)
+      const json = JSON.stringify(applyPlotlyUserStyle(previewFigure, activeChart?.layout), null, 2)
       const blob = new Blob([json], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')

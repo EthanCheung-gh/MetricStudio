@@ -6,6 +6,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
+import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
 
 export function ReportDialog() {
   const { t } = useTranslation()
@@ -34,7 +35,7 @@ export function ReportDialog() {
       const figures = []
       for (const chart of charts.filter((c) => selected.includes(c.id))) {
         const figure = await api.previewChart(chart.datasetId, chart.encoding)
-        figures.push({ name: chart.name, figure })
+        figures.push({ name: chart.name, figure: applyPlotlyUserStyle(figure, chart.layout) })
       }
       const { html } = await api.generateReport({
         title: title.trim() || 'Untitled Report',

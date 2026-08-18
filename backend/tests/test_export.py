@@ -41,6 +41,18 @@ def test_export_reflects_transforms(client):
     assert len(df) == 2
 
 
+def test_chart_html_export_escapes_script_end_tags(client):
+    attack = "</script><script>alert(1)</script>"
+    resp = client.post(
+        "/api/v1/project/export/html",
+        json={"figure": {"data": [{"x": [attack], "y": [1]}], "layout": {}}},
+    )
+    assert resp.status_code == 200
+    doc = resp.json()["html"]
+    assert attack not in doc
+    assert "\\u003c/script\\u003e" in doc
+
+
 def test_export_invalid_format(client):
     csv = "a\n1\n"
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})

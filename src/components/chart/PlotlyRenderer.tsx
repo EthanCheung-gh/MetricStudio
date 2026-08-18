@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PlotlyFigure } from '@/types/plotly'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { applyPlotlyUserStyle, mergePlotlyLayout } from '@/utils/plotlyLayout'
 
 declare const Plotly: {
   react: (el: HTMLElement, data: unknown[], layout: unknown, config?: unknown) => void
@@ -22,29 +23,6 @@ interface PlotlyRendererProps {
   onSelected?: (sel: PlotlySelection) => void
   /** Fired when the user deselects (click on empty plot area). */
   onClearSelection?: () => void
-}
-
-function deepMergeLayout(
-  base: Record<string, unknown>,
-  overrides?: Record<string, unknown>
-): Record<string, unknown> {
-  if (!overrides) return { ...base }
-  const result = { ...base }
-  for (const key of Object.keys(overrides)) {
-    const baseVal = base[key]
-    const overrideVal = overrides[key]
-    // Deep-merge axis objects so backend-generated titles survive
-    if (
-      /^(xaxis\d*|yaxis\d*)$/.test(key) &&
-      typeof baseVal === 'object' && baseVal !== null &&
-      typeof overrideVal === 'object' && overrideVal !== null
-    ) {
-      result[key] = { ...(baseVal as Record<string, unknown>), ...(overrideVal as Record<string, unknown>) }
-    } else {
-      result[key] = overrideVal
-    }
-  }
-  return result
 }
 
 export function PlotlyRenderer({
@@ -99,15 +77,14 @@ export function PlotlyRenderer({
       xaxis2: { gridcolor: gridColor },
       yaxis2: { gridcolor: gridColor },
     }
-    // Deep merge: userLayout overrides only specific keys, doesn't replace whole axis objects
-    const mergedLayout = deepMergeLayout(
-      figure.layout as Record<string, unknown>,
-      deepMergeLayout(themeLayout, userLayout),
+    const themeFigure = applyPlotlyUserStyle(
+      { data: figure.data, layout: mergePlotlyLayout(figure.layout, themeLayout) },
+      userLayout,
     )
 
     try {
       setRenderError(null)
-      Plotly.react(el, figure.data, mergedLayout, {
+      Plotly.react(el, themeFigure.data, themeFigure.layout, {
         responsive: true,
         displayModeBar: true,
         displaylogo: false,

@@ -38,9 +38,9 @@ const defaultLayout: Record<string, unknown> = {
   margin: { t: 40, r: 20, b: 40, l: 60 },
   paper_bgcolor: 'rgba(0,0,0,0)',
   plot_bgcolor: 'rgba(0,0,0,0)',
-  font: { color: '#f5f5f5' },
-  xaxis: { gridcolor: '#333333', zerolinecolor: '#444444' },
-  yaxis: { gridcolor: '#333333', zerolinecolor: '#444444' },
+  font: {},
+  xaxis: {},
+  yaxis: {},
   legend: { orientation: 'h', y: -0.2 },
 };
 
@@ -189,6 +189,15 @@ export const useChartStore = create<ChartState>()(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           merged.charts = (merged.charts as any[]).map((chart: any) => {
             const enc = chart.encoding || {};
+            const layout = chart.layout || {};
+            const font = layout.font || {};
+            const xaxis = layout.xaxis || {};
+            const yaxis = layout.yaxis || {};
+            if (font.color === '#f5f5f5') delete font.color;
+            if (xaxis.gridcolor === '#333333') delete xaxis.gridcolor;
+            if (xaxis.zerolinecolor === '#444444') delete xaxis.zerolinecolor;
+            if (yaxis.gridcolor === '#333333') delete yaxis.gridcolor;
+            if (yaxis.zerolinecolor === '#444444') delete yaxis.zerolinecolor;
             if ('y' in enc && !('yFields' in enc)) {
               const oldY = enc.y;
               delete enc.y;
