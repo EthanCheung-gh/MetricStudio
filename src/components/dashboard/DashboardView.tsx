@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
-import { Button } from '@heroui/react'
-import { Download, Plus, Presentation, Save, X } from 'lucide-react'
+import { Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from '@heroui/react'
+import { Check, Download, Pencil, Plus, Presentation, Save, Trash2, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -17,9 +18,12 @@ import { TextCard } from './TextCard'
 const Grid = WidthProvider(GridLayout)
 
 export function DashboardView() {
+  const { t } = useTranslation()
   const dashboards = useDashboardStore((s) => s.dashboards)
   const activeDashboardId = useDashboardStore((s) => s.activeDashboardId)
   const createDashboard = useDashboardStore((s) => s.createDashboard)
+  const removeDashboard = useDashboardStore((s) => s.removeDashboard)
+  const renameDashboard = useDashboardStore((s) => s.renameDashboard)
   const setActiveDashboard = useDashboardStore((s) => s.setActiveDashboard)
   const addItem = useDashboardStore((s) => s.addItem)
   const addKpiItem = useDashboardStore((s) => s.addKpiItem)
@@ -36,9 +40,10 @@ export function DashboardView() {
   const layoutTemplates = useDashboardStore((s) => s.layoutTemplates)
   const saveLayoutTemplate = useDashboardStore((s) => s.saveLayoutTemplate)
   const applyLayoutTemplate = useDashboardStore((s) => s.applyLayoutTemplate)
+  const removeLayoutTemplate = useDashboardStore((s) => s.removeLayoutTemplate)
   const charts = useChartStore((s) => s.charts)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
-  const columns = useDataStore((s) => s.columns)
+  const dataFrames = useDataStore((s) => s.dataFrames)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const openChartTab = useWorkspaceStore((s) => s.openChartTab)
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
@@ -47,10 +52,19 @@ export function DashboardView() {
   const [selectedChart, setSelectedChart] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [presenting, setPresenting] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [dashboardName, setDashboardName] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
   const dashboard = dashboards.find((d) => d.id === activeDashboardId) ?? dashboards[0]
   const activeBrushes = dashboard ? (brushSelections[dashboard.id] ?? {}) : {}
+
+  useEffect(() => {
+    setEditingName(false)
+    setDashboardName(dashboard?.name ?? '')
+    setDeleteOpen(false)
+  }, [dashboard?.id, dashboard?.name])
 
   // Presentation mode: fullscreen the canvas, auto-cycle dashboards, hide chrome.
   useEffect(() => {
@@ -120,6 +134,13 @@ export function DashboardView() {
 
   const availableCharts = charts.filter((c) => !dashboard.items.some((i) => i.chartId === c.id))
 
+  const commitDashboardName = () => {
+    const name = dashboardName.trim()
+    if (name && name !== dashboard.name) renameDashboard(dashboard.id, name)
+    else setDashboardName(dashboard.name)
+    setEditingName(false)
+  }
+
   const handleExportHtml = async () => {
     setExporting(true)
     try {
@@ -176,19 +197,49 @@ export function DashboardView() {
       {!presenting && (
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <select
-            className="rounded border border-border bg-surface px-2 py-1 text-sm font-semibold"
-            value={dashboard.id}
-            onChange={(e) => setActiveDashboard(e.target.value)}
-          >
-            {dashboards.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+          {editingName ? (
+            <div className="flex items-center gap-1">
+              <Input
+                size="sm"
+                value={dashboardName}
+                onValueChange={setDashboardName}
+                aria-label={t('dashboard.name')}
+                autoFocus
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') commitDashboardName()
+                  if (event.key === 'Escape') {
+                    setDashboardName(dashboard.name)
+                    setEditingName(false)
+                  }
+                }}
+              />
+              <Button isIconOnly size="sm" variant="light" onPress={commitDashboardName} aria-label={t('dashboard.saveName')}>
+                <Check className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <select
+                className="rounded border border-border bg-surface px-2 py-1 text-sm font-semibold"
+                value={dashboard.id}
+                onChange={(e) => setActiveDashboard(e.target.value)}
+              >
+                {dashboards.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+              <Button isIconOnly size="sm" variant="light" onPress={() => setEditingName(true)} aria-label={t('dashboard.rename')}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button isIconOnly size="sm" variant="light" onPress={() => setDeleteOpen(true)} aria-label={t('dashboard.delete')}>
+                <Trash2 className="h-3.5 w-3.5 text-danger" />
+              </Button>
+            </div>
+          )}
           <Button size="sm" variant="light" startContent={<Plus className="h-3 w-3" />} onPress={() => createDashboard()}>
-            New
+            {t('dashboard.new')}
           </Button>
           {Object.keys(activeBrushes).length > 0 && (
             <button
@@ -229,25 +280,41 @@ export function DashboardView() {
             Present
           </Button>
           {layoutTemplates.length > 0 && (
-            <select
-              className="rounded border border-border bg-surface px-2 py-1 text-[11px]"
-              value={selectedTemplate}
-              onChange={(e) => {
-                if (e.target.value) {
-                  applyLayoutTemplate(dashboard.id, e.target.value)
-                }
-                setSelectedTemplate('')
-              }}
-            >
-              <option value="">
-                <span className="text-muted">Apply layout…</span>
-              </option>
-              {layoutTemplates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                className="rounded border border-border bg-surface px-2 py-1 text-[11px]"
+                value={selectedTemplate}
+                onChange={(e) => setSelectedTemplate(e.target.value)}
+              >
+                <option value="">{t('dashboard.chooseLayout')}</option>
+                {layoutTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                size="sm"
+                variant="light"
+                isDisabled={!selectedTemplate}
+                onPress={() => selectedTemplate && applyLayoutTemplate(dashboard.id, selectedTemplate)}
+              >
+                {t('dashboard.applyLayout')}
+              </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                isDisabled={!selectedTemplate}
+                onPress={() => {
+                  if (selectedTemplate) removeLayoutTemplate(selectedTemplate)
+                  setSelectedTemplate('')
+                }}
+                aria-label={t('dashboard.deleteLayout')}
+              >
+                <Trash2 className="h-3.5 w-3.5 text-danger" />
+              </Button>
+            </div>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -292,10 +359,30 @@ export function DashboardView() {
       <DashboardFilterBar
         dashboardId={dashboard.id}
         filters={dashboard.filters}
-        columns={columns}
-        datasetId={activeDataFrameId}
+        datasets={dataFrames}
       />
       )}
+
+      <Modal isOpen={deleteOpen} onClose={() => setDeleteOpen(false)}>
+        <ModalContent>
+          <ModalHeader>{t('dashboard.deleteTitle')}</ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-muted">{t('dashboard.deleteConfirm', { name: dashboard.name })}</p>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="light" onPress={() => setDeleteOpen(false)}>{t('common.cancel')}</Button>
+            <Button
+              color="danger"
+              onPress={() => {
+                removeDashboard(dashboard.id)
+                setDeleteOpen(false)
+              }}
+            >
+              {t('common.delete')}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
       <div className="min-h-0 flex-1 overflow-auto">
         <Grid

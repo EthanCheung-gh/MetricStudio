@@ -66,10 +66,16 @@ export const useDashboardStore = create<DashboardState>()(
       },
 
       removeDashboard: (id) =>
-        set((s) => ({
-          dashboards: s.dashboards.filter((d) => d.id !== id),
-          activeDashboardId: s.activeDashboardId === id ? null : s.activeDashboardId,
-        })),
+        set((s) => {
+          const dashboards = s.dashboards.filter((d) => d.id !== id)
+          return {
+            dashboards,
+            activeDashboardId: s.activeDashboardId === id ? (dashboards[0]?.id ?? null) : s.activeDashboardId,
+            brushSelections: Object.fromEntries(
+              Object.entries(s.brushSelections).filter(([dashboardId]) => dashboardId !== id),
+            ),
+          }
+        }),
 
       renameDashboard: (id, name) =>
         set((s) => ({
@@ -188,7 +194,8 @@ export const useDashboardStore = create<DashboardState>()(
           })),
         })),
 
-      loadDashboards: (dashboards) => set({ dashboards }),
+      loadDashboards: (dashboards) =>
+        set({ dashboards, activeDashboardId: dashboards[0]?.id ?? null, brushSelections: {} }),
 
       brushSelections: {},
 
@@ -231,14 +238,14 @@ export const useDashboardStore = create<DashboardState>()(
           if (!template) return s
           const dashboard = s.dashboards.find((d) => d.id === dashboardId)
           if (!dashboard) return s
-          const validIds = new Set(dashboard.items.map((i) => i.chartId))
-          const items = template.items
-            .filter((i) => validIds.has(i.chartId))
-            .map((i) => ({ ...i }))
+          const templateItems = new Map(template.items.map((item) => [item.chartId, item]))
           return {
             dashboards: touch(s.dashboards, dashboardId, (d) => ({
               ...d,
-              items,
+              items: d.items.map((item) => {
+                const saved = templateItems.get(item.chartId)
+                return saved ? { ...item, x: saved.x, y: saved.y, w: saved.w, h: saved.h } : item
+              }),
               updatedAt: new Date().toISOString(),
             })),
           }

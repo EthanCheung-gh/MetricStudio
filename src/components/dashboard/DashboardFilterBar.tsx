@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Input, Select, SelectItem } from '@heroui/react'
 import { Eraser, X } from 'lucide-react'
 import { api } from '@/api/client'
-import type { ColumnMeta } from '@/types/data'
+import type { ColumnMeta, DataFrameMeta } from '@/types/data'
 import type { DashboardFilter, DashboardFilterKind } from '@/types/dashboard'
 import { useDashboardStore } from '@/stores/dashboardStore'
+import { useDataStore } from '@/stores/dataStore'
 
 function kindForType(t: ColumnMeta['inferredType']): DashboardFilterKind {
   if (t === 'temporal') return 'date'
@@ -53,39 +55,64 @@ function RangeInputs({
 export function DashboardFilterBar({
   dashboardId,
   filters,
-  columns,
-  datasetId,
+  datasets,
 }: {
   dashboardId: string
   filters: DashboardFilter[]
-  columns: ColumnMeta[]
-  datasetId: string | null
+  datasets: DataFrameMeta[]
 }) {
+  const { t } = useTranslation()
   const addFilter = useDashboardStore((s) => s.addFilter)
   const updateFilter = useDashboardStore((s) => s.updateFilter)
   const removeFilter = useDashboardStore((s) => s.removeFilter)
   const clearAllFilters = useDashboardStore((s) => s.clearAllFilters)
+  const dataVersions = useDataStore((s) => s.dataVersions)
   const [valuesByField, setValuesByField] = useState<Record<string, string[]>>({})
+  const fieldOptions = useMemo(
+    () => datasets.flatMap((dataset) => dataset.columns.map((column) => ({ dataset, column }))),
+    [datasets],
+  )
+  const categorySourceKey = JSON.stringify(
+    Array.from(new Map(
+      filters
+        .filter((filter) => filter.kind === 'category' && filter.datasetId)
+        .map((filter) => [
+          `${filter.datasetId}:${filter.field}`,
+          { datasetId: filter.datasetId, field: filter.field, version: dataVersions[filter.datasetId] || 0 },
+        ]),
+    ).values()).sort((left, right) =>
+      `${left.datasetId}:${left.field}`.localeCompare(`${right.datasetId}:${right.field}`),
+    ),
+  )
 
   useEffect(() => {
-    if (!datasetId) {
-      setValuesByField({})
-      return
+    const sources = JSON.parse(categorySourceKey) as { datasetId: string; field: string; version: number }[]
+    let cancelled = false
+    Promise.all(
+      sources.map(async ({ datasetId, field }) => {
+        const key = `${datasetId}:${field}`
+        try {
+          return [key, (await api.distinctValues(datasetId, field)).values] as const
+        } catch {
+          return [key, []] as const
+        }
+      }),
+    ).then((entries) => {
+      if (!cancelled) setValuesByField(Object.fromEntries(entries))
+    })
+    return () => {
+      cancelled = true
     }
-    const fields = filters.filter((filter) => filter.kind === 'category').map((filter) => filter.field)
-    Promise.all(fields.map(async (field) => [field, (await api.distinctValues(datasetId, field)).values] as const))
-      .then((entries) => setValuesByField(Object.fromEntries(entries)))
-      .catch(() => setValuesByField({}))
-  }, [datasetId, filters])
+  }, [categorySourceKey])
 
-  const addForField = (field: string) => {
-    const col = columns.find((c) => c.name === field)
-    if (!col) return
+  const addForField = (optionKey: string) => {
+    const option = fieldOptions.find(({ dataset, column }) => `${dataset.id}:${column.name}` === optionKey)
+    if (!option) return
     addFilter(dashboardId, {
-      field,
-      label: field,
-      kind: kindForType(col.inferredType),
-      datasetId: datasetId ?? '',
+      field: option.column.name,
+      label: option.column.name,
+      kind: kindForType(option.column.inferredType),
+      datasetId: option.dataset.id,
       value: null,
     })
   }
@@ -100,12 +127,13 @@ export function DashboardFilterBar({
           onClick={() => clearAllFilters(dashboardId)}
         >
           <Eraser className="h-3 w-3" />
-          Clear filters ({activeCount})
+          {t('dashboard.clearFilters', { count: activeCount })}
         </button>
       )}
       {filters.map((f) => {
-        const values = valuesByField[f.field] || []
+        const values = valuesByField[`${f.datasetId}:${f.field}`] || []
         const active = hasFilterValue(f)
+        const datasetName = datasets.find((dataset) => dataset.id === f.datasetId)?.name
         return (
           <div
             key={f.id}
@@ -113,7 +141,9 @@ export function DashboardFilterBar({
               active ? 'border-primary/60' : 'border-border'
             }`}
           >
-            <span className="text-[10px] uppercase tracking-wide text-muted">{f.label}</span>
+            <span className="text-[10px] uppercase tracking-wide text-muted" title={datasetName}>
+              {datasetName ? `${datasetName} · ${f.label}` : f.label}
+            </span>
             {f.kind === 'category' ? (
               <Select
                 size="sm"
@@ -138,7 +168,7 @@ export function DashboardFilterBar({
             <button
               className="rounded p-0.5 hover:bg-danger/20"
               onClick={() => removeFilter(dashboardId, f.id)}
-              aria-label="Remove filter"
+              aria-label={t('dashboard.removeFilter')}
             >
               <X className="h-3 w-3 text-muted" />
             </button>
@@ -152,11 +182,15 @@ export function DashboardFilterBar({
           if (e.target.value) addForField(e.target.value)
         }}
       >
-        <option value="">+ Filter…</option>
-        {columns.map((c) => (
-          <option key={c.name} value={c.name}>
-            {c.name}
-          </option>
+        <option value="">{t('dashboard.addFilter')}</option>
+        {datasets.map((dataset) => (
+          <optgroup key={dataset.id} label={dataset.name}>
+            {dataset.columns.map((column) => (
+              <option key={`${dataset.id}:${column.name}`} value={`${dataset.id}:${column.name}`}>
+                {column.name}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </div>
