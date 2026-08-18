@@ -60,12 +60,14 @@ def _clean_session():
     session.datasets.clear()
     session.global_history.clear()
     session.global_redo.clear()
+    session.snapshots.clear()
     yield
     for ds_id in list(session.datasets.keys()):
         session.delete_dataset(ds_id)
     session.datasets.clear()
     session.global_history.clear()
     session.global_redo.clear()
+    session.snapshots.clear()
 
 
 @pytest.fixture

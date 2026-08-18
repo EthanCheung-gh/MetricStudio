@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import data, transform, chart, project, report, recipes, nl, sql
+from backend.api import data, transform, chart, project, report, recipes, nl, sql, snapshots
 
 
 @asynccontextmanager
@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MetricStudio Backend",
-    version="0.1.9",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -86,6 +86,7 @@ app.include_router(report.router)
 app.include_router(recipes.router)
 app.include_router(nl.router)
 app.include_router(sql.router)
+app.include_router(snapshots.router)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ logger = logging.getLogger("session")
 # so a sidecar restart can rebuild datasets and replay operation chains (spec §3.3/§7.3)
 STORAGE_DIR = Path.home() / ".metricstudio" / "session"
 SOURCES_DIR = Path.home() / ".metricstudio" / "sources"
+SNAPSHOTS_DIR = Path.home() / ".metricstudio" / "snapshots"
 
 
 class SessionManager:
@@ -32,6 +33,8 @@ class SessionManager:
         self.global_redo: list[dict[str, Any]] = []
         # Data source metadata: dataset_id -> {path, original_name, ext, sheet_name}
         self.sources: dict[str, dict[str, Any]] = {}
+        # Materialized, immutable snapshots. Data lives in SNAPSHOTS_DIR/{id}.parquet.
+        self.snapshots: dict[str, dict[str, Any]] = {}
 
     # ---- persistence ----
 
@@ -46,6 +49,11 @@ class SessionManager:
                 "created_at": dataset.created_at,
                 "history": dataset.history,
                 "source": self.sources.get(dataset.id),
+                "snapshots": [
+                    snapshot
+                    for snapshot in self.snapshots.values()
+                    if snapshot["dataset_id"] == dataset.id
+                ],
             }
             (STORAGE_DIR / f"{dataset.id}.json").write_text(
                 json.dumps(meta, ensure_ascii=False, default=str), encoding="utf-8"
@@ -76,6 +84,9 @@ class SessionManager:
                 self.datasets[dataset.id] = dataset  # register first: join replay may reference it
                 if meta.get("source"):
                     self.sources[dataset_id] = meta["source"]
+                for snapshot in meta.get("snapshots", []):
+                    if Path(snapshot.get("path", "")).is_file():
+                        self.snapshots[snapshot["id"]] = snapshot
                 # Replay the operation chain to rebuild the derived state
                 self._replay(dataset, meta.get("history", []))
                 restored += 1
@@ -84,6 +95,84 @@ class SessionManager:
         if restored:
             logger.info("restored %d dataset(s) from %s", restored, STORAGE_DIR)
         return restored
+
+    # ---- snapshots ----
+
+    def create_snapshot(
+        self,
+        dataset_id: str,
+        name: str,
+        description: str = "",
+        step: int | None = None,
+    ) -> dict[str, Any]:
+        dataset = self.get(dataset_id)
+        if not name.strip():
+            raise ValueError("Snapshot name is required")
+        target_step = len(dataset.history) - 1 if step is None else step
+        frame = self.df_at_step(dataset_id, target_step)
+        SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        snapshot_id = str(uuid.uuid4())
+        path = SNAPSHOTS_DIR / f"{snapshot_id}.parquet"
+        temp_path = path.with_suffix(".parquet.tmp")
+        try:
+            frame.to_parquet(temp_path)
+            temp_path.replace(path)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            path.unlink(missing_ok=True)
+            raise
+        snapshot = {
+            "id": snapshot_id,
+            "dataset_id": dataset_id,
+            "dataset_name": dataset.name,
+            "name": name.strip(),
+            "description": description.strip(),
+            "step": target_step,
+            "rows": len(frame),
+            "cols": len(frame.columns),
+            "created_at": datetime.utcnow().isoformat(),
+            "path": str(path),
+        }
+        self.snapshots[snapshot_id] = snapshot
+        self._persist(dataset)
+        return self._snapshot_public(snapshot)
+
+    def _snapshot_public(self, snapshot: dict[str, Any]) -> dict[str, Any]:
+        return {key: value for key, value in snapshot.items() if key != "path"}
+
+    def list_snapshots(self, dataset_id: str) -> list[dict[str, Any]]:
+        self.get(dataset_id)
+        return [
+            self._snapshot_public(snapshot)
+            for snapshot in sorted(self.snapshots.values(), key=lambda item: item["created_at"], reverse=True)
+            if snapshot["dataset_id"] == dataset_id
+        ]
+
+    def get_snapshot(self, snapshot_id: str) -> dict[str, Any]:
+        snapshot = self.snapshots.get(snapshot_id)
+        if snapshot is None:
+            raise KeyError(f"Snapshot not found: {snapshot_id}")
+        return snapshot
+
+    def snapshot_df(self, snapshot_id: str) -> pd.DataFrame:
+        snapshot = self.get_snapshot(snapshot_id)
+        path = Path(snapshot["path"])
+        if not path.is_file():
+            raise ValueError("Snapshot data file is missing")
+        return pd.read_parquet(path)
+
+    def delete_snapshot(self, snapshot_id: str) -> None:
+        snapshot = self.get_snapshot(snapshot_id)
+        self.snapshots.pop(snapshot_id, None)
+        Path(snapshot["path"]).unlink(missing_ok=True)
+        dataset = self.datasets.get(snapshot["dataset_id"])
+        if dataset is not None:
+            self._persist(dataset)
+
+    def restore_snapshot(self, snapshot_id: str, name: str | None = None) -> Dataset:
+        snapshot = self.get_snapshot(snapshot_id)
+        restored_name = (name or f"{snapshot['dataset_name']} · {snapshot['name']}").strip()
+        return self.import_dataframe(self.snapshot_df(snapshot_id), restored_name)
 
     # ---- dataset operations ----
 
@@ -293,6 +382,11 @@ class SessionManager:
 
     def delete_dataset(self, dataset_id: str) -> None:
         self.datasets.pop(dataset_id, None)
+        for snapshot_id in [
+            snapshot["id"] for snapshot in self.snapshots.values() if snapshot["dataset_id"] == dataset_id
+        ]:
+            snapshot = self.snapshots.pop(snapshot_id)
+            Path(snapshot["path"]).unlink(missing_ok=True)
         source = self.sources.pop(dataset_id, None)
         if source and source.get("kind") != "sqlite":
             source_path = Path(source["path"])

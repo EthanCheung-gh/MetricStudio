@@ -3,6 +3,7 @@ import type {
   SourceStatus,
   DataPreview,
   DataDiffResult,
+  DataSnapshot,
   PreviewQuery,
   DescribeResponse,
   FilterParams,
@@ -304,6 +305,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ step_a: stepA, step_b: stepB }),
     }),
+  listSnapshots: (datasetId: string) =>
+    fetchJson<DataSnapshot[]>(`/api/v1/data/${datasetId}/snapshots`),
+  createSnapshot: (datasetId: string, name: string, description: string, step?: number) =>
+    fetchJson<DataSnapshot>(`/api/v1/data/${datasetId}/snapshots`, {
+      method: 'POST',
+      body: JSON.stringify({ name, description, step }),
+    }),
+  previewSnapshot: (snapshotId: string) =>
+    fetchJson<DataPreview>(`/api/v1/snapshots/${snapshotId}/preview`),
+  diffSnapshot: (snapshotId: string, datasetId: string, step?: number) =>
+    fetchJson<DataDiffResult>(`/api/v1/snapshots/${snapshotId}/diff`, {
+      method: 'POST',
+      body: JSON.stringify({ dataset_id: datasetId, step }),
+    }),
+  restoreSnapshot: (snapshotId: string, name?: string) =>
+    fetchJson<DataFrameMeta>(`/api/v1/snapshots/${snapshotId}/restore`, {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  deleteSnapshot: (snapshotId: string) =>
+    fetchJson<{ deleted: boolean }>(`/api/v1/snapshots/${snapshotId}`, { method: 'DELETE' }),
   timeseries: (id: string, column: string) =>
     fetchJson<{ ok: boolean; reason?: string; periods?: string[]; values?: number[]; pct_change?: (number | null)[] }>(
       `/api/v1/data/${id}/timeseries?column=${encodeURIComponent(column)}`

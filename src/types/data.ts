@@ -47,6 +47,18 @@ export interface PreviewQuery {
   search?: string;
 }
 
+export interface DataSnapshot {
+  id: string;
+  dataset_id: string;
+  dataset_name: string;
+  name: string;
+  description: string;
+  step: number;
+  rows: number;
+  cols: number;
+  created_at: string;
+}
+
 export interface DataDiffResult {
   left_rows: number;
   right_rows: number;
