@@ -31,6 +31,11 @@ __pycache__/
 .venv/
 venv/
 .env
+# PyInstaller intermediates (dist/ is the artifact, binaries/ is committed)
+build/
+*.spec
+# Tauri sidecar binary (rebuilt by scripts/build-sidecar.sh during tauri build)
+src-tauri/binaries/
 
 # Tauri
 src-tauri/target/

@@ -28,6 +28,25 @@ def test_candlestick(client):
     assert trace["close"] == [105, 108, 115]
 
 
+def test_candlestick_uses_default_ohlc_column_names(client):
+    csv = """date,open,high,low,close
+2024-01-01,100,110,90,105
+"""
+    dsid = _import(client, csv)
+    encoding = {
+        "chartType": "candlestick",
+        "x": {"field": "date", "type": "temporal"},
+        "yFields": [],
+    }
+    resp = client.post("/api/v1/chart/preview", json={"dataset_id": dsid, "encoding": encoding})
+    assert resp.status_code == 200, resp.text
+    trace = resp.json()["data"][0]
+    assert trace["open"] == [100]
+    assert trace["high"] == [110]
+    assert trace["low"] == [90]
+    assert trace["close"] == [105]
+
+
 def test_surface(client):
     csv = """x,y,z
 1,a,10

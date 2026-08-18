@@ -1,12 +1,15 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Database, FileJson, FolderOpen, History, Save, Upload } from 'lucide-react'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { Database, FileJson, FolderOpen, History, Minus, Save, Square, Upload, X } from 'lucide-react'
 import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input } from '@heroui/react'
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { api } from '@/api/client'
 import { loadProjectByPath } from '@/utils/project'
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 export function TitleBar() {
   const { t } = useTranslation();
@@ -62,13 +65,20 @@ export function TitleBar() {
     }
   }
 
+  const handleMinimize = () => {
+    try { getCurrentWindow().minimize() } catch { /* non-Tauri (browser dev) */ }
+  }
+  const handleToggleMaximize = () => {
+    try { getCurrentWindow().toggleMaximize() } catch { /* non-Tauri (browser dev) */ }
+  }
+  const handleClose = () => {
+    try { getCurrentWindow().close() } catch { /* non-Tauri (browser dev) */ }
+  }
+
   return (
     <>
-      <div
-        data-tauri-drag-region
-        className="flex h-10 items-center justify-between border-b border-border bg-surface px-3 select-none"
-      >
-        <div className="flex items-center gap-2" data-tauri-drag-region>
+      <div className="flex h-10 items-center justify-between border-b border-border bg-surface px-3 select-none">
+        <div data-tauri-drag-region className="flex min-w-0 flex-1 items-center gap-2">
           <Database className="h-5 w-5 text-primary" />
           <span className="font-semibold text-sm">MetricStudio</span>
         </div>
@@ -89,6 +99,19 @@ export function TitleBar() {
             <FileJson className="h-4 w-4" />
           </Button>
         </div>
+        {isTauri && (
+          <div className="ml-1 flex items-center gap-0.5 border-l border-border pl-1">
+            <button className="rounded p-1 hover:bg-surface-elevated" onClick={handleMinimize} aria-label="Minimize">
+              <Minus className="h-3.5 w-3.5 text-muted" />
+            </button>
+            <button className="rounded p-1 hover:bg-surface-elevated" onClick={handleToggleMaximize} aria-label="Maximize">
+              <Square className="h-3 w-3 text-muted" />
+            </button>
+            <button className="rounded p-1 hover:bg-danger/20 hover:text-danger" onClick={handleClose} aria-label="Close">
+              <X className="h-3.5 w-3.5 text-muted" />
+            </button>
+          </div>
+        )}
       </div>
 
       <Modal isOpen={saveProjectModalOpen} onClose={() => setSaveProjectModalOpen(false)}>

@@ -22,20 +22,37 @@ function kindForType(t: ColumnMeta['inferredType']): DashboardFilterKind {
   return 'category'
 }
 
-function RangeInputs({ value, onChange }: { value: [string, string]; onChange: (range: [string, string]) => void }) {
+function hasFilterValue(filter: DashboardFilter): boolean {
+  if (!Array.isArray(filter.value)) return filter.value !== null && filter.value !== undefined
+  return filter.value.some((value) => value !== null && value !== undefined && value !== '')
+}
+
+function RangeInputs({
+  value,
+  onChange,
+  type = 'text',
+}: {
+  value: [string, string]
+  onChange: (range: [string, string]) => void
+  type?: 'text' | 'date'
+}) {
   return (
     <div className="flex items-center gap-1">
       <Input
         size="sm"
-        className="w-24"
-        placeholder="min"
+        type={type}
+        className={type === 'date' ? 'w-36' : 'w-24'}
+        placeholder={type === 'date' ? undefined : 'min'}
+        aria-label={type === 'date' ? 'Start date' : 'Minimum value'}
         value={value[0]}
         onValueChange={(v) => onChange([v, value[1]])}
       />
       <Input
         size="sm"
-        className="w-24"
-        placeholder="max"
+        type={type}
+        className={type === 'date' ? 'w-36' : 'w-24'}
+        placeholder={type === 'date' ? undefined : 'max'}
+        aria-label={type === 'date' ? 'End date' : 'Maximum value'}
         value={value[1]}
         onValueChange={(v) => onChange([value[0], v])}
       />
@@ -73,7 +90,7 @@ export function DashboardFilterBar({
     })
   }
 
-  const activeCount = filters.filter((f) => f.value !== null && f.value !== undefined).length
+  const activeCount = filters.filter(hasFilterValue).length
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -88,7 +105,7 @@ export function DashboardFilterBar({
       )}
       {filters.map((f) => {
         const values = distinctValues(preview, f.field)
-        const active = f.value !== null && f.value !== undefined
+        const active = hasFilterValue(f)
         return (
           <div
             key={f.id}
@@ -113,6 +130,7 @@ export function DashboardFilterBar({
               </Select>
             ) : (
               <RangeInputs
+                type={f.kind === 'date' ? 'date' : 'text'}
                 value={(f.value as [string, string]) || ['', '']}
                 onChange={(range) => updateFilter(dashboardId, f.id, { value: range })}
               />

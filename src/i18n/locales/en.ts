@@ -236,6 +236,10 @@ export default {
   'chart.corrMatrix': 'Correlation Matrix',
   'chart.startField': 'Start Field',
   'chart.endField': 'End Field',
+  'chart.openField': 'Open Field',
+  'chart.highField': 'High Field',
+  'chart.lowField': 'Low Field',
+  'chart.closeField': 'Close Field',
   // Chart config dialog
   'chart.configTitle': 'Chart Configuration',
   'chart.chartType': 'Chart Type',

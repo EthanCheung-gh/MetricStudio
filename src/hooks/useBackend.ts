@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api } from '@/api/client'
+import { api, initBackendPort } from '@/api/client'
 import { useUIStore } from '@/stores/uiStore'
 
 // Spec §3.2: runtime health check every 30s; §3.3: declare disconnect after 3 consecutive failures
@@ -38,10 +38,15 @@ export function useBackend() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    // initial check
-    check()
-    intervalRef.current = setInterval(check, HEALTH_INTERVAL)
+    // Discover the sidecar port first (Tauri), then start health checks.
+    let cancelled = false
+    initBackendPort().finally(() => {
+      if (cancelled) return
+      check()
+      intervalRef.current = setInterval(check, HEALTH_INTERVAL)
+    })
     return () => {
+      cancelled = true
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
   }, [check])

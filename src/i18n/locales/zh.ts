@@ -236,6 +236,10 @@ export default {
   'chart.corrMatrix': '相关系数矩阵',
   'chart.startField': '起始字段',
   'chart.endField': '结束字段',
+  'chart.openField': '开盘价字段',
+  'chart.highField': '最高价字段',
+  'chart.lowField': '最低价字段',
+  'chart.closeField': '收盘价字段',
   // 图表配置对话框
   'chart.configTitle': '图表配置',
   'chart.chartType': '图表类型',

@@ -872,17 +872,34 @@ def _filter_by_filters(df: pd.DataFrame, filters: list[FilterSpec]) -> pd.DataFr
             if not rng or len(rng) != 2:
                 continue
             lo, hi = rng[0], rng[1]
+            if lo in (None, "") and hi in (None, ""):
+                continue
             try:
                 numeric = pd.to_numeric(series, errors="coerce")
                 if numeric.notna().any():
-                    out = out[(numeric >= float(lo)) & (numeric <= float(hi))]
+                    mask = pd.Series(True, index=out.index)
+                    if lo not in (None, ""):
+                        mask &= numeric >= float(lo)
+                    if hi not in (None, ""):
+                        mask &= numeric <= float(hi)
+                    out = out[mask]
                 else:
                     raise TypeError("not numeric")
             except (TypeError, ValueError):
                 dt = pd.to_datetime(series, errors="coerce")
                 if dt.notna().any():
                     try:
-                        out = out[(dt >= pd.to_datetime(lo)) & (dt <= pd.to_datetime(hi))]
+                        mask = pd.Series(True, index=out.index)
+                        if lo not in (None, ""):
+                            mask &= dt >= pd.to_datetime(lo)
+                        if hi not in (None, ""):
+                            upper = pd.to_datetime(hi)
+                            if isinstance(hi, str) and len(hi) == 10:
+                                upper += pd.Timedelta(days=1)
+                                mask &= dt < upper
+                            else:
+                                mask &= dt <= upper
+                        out = out[mask]
                     except (TypeError, ValueError):
                         pass
     return out

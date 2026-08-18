@@ -14,6 +14,7 @@ import type {
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
 import type { DashboardConfig } from '@/types/dashboard';
+import { invoke } from '@tauri-apps/api/core';
 
 export interface DepsReport {
   python: string;
@@ -44,13 +45,33 @@ export interface LoadProjectResponse {
 }
 
 const DEFAULT_BACKEND_PORT = 8123;
+let backendPort: number | null = null;
+
+/**
+ * In Tauri production the Python sidecar binds a random free port
+ * (main.rs find_free_port); discover it via the get_backend_port IPC command
+ * before issuing any API requests. Browser dev keeps the default port.
+ */
+export async function initBackendPort(): Promise<void> {
+  if (import.meta.env.VITE_BACKEND_PORT) return;
+  try {
+    backendPort = await invoke<number>('get_backend_port');
+  } catch {
+    // Non-Tauri environment (browser dev): keep the default port.
+  }
+}
 
 function getBaseUrl(): string {
   // In Tauri production, the backend port is injected at runtime.
   if (import.meta.env.VITE_BACKEND_PORT) {
     return `http://${window.location.hostname}:${import.meta.env.VITE_BACKEND_PORT}`;
   }
-  // Use current hostname for remote access, fallback to localhost for local dev
+  // Tauri production: the sidecar listens on 0.0.0.0 — reach it over loopback,
+  // because the webview hostname is a virtual Tauri domain, not resolvable.
+  if (backendPort !== null) {
+    return `http://127.0.0.1:${backendPort}`;
+  }
+  // Browser dev: current hostname, default port.
   const host = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
   return `http://${host}:${DEFAULT_BACKEND_PORT}`;
 }

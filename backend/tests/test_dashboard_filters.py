@@ -20,6 +20,38 @@ def test_range_date():
     assert len(out) == 2
 
 
+def test_range_date_supports_one_sided_bounds():
+    df = pd.DataFrame({"d": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"])})
+    from_start = _filter_by_filters(
+        df, [FilterSpec(field="d", op="range", range=["2024-01-02", ""])]
+    )
+    until_end = _filter_by_filters(
+        df, [FilterSpec(field="d", op="range", range=["", "2024-01-02"])]
+    )
+    assert from_start["d"].dt.day.tolist() == [2, 3]
+    assert until_end["d"].dt.day.tolist() == [1, 2]
+
+
+def test_date_only_upper_bound_includes_entire_day():
+    df = pd.DataFrame({"d": pd.to_datetime(["2024-01-02 00:00", "2024-01-02 18:30", "2024-01-03 00:00"])})
+    out = _filter_by_filters(
+        df, [FilterSpec(field="d", op="range", range=["", "2024-01-02"])]
+    )
+    assert out["d"].dt.hour.tolist() == [0, 18]
+
+
+def test_empty_range_is_noop():
+    df = pd.DataFrame({"a": [1, 2, 3]})
+    out = _filter_by_filters(df, [FilterSpec(field="a", op="range", range=["", None])])
+    assert out["a"].tolist() == [1, 2, 3]
+
+
+def test_range_numeric_supports_one_sided_bounds():
+    df = pd.DataFrame({"a": [1, 2, 3, 4, 5]})
+    out = _filter_by_filters(df, [FilterSpec(field="a", op="range", range=["", 3])])
+    assert out["a"].tolist() == [1, 2, 3]
+
+
 def test_in_category():
     df = pd.DataFrame({"c": ["North", "South", "East"]})
     out = _filter_by_filters(df, [FilterSpec(field="c", op="in", values=["North", "East"])])

@@ -311,6 +311,34 @@ function OptionsSection({ chart, specOptions, columns }: {
             />
           </>
         )}
+        {specOptions.includes('candlestickFields') && (
+          <>
+            <SearchableSelect
+              label={t('chart.openField')}
+              items={fieldItems}
+              selectedKey={opts.openField}
+              onSelect={(v) => setOpts({ openField: v || undefined })}
+            />
+            <SearchableSelect
+              label={t('chart.highField')}
+              items={fieldItems}
+              selectedKey={opts.highField}
+              onSelect={(v) => setOpts({ highField: v || undefined })}
+            />
+            <SearchableSelect
+              label={t('chart.lowField')}
+              items={fieldItems}
+              selectedKey={opts.lowField}
+              onSelect={(v) => setOpts({ lowField: v || undefined })}
+            />
+            <SearchableSelect
+              label={t('chart.closeField')}
+              items={fieldItems}
+              selectedKey={opts.closeField}
+              onSelect={(v) => setOpts({ closeField: v || undefined })}
+            />
+          </>
+        )}
       </div>
     </CollapsibleSection>
   )
