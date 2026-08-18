@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "MetricStudio entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "MetricStudio data analysis studio"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "MetricStudio"
+    }
+  ]
+}
