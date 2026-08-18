@@ -91,7 +91,7 @@ export function StatusBar() {
         >
           {language === 'zh' ? 'EN' : '中'}
         </button>
-        <span>MetricStudio v0.1.0</span>
+        <span>MetricStudio v{__APP_VERSION__}</span>
       </div>
     </div>
   )
