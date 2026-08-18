@@ -43,6 +43,9 @@ class DataPreview(CBaseModel):
     rows: list[list]
     total_rows: int
     total_cols: int
+    offset: int = 0
+    limit: int = 100
+    total_filtered_rows: int | None = None
 
 
 class DescribeResponse(CBaseModel):

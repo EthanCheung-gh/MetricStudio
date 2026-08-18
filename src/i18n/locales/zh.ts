@@ -358,6 +358,9 @@ export default {
   'table.filterPlaceholder': '筛选…',
   'table.noMatchingRows': '无匹配当前筛选条件的行',
   'table.clickToCopy': '点击复制',
+  'table.pageSize': '每页行数',
+  'table.pageOf': '第 {{page}} / {{total}} 页',
+  'table.exportStarted': '已开始导出完整数据集',
   // 数据集
   'dataset.compare': '对比数据集',
   'dataset.empty': '尚未导入数据集。',

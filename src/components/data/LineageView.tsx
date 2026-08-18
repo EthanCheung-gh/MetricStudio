@@ -86,7 +86,7 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
     if (!datasetId) return
     setLoadingPreview(true)
     try {
-      const p = await api.previewDataFrame(datasetId, 20, item.node.step)
+      const p = await api.previewDataFrame(datasetId, { limit: 20, at: item.node.step })
       setPreview(p)
     } catch {
       /* ignore */

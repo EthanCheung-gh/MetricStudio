@@ -39,7 +39,6 @@ export function DashboardView() {
   const charts = useChartStore((s) => s.charts)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
   const columns = useDataStore((s) => s.columns)
-  const preview = useDataStore((s) => s.preview)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const openChartTab = useWorkspaceStore((s) => s.openChartTab)
   const setActiveTab = useWorkspaceStore((s) => s.setActiveTab)
@@ -294,7 +293,6 @@ export function DashboardView() {
         dashboardId={dashboard.id}
         filters={dashboard.filters}
         columns={columns}
-        preview={preview}
         datasetId={activeDataFrameId}
       />
       )}

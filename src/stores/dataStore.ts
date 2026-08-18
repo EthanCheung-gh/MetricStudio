@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import type { DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta } from '@/types/data';
+import type { DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta, PreviewQuery } from '@/types/data';
 import { api } from '@/api/client';
 import { useUIStore } from './uiStore';
+
+let previewRequestId = 0;
 
 export interface TsResult {
   periods?: string[];
@@ -28,6 +30,7 @@ interface DataState {
   importFile: (file: File, mergeSheets?: boolean) => Promise<DataFrameMeta>;
   importText: (name: string, text: string) => Promise<DataFrameMeta>;
   refreshActiveDataFrame: () => Promise<void>;
+  loadPreviewPage: (query: PreviewQuery) => Promise<void>;
   removeDataFrame: (id: string) => Promise<void>;
   setNarrative: (id: string, text: string) => void;
   setTsResult: (id: string, result: TsResult) => void;
@@ -46,7 +49,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   tsResults: {},
 
   setActiveDataFrame: (id) => {
-    set({ activeDataFrameId: id });
+    set({ activeDataFrameId: id, preview: null, describe: null, columns: [], error: null });
     if (id) {
       get().refreshActiveDataFrame();
     }
@@ -110,16 +113,38 @@ export const useDataStore = create<DataState>((set, get) => ({
   refreshActiveDataFrame: async () => {
     const { activeDataFrameId } = get();
     if (!activeDataFrameId) return;
+    const requestId = ++previewRequestId;
     set({ loading: true, error: null });
     try {
       const [preview, describe, columns] = await Promise.all([
-        api.previewDataFrame(activeDataFrameId, 5000),
+        api.previewDataFrame(activeDataFrameId, { limit: 200, offset: 0 }),
         api.describeDataFrame(activeDataFrameId),
         api.getColumns(activeDataFrameId),
       ]);
-      set({ preview, describe, columns, loading: false });
+      if (requestId === previewRequestId && get().activeDataFrameId === activeDataFrameId) {
+        set({ preview, describe, columns, loading: false });
+      }
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load preview', loading: false });
+      if (requestId === previewRequestId && get().activeDataFrameId === activeDataFrameId) {
+        set({ error: err instanceof Error ? err.message : 'Failed to load preview', loading: false });
+      }
+    }
+  },
+
+  loadPreviewPage: async (query) => {
+    const { activeDataFrameId } = get();
+    if (!activeDataFrameId) return;
+    const requestId = ++previewRequestId;
+    set({ loading: true, error: null });
+    try {
+      const preview = await api.previewDataFrame(activeDataFrameId, query);
+      if (requestId === previewRequestId && get().activeDataFrameId === activeDataFrameId) {
+        set({ preview, loading: false });
+      }
+    } catch (err) {
+      if (requestId === previewRequestId && get().activeDataFrameId === activeDataFrameId) {
+        set({ error: err instanceof Error ? err.message : 'Failed to load preview', loading: false });
+      }
     }
   },
 

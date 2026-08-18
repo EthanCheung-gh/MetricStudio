@@ -117,14 +117,44 @@ class Dataset:
         self._build_meta()
         return self
 
-    def preview(self, limit: int = 100) -> dict[str, Any]:
+    def preview(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        sort_by: str | None = None,
+        sort_asc: bool = True,
+        column_filters: dict[str, str] | None = None,
+        search: str | None = None,
+    ) -> dict[str, Any]:
+        df = self._df
+        for column, value in (column_filters or {}).items():
+            if column not in df.columns:
+                raise ValueError(f"Column not found: {column}")
+            if value:
+                df = df[df[column].astype(str).str.contains(value, case=False, na=False, regex=False)]
+        if search:
+            mask = pd.Series(False, index=df.index)
+            for column in df.columns:
+                mask |= df[column].astype(str).str.contains(search, case=False, na=False, regex=False)
+            df = df[mask]
+        if sort_by:
+            if sort_by not in df.columns:
+                raise ValueError(f"Column not found: {sort_by}")
+            df = df.sort_values(by=sort_by, ascending=sort_asc, kind="stable")
+
+        total_filtered_rows = len(df)
+        offset = min(max(0, offset), total_filtered_rows)
+        limit = min(max(1, limit), 1000)
         engine = DataEngine(self.engine)  # type: ignore[arg-type]
-        columns, rows = engine.to_preview_rows(self._df, limit)
+        columns, rows = engine.to_preview_rows(df, limit, offset)
         return {
             "columns": columns,
             "rows": sanitize_rows(rows),
             "total_rows": len(self._df),
             "total_cols": len(self._df.columns),
+            "offset": offset,
+            "limit": limit,
+            "total_filtered_rows": total_filtered_rows,
         }
 
     def describe(self) -> dict[str, Any]:

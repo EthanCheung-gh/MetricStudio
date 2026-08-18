@@ -1,20 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Input, Select, SelectItem } from '@heroui/react'
 import { Eraser, X } from 'lucide-react'
-import type { ColumnMeta, DataPreview } from '@/types/data'
+import { api } from '@/api/client'
+import type { ColumnMeta } from '@/types/data'
 import type { DashboardFilter, DashboardFilterKind } from '@/types/dashboard'
 import { useDashboardStore } from '@/stores/dashboardStore'
-
-function distinctValues(preview: DataPreview | null, field: string): string[] {
-  if (!preview) return []
-  const idx = preview.columns.indexOf(field)
-  if (idx < 0) return []
-  const seen = new Set<string>()
-  for (const row of preview.rows) {
-    const v = row[idx]
-    if (v !== null && v !== undefined && String(v).trim() !== '') seen.add(String(v))
-  }
-  return Array.from(seen).sort()
-}
 
 function kindForType(t: ColumnMeta['inferredType']): DashboardFilterKind {
   if (t === 'temporal') return 'date'
@@ -64,19 +54,29 @@ export function DashboardFilterBar({
   dashboardId,
   filters,
   columns,
-  preview,
   datasetId,
 }: {
   dashboardId: string
   filters: DashboardFilter[]
   columns: ColumnMeta[]
-  preview: DataPreview | null
   datasetId: string | null
 }) {
   const addFilter = useDashboardStore((s) => s.addFilter)
   const updateFilter = useDashboardStore((s) => s.updateFilter)
   const removeFilter = useDashboardStore((s) => s.removeFilter)
   const clearAllFilters = useDashboardStore((s) => s.clearAllFilters)
+  const [valuesByField, setValuesByField] = useState<Record<string, string[]>>({})
+
+  useEffect(() => {
+    if (!datasetId) {
+      setValuesByField({})
+      return
+    }
+    const fields = filters.filter((filter) => filter.kind === 'category').map((filter) => filter.field)
+    Promise.all(fields.map(async (field) => [field, (await api.distinctValues(datasetId, field)).values] as const))
+      .then((entries) => setValuesByField(Object.fromEntries(entries)))
+      .catch(() => setValuesByField({}))
+  }, [datasetId, filters])
 
   const addForField = (field: string) => {
     const col = columns.find((c) => c.name === field)
@@ -104,7 +104,7 @@ export function DashboardFilterBar({
         </button>
       )}
       {filters.map((f) => {
-        const values = distinctValues(preview, f.field)
+        const values = valuesByField[f.field] || []
         const active = hasFilterValue(f)
         return (
           <div

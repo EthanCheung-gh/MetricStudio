@@ -358,6 +358,9 @@ export default {
   'table.filterPlaceholder': 'Filter…',
   'table.noMatchingRows': 'No rows match the current filters',
   'table.clickToCopy': 'Click to copy',
+  'table.pageSize': 'Rows per page',
+  'table.pageOf': 'Page {{page}} / {{total}}',
+  'table.exportStarted': 'Full dataset export started',
   // Dataset
   'dataset.compare': 'Compare datasets',
   'dataset.empty': 'No datasets imported yet.',

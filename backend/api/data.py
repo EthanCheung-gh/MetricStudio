@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
-
+import json
 import math
+from pathlib import Path
 
 import pandas as pd
 from tempfile import NamedTemporaryFile
@@ -86,15 +86,42 @@ async def get_dataframe(dataset_id: str):
 
 
 @router.get("/{dataset_id}/preview", response_model=DataPreview, response_model_by_alias=True)
-async def preview_dataframe(dataset_id: str, limit: int = 100, at: int | None = None):
+async def preview_dataframe(
+    dataset_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    at: int | None = None,
+    sort_by: str | None = None,
+    sort_asc: bool = True,
+    filters: str | None = None,
+    search: str | None = None,
+):
     try:
+        column_filters = json.loads(filters) if filters else None
+        if column_filters is not None and not isinstance(column_filters, dict):
+            raise ValueError("filters must be a JSON object")
         dataset = session.get(dataset_id)
         if at is None or at >= len(dataset.history):
-            preview = dataset.preview(limit)
+            preview = dataset.preview(limit, offset, sort_by, sort_asc, column_filters, search)
         else:
-            # Read-only snapshot of the state after `at` operations (-1 = import).
+            # Historical previews intentionally remain small and unfiltered.
             preview = session.preview_at(dataset_id, at, limit)
         return DataPreview(**preview)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/values")
+async def distinct_values(dataset_id: str, column: str, limit: int = 1000):
+    """Return distinct values from the full derived dataset for filter controls."""
+    try:
+        dataset = session.get(dataset_id)
+        if column not in dataset.df.columns:
+            raise ValueError(f"Column not found: {column}")
+        values = dataset.df[column].dropna().astype(str).drop_duplicates().sort_values().head(limit)
+        return {"values": values.tolist()}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

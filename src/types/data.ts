@@ -23,6 +23,19 @@ export interface DataPreview {
   rows: (string | number | boolean | null)[][];
   totalRows: number;
   totalCols: number;
+  offset?: number;
+  limit?: number;
+  totalFilteredRows?: number | null;
+}
+
+export interface PreviewQuery {
+  limit?: number;
+  offset?: number;
+  at?: number;
+  sortBy?: string;
+  sortAsc?: boolean;
+  filters?: Record<string, string>;
+  search?: string;
 }
 
 export interface DataDiffResult {

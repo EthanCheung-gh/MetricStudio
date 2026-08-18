@@ -2,6 +2,7 @@ import type {
   DataFrameMeta,
   DataPreview,
   DataDiffResult,
+  PreviewQuery,
   DescribeResponse,
   FilterParams,
   SortParams,
@@ -153,9 +154,21 @@ export const api = {
       `/api/v1/data/${id}/aggregate?field=${encodeURIComponent(field)}&agg=${agg}`
     ),
   getDataFrame: (id: string) => fetchJson<DataFrameMeta>(`/api/v1/data/${id}`),
-  previewDataFrame: (id: string, limit = 100, at?: number) =>
-    fetchJson<DataPreview>(`/api/v1/data/${id}/preview?limit=${limit}${at !== undefined ? `&at=${at}` : ''}`),
+  previewDataFrame: (id: string, query: PreviewQuery | number = {}) => {
+    const options = typeof query === 'number' ? { limit: query } : query
+    const params = new URLSearchParams()
+    params.set('limit', String(options.limit ?? 100))
+    params.set('offset', String(options.offset ?? 0))
+    if (options.at !== undefined) params.set('at', String(options.at))
+    if (options.sortBy) params.set('sort_by', options.sortBy)
+    if (options.sortAsc !== undefined) params.set('sort_asc', String(options.sortAsc))
+    if (options.filters && Object.keys(options.filters).length > 0) params.set('filters', JSON.stringify(options.filters))
+    if (options.search) params.set('search', options.search)
+    return fetchJson<DataPreview>(`/api/v1/data/${id}/preview?${params}`)
+  },
   getColumns: (id: string) => fetchJson<import('@/types/data').ColumnMeta[]>(`/api/v1/data/${id}/columns`),
+  distinctValues: (id: string, column: string) =>
+    fetchJson<{ values: string[] }>(`/api/v1/data/${id}/values?column=${encodeURIComponent(column)}`),
   describeDataFrame: (id: string) => fetchJson<DescribeResponse>(`/api/v1/data/${id}/describe`),
   deleteDataFrame: (id: string) => fetchJson<void>(`/api/v1/data/${id}`, { method: 'DELETE' }),
   refreshDataset: (id: string) =>

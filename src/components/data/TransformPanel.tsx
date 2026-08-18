@@ -6,7 +6,6 @@ import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
 import { useUIStore } from '@/stores/uiStore'
 import { globalUndo } from '@/utils/globalHistory'
-import type { DataPreview } from '@/types/data'
 
 const operators = [
   { key: 'eq', label: '=' },
@@ -75,16 +74,12 @@ export function TransformPanel() {
   const [loading, setLoading] = useState(false)
   const [undoing, setUndoing] = useState(false)
 
-  const updatePreview = (preview: DataPreview) => {
-    useDataStore.setState({ preview })
-  }
-
   const handleFilter = async () => {
     if (!activeId || !filterCol || !filterVal) return
     setLoading(true)
     try {
-      const preview = await api.filter(activeId, { column: filterCol, operator: filterOp as never, value: filterVal })
-      updatePreview(preview)
+      await api.filter(activeId, { column: filterCol, operator: filterOp as never, value: filterVal })
+      await setPreview()
       addNotification('success', t('transform.filterApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.filterFailed'))
@@ -97,8 +92,8 @@ export function TransformPanel() {
     if (!activeId || !sortCol) return
     setLoading(true)
     try {
-      const preview = await api.sort(activeId, { column: sortCol, ascending: sortAsc })
-      updatePreview(preview)
+      await api.sort(activeId, { column: sortCol, ascending: sortAsc })
+      await setPreview()
       addNotification('success', t('transform.sortApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.sortFailed'))
@@ -111,8 +106,8 @@ export function TransformPanel() {
     if (!activeId) return
     setLoading(true)
     try {
-      const preview = await api.dropNa(activeId)
-      updatePreview(preview)
+      await api.dropNa(activeId)
+      await setPreview()
       addNotification('success', t('transform.dropNaApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.dropNaFailed'))
@@ -125,9 +120,8 @@ export function TransformPanel() {
     if (!activeId || !renameFrom || !renameTo) return
     setLoading(true)
     try {
-      const preview = await api.rename(activeId, { mappings: { [renameFrom]: renameTo } })
-      updatePreview(preview)
-      setPreview()
+      await api.rename(activeId, { mappings: { [renameFrom]: renameTo } })
+      await setPreview()
       addNotification('success', t('transform.renameApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.renameFailed'))
@@ -140,9 +134,8 @@ export function TransformPanel() {
     if (!activeId || !computeName || !computeExpr) return
     setLoading(true)
     try {
-      const preview = await api.compute(activeId, computeName, computeExpr)
-      updatePreview(preview)
-      setPreview()
+      await api.compute(activeId, computeName, computeExpr)
+      await setPreview()
       setComputeName('')
       setComputeExpr('')
       addNotification('success', t('transform.computeApplied'))
@@ -157,9 +150,8 @@ export function TransformPanel() {
     if (!activeId || !pivotIndex || !pivotColumns || !pivotValues) return
     setLoading(true)
     try {
-      const preview = await api.pivot(activeId, { index: pivotIndex, columns: pivotColumns, values: pivotValues, aggfunc: pivotAgg })
-      updatePreview(preview)
-      setPreview()
+      await api.pivot(activeId, { index: pivotIndex, columns: pivotColumns, values: pivotValues, aggfunc: pivotAgg })
+      await setPreview()
       addNotification('success', t('transform.pivotApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.pivotFailed'))
@@ -172,9 +164,8 @@ export function TransformPanel() {
     if (!activeId || meltIdVars.length === 0) return
     setLoading(true)
     try {
-      const preview = await api.melt(activeId, { id_vars: meltIdVars })
-      updatePreview(preview)
-      setPreview()
+      await api.melt(activeId, { id_vars: meltIdVars })
+      await setPreview()
       addNotification('success', t('transform.meltApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.meltFailed'))
@@ -187,9 +178,8 @@ export function TransformPanel() {
     if (!activeId || !joinRight || !joinOn) return
     setLoading(true)
     try {
-      const preview = await api.join(activeId, { right_dataset_id: joinRight, on: joinOn, how: joinHow })
-      updatePreview(preview)
-      setPreview()
+      await api.join(activeId, { right_dataset_id: joinRight, on: joinOn, how: joinHow })
+      await setPreview()
       addNotification('success', t('transform.joinApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.joinFailed'))
@@ -202,9 +192,8 @@ export function TransformPanel() {
     if (!activeId || dropCols.length === 0) return
     setLoading(true)
     try {
-      const preview = await api.dropColumns(activeId, dropCols)
-      updatePreview(preview)
-      setPreview()
+      await api.dropColumns(activeId, dropCols)
+      await setPreview()
       addNotification('success', t('transform.dropApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.dropFailed'))
@@ -217,9 +206,8 @@ export function TransformPanel() {
     if (!activeId || !strCol) return
     setLoading(true)
     try {
-      const preview = await api.strClean(activeId, strCol, strAction as 'trim' | 'lower' | 'upper', strNewCol || undefined)
-      updatePreview(preview)
-      setPreview()
+      await api.strClean(activeId, strCol, strAction as 'trim' | 'lower' | 'upper', strNewCol || undefined)
+      await setPreview()
       addNotification('success', t('transform.strCleanApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.strCleanFailed'))
@@ -232,9 +220,8 @@ export function TransformPanel() {
     if (!activeId || groupByCols.length === 0 || !groupValueCol) return
     setLoading(true)
     try {
-      const preview = await api.groupby(activeId, groupByCols, groupValueCol, groupAgg)
-      updatePreview(preview)
-      setPreview()
+      await api.groupby(activeId, groupByCols, groupValueCol, groupAgg)
+      await setPreview()
       addNotification('success', t('transform.groupbyApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.groupbyFailed'))
@@ -247,9 +234,8 @@ export function TransformPanel() {
     if (!activeId || !sampleN) return
     setLoading(true)
     try {
-      const preview = await api.sample(activeId, parseInt(sampleN, 10))
-      updatePreview(preview)
-      setPreview()
+      await api.sample(activeId, parseInt(sampleN, 10))
+      await setPreview()
       addNotification('success', t('transform.sampleApplied'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('transform.sampleFailed'))

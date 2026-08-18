@@ -1,10 +1,8 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   useReactTable,
   getCoreRowModel,
-  getSortedRowModel,
-  getFilteredRowModel,
   flexRender,
   type SortingState,
   type ColumnFiltersState,
@@ -12,6 +10,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Download, Search } from 'lucide-react'
 import { Button, Spinner } from '@heroui/react'
+import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { fmt } from '@/utils/format'
@@ -20,6 +19,9 @@ export function DataTable() {
   const { t } = useTranslation()
   const preview = useDataStore((s) => s.preview)
   const loading = useDataStore((s) => s.loading)
+  const error = useDataStore((s) => s.error)
+  const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
+  const loadPreviewPage = useDataStore((s) => s.loadPreviewPage)
   const addNotification = useUIStore((s) => s.addNotification)
 
   const [sorting, setSorting] = useState<SortingState>([])
@@ -28,6 +30,8 @@ export function DataTable() {
   const [globalFilter, setGlobalFilter] = useState('')
   const [showColumnsPanel, setShowColumnsPanel] = useState(false)
   const [copiedCell, setCopiedCell] = useState<string | null>(null)
+  const [pageSize, setPageSize] = useState(200)
+  const [page, setPage] = useState(0)
 
   const columns = useMemo(
     () =>
@@ -65,12 +69,38 @@ export function DataTable() {
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
+    manualSorting: true,
+    manualFiltering: true,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    globalFilterFn: 'includesString',
     columnResizeMode: 'onChange',
   })
+
+  useEffect(() => {
+    setPage(0)
+    setPageSize(200)
+    setSorting([])
+    setColumnFilters([])
+    setGlobalFilter('')
+  }, [activeDataFrameId, preview?.totalRows])
+
+  useEffect(() => {
+    setPage(0)
+  }, [sorting, columnFilters, globalFilter])
+
+  useEffect(() => {
+    if (!activeDataFrameId) return
+    const timer = window.setTimeout(() => {
+      loadPreviewPage({
+        limit: pageSize,
+        offset: page * pageSize,
+        sortBy: sorting[0]?.id,
+        sortAsc: sorting[0] ? !sorting[0].desc : undefined,
+        filters: Object.fromEntries(columnFilters.map((item) => [item.id, String(item.value ?? '')])),
+        search: globalFilter || undefined,
+      })
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [activeDataFrameId, page, pageSize, sorting, columnFilters, globalFilter, loadPreviewPage])
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const rows = table.getRowModel().rows
@@ -93,23 +123,9 @@ export function DataTable() {
   }
 
   const exportCsv = () => {
-    if (!preview) return
-    const escape = (v: unknown) => {
-      const s = String(v ?? '')
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-    }
-    const csv = [
-      preview.columns.join(','),
-      ...preview.rows.map((row) => row.map(escape).join(',')),
-    ].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'data.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-    addNotification('success', `Exported ${preview.rows.length} rows as CSV`)
+    if (!activeDataFrameId) return
+    window.open(api.exportDatasetUrl(activeDataFrameId, 'csv'), '_blank')
+    addNotification('success', t('table.exportStarted'))
   }
 
   if (loading && !preview) {
@@ -128,12 +144,15 @@ export function DataTable() {
     )
   }
 
+  const filteredRows = preview.totalFilteredRows ?? preview.totalRows
+  const totalPages = Math.max(1, Math.ceil(filteredRows / pageSize))
+
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
         <span className="text-xs text-muted">
-          {t('table.preview')}: {fmt(table.getFilteredRowModel().rows.length)} / {fmt(preview.totalRows)} {t('status.rows')} ×{' '}
+          {t('table.preview')}: {fmt(filteredRows)} / {fmt(preview.totalRows)} {t('status.rows')} ×{' '}
           {fmt(preview.totalCols)} {t('status.cols')}
         </span>
         <div className="flex items-center gap-1.5">
@@ -185,6 +204,7 @@ export function DataTable() {
         </div>
       </div>
 
+      {error && <div className="border-b border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger">{error}</div>}
       {/* Table */}
       <div ref={scrollRef} className="flex-1 overflow-auto">
         <table
@@ -281,6 +301,29 @@ export function DataTable() {
               </div>
             )
           })}
+        </div>
+      </div>
+      <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted">
+        <div className="flex items-center gap-2">
+          <span>{t('table.pageSize')}</span>
+          <select
+            className="rounded border border-border bg-surface px-1.5 py-1"
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value))
+              setPage(0)
+            }}
+          >
+            {[100, 200, 500, 1000].map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center gap-2">
+          {loading && <Spinner size="sm" />}
+          <Button size="sm" variant="light" isDisabled={page === 0 || loading} onPress={() => setPage(0)}>«</Button>
+          <Button size="sm" variant="light" isDisabled={page === 0 || loading} onPress={() => setPage((value) => value - 1)}>‹</Button>
+          <span>{t('table.pageOf', { page: page + 1, total: totalPages })}</span>
+          <Button size="sm" variant="light" isDisabled={page + 1 >= totalPages || loading} onPress={() => setPage((value) => value + 1)}>›</Button>
+          <Button size="sm" variant="light" isDisabled={page + 1 >= totalPages || loading} onPress={() => setPage(totalPages - 1)}>»</Button>
         </div>
       </div>
     </div>

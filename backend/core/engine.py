@@ -38,8 +38,8 @@ class DataEngine:
         # polars
         return df.to_dicts()
 
-    def to_preview_rows(self, df: DataFrame, limit: int = 100) -> tuple[list[str], list[list]]:
-        preview = self.select(df, limit)
+    def to_preview_rows(self, df: DataFrame, limit: int = 100, offset: int = 0) -> tuple[list[str], list[list]]:
+        preview = df.iloc[offset : offset + limit] if isinstance(df, pd.DataFrame) else df.slice(offset, limit)
         records = self.to_records(preview)
         columns = list(df.columns)
         rows = [[record.get(col) for col in columns] for record in records]
