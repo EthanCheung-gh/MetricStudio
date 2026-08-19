@@ -6,8 +6,8 @@ import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 
 /**
- * Dataset list (web: src/components/data/DatasetList.tsx). Shows all imported
- * datasets; click to activate, delete button per row, rows-count badge.
+ * Dataset list (web: src/components/data/DatasetList.tsx). Flat list of all
+ * imported datasets — no wrapping card. Click to activate; delete per row.
  */
 @Component
 export struct DatasetList {
@@ -16,34 +16,19 @@ export struct DatasetList {
 
   build() {
     Column() {
-      Row() {
-        Text(t(this.workspaceState.language, 'nav.datasets'))
-          .fontSize(12)
-          .fontWeight(600)
-          .fontColor(Theme.colorMuted())
-      }
-      .width('100%')
-      .margin({ bottom: 8 })
-
       if (this.dataState.dataFrames.length === 0) {
         Text(t(this.workspaceState.language, 'dataset.empty'))
           .fontSize(12)
           .fontColor(Theme.colorMuted())
           .alignSelf(ItemAlign.Start)
-      }
-
-      Column() {
+          .padding({ top: 4, bottom: 4 })
+      } else {
         ForEach(this.dataState.dataFrames, (df: DataFrame, idx: number) => {
           this.datasetRow(df, idx)
         }, (df: DataFrame, idx: number) => idx.toString() + '_' + df.name)
       }
-      .width('100%')
     }
     .width('100%')
-    .padding(12)
-    .borderRadius(8)
-    .border({ width: 1, color: Theme.colorBorder() })
-    .backgroundColor(Theme.colorSurfaceElevated())
     .alignItems(HorizontalAlign.Start)
   }
 

@@ -48,14 +48,19 @@ export struct LeftPanel {
             this.chartsPlaceholder()
           } else if (this.workspaceState.leftSection === PanelSection.Datasets) {
             DatasetList()
+              .width('100%')
           } else {
             DataExplorer()
+              .width('100%')
             DatasetList()
+              .width('100%')
             InsightsPanel()
+              .width('100%')
           }
         }
         .width('100%')
         .padding(Theme.panelPadding)
+        .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)

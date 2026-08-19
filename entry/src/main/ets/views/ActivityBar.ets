@@ -38,7 +38,10 @@ export struct LeftActivityBar {
       IconButton({
         icon: $r('sys.symbol.upload'),
         iconSize: 16,
+        active: this.workspaceState.leftSection === PanelSection.None,
         action: () => {
+          // Import: expand the left panel and show the explorer (import entries)
+          this.workspaceState.openLeftSection(PanelSection.None);
         }
       })
     }
