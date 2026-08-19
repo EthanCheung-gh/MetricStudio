@@ -8,12 +8,39 @@ import { ChartTypeSelector } from './ChartTypeSelector';
 
 /**
  * Encoding panel (web: src/components/chart/EncodingPanel.tsx). Field picks for
- * X / Y(1) / Color plus aggregate; every change refreshes the chart canvas.
+ * X / Y(1) / Color plus aggregate. Selection state is kept in local @State so
+ * the highlighted chip always re-renders immediately, independent of the
+ * @Observed dependency chain; syncFromChart() re-syncs when switching charts.
  */
 @Component
 export struct EncodingPanel {
-  @Consume('workspaceState') workspaceState: WorkspaceState;
+  @Consume('workspaceState') @Watch('onChartTick') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
+  @State selX: string = '';
+  @State selY: string = '';
+  @State selColor: string = '';
+  @State selAgg: string = 'sum';
+
+  aboutToAppear(): void {
+    this.syncFromChart();
+  }
+
+  onChartTick(): void {
+    this.syncFromChart();
+  }
+
+  private syncFromChart(): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return;
+    }
+    this.selX = c.encoding.x !== null ? c.encoding.x.field : '';
+    this.selY = c.encoding.yFields.length > 0 ? c.encoding.yFields[0].field : '';
+    this.selColor = c.encoding.color !== null ? c.encoding.color.field : '';
+    this.selAgg = c.encoding.yFields.length > 0 && c.encoding.yFields[0].aggregate !== null
+      ? (c.encoding.yFields[0].aggregate as string)
+      : 'sum';
+  }
 
   private columns(): string[] {
     const df = this.dataState.activeDataFrame;
@@ -52,6 +79,7 @@ export struct EncodingPanel {
       return;
     }
     c.encoding.x = new EncodingChannel(col, this.fieldType(col), null);
+    this.selX = col;
     this.workspaceState.refreshChart();
   }
 
@@ -61,6 +89,7 @@ export struct EncodingPanel {
       return;
     }
     c.encoding.yFields = [new YFieldConfig(col, this.fieldType(col), 'sum', 'left', 'none')];
+    this.selY = col;
     this.workspaceState.refreshChart();
   }
 
@@ -71,8 +100,10 @@ export struct EncodingPanel {
     }
     if (col.length === 0) {
       c.encoding.color = null;
+      this.selColor = '';
     } else {
       c.encoding.color = new EncodingChannel(col, this.fieldType(col), null);
+      this.selColor = col;
     }
     this.workspaceState.refreshChart();
   }
@@ -83,6 +114,7 @@ export struct EncodingPanel {
       return;
     }
     c.encoding.yFields[0].aggregate = agg as 'sum' | 'mean' | 'count' | 'min' | 'max';
+    this.selAgg = agg;
     this.workspaceState.refreshChart();
   }
 
@@ -102,7 +134,7 @@ export struct EncodingPanel {
         .fontWeight(600)
         .fontColor(Theme.colorMuted())
         .alignSelf(ItemAlign.Start)
-      this.fieldRow(this.currentX(), (col: string) => {
+      this.fieldRow(this.selX, (col: string) => {
         this.setX(col);
       })
 
@@ -112,7 +144,7 @@ export struct EncodingPanel {
         .fontWeight(600)
         .fontColor(Theme.colorMuted())
         .alignSelf(ItemAlign.Start)
-      this.fieldRow(this.currentY(), (col: string) => {
+      this.fieldRow(this.selY, (col: string) => {
         this.setY(col);
       })
 
@@ -137,7 +169,7 @@ export struct EncodingPanel {
         .fontWeight(600)
         .fontColor(Theme.colorMuted())
         .alignSelf(ItemAlign.Start)
-      this.fieldRow(this.currentColor(), (col: string) => {
+      this.fieldRow(this.selColor, (col: string) => {
         this.setColor(col);
       })
     }
@@ -147,28 +179,6 @@ export struct EncodingPanel {
     .border({ width: 1, color: Theme.colorBorder() })
     .backgroundColor(Theme.colorSurfaceElevated())
     .alignItems(HorizontalAlign.Start)
-  }
-
-  private currentX(): string {
-    const c = this.workspaceState.activeChart();
-    return c !== null && c.encoding.x !== null ? c.encoding.x.field : '';
-  }
-
-  private currentY(): string {
-    const c = this.workspaceState.activeChart();
-    return c !== null && c.encoding.yFields.length > 0 ? c.encoding.yFields[0].field : '';
-  }
-
-  private currentColor(): string {
-    const c = this.workspaceState.activeChart();
-    return c !== null && c.encoding.color !== null ? c.encoding.color.field : '';
-  }
-
-  private currentAgg(): string {
-    const c = this.workspaceState.activeChart();
-    return c !== null && c.encoding.yFields.length > 0 && c.encoding.yFields[0].aggregate !== null
-      ? (c.encoding.yFields[0].aggregate as string)
-      : 'sum';
   }
 
   @Builder
@@ -195,11 +205,11 @@ export struct EncodingPanel {
   aggChip(agg: string, label: string) {
     Text(label)
       .fontSize(11)
-      .fontColor(this.currentAgg() === agg ? Theme.primary : Theme.colorMuted())
+      .fontColor(this.selAgg === agg ? Theme.primary : Theme.colorMuted())
       .padding({ left: 10, right: 10, top: 4, bottom: 4 })
       .borderRadius(10)
-      .backgroundColor(this.currentAgg() === agg ? Theme.primaryDim : Color.Transparent)
-      .border({ width: 1, color: this.currentAgg() === agg ? Theme.primary : Theme.colorBorder() })
+      .backgroundColor(this.selAgg === agg ? Theme.primaryDim : Color.Transparent)
+      .border({ width: 1, color: this.selAgg === agg ? Theme.primary : Theme.colorBorder() })
       .onClick(() => {
         this.setAgg(agg);
       })
