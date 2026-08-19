@@ -73,7 +73,10 @@ export struct RightActivityBar {
       IconButton({
         icon: $r('sys.symbol.slider_horizontal_2'),
         iconSize: 16,
+        active: this.workspaceState.rightSection === RightPanelSection.Properties,
         action: () => {
+          // Chart config: expand right panel and show the encoding/properties section
+          this.workspaceState.openRightSection(RightPanelSection.Properties);
         }
       })
       IconButton({

@@ -259,6 +259,7 @@ export struct TransformPanel {
       .padding({ left: 10, right: 10, top: 4, bottom: 4 })
       .borderRadius(10)
       .backgroundColor(this.agg === aggId ? Theme.primaryDim : Color.Transparent)
+      .border({ width: 1, color: this.agg === aggId ? Theme.primary : Theme.colorBorder() })
       .onClick(() => {
         this.agg = aggId;
       })

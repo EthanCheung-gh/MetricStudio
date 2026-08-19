@@ -97,6 +97,12 @@ export class WorkspaceState {
     this.leftSection = section;
   }
 
+  /** Expand the right panel and switch to the given section in one step. */
+  openRightSection(section: RightPanelSection): void {
+    this.rightCollapsed = false;
+    this.rightSection = section;
+  }
+
   activateRightSection(section: RightPanelSection): void {
     this.rightSection = section;
   }

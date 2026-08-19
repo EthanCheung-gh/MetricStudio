@@ -45,6 +45,7 @@ export class ChartOptions {
   }
 }
 
+@Observed
 export class ChartEncoding {
   x: EncodingChannel | null = null;
   yFields: YFieldConfig[] = [];

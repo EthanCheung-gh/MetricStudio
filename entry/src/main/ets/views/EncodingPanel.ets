@@ -122,13 +122,14 @@ export struct EncodingPanel {
         .fontWeight(600)
         .fontColor(Theme.colorMuted())
         .alignSelf(ItemAlign.Start)
-      Row({ space: 4 }) {
+      Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
         this.aggChip('sum', t(this.workspaceState.language, 'chart.sum'))
         this.aggChip('mean', t(this.workspaceState.language, 'chart.mean'))
         this.aggChip('count', t(this.workspaceState.language, 'chart.count'))
         this.aggChip('min', t(this.workspaceState.language, 'chart.min'))
         this.aggChip('max', t(this.workspaceState.language, 'chart.max'))
       }
+      .width('100%')
 
       // Color
       Text(t(this.workspaceState.language, 'chart.color'))
@@ -198,6 +199,7 @@ export struct EncodingPanel {
       .padding({ left: 10, right: 10, top: 4, bottom: 4 })
       .borderRadius(10)
       .backgroundColor(this.currentAgg() === agg ? Theme.primaryDim : Color.Transparent)
+      .border({ width: 1, color: this.currentAgg() === agg ? Theme.primary : Theme.colorBorder() })
       .onClick(() => {
         this.setAgg(agg);
       })
