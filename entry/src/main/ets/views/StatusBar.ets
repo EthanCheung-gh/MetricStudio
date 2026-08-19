@@ -1,6 +1,9 @@
 import { Theme } from '../common/Theme';
-import { l10n } from '../common/Locale';
+import { t } from '../common/Locale';
+import { Settings } from '../common/Settings';
+import { fmt } from '../common/Format';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
+import { DataState } from '../model/DataState';
 
 /**
  * Bottom status bar (web: src/components/layout/StatusBar.tsx).
@@ -9,6 +12,7 @@ import { Language, WorkspaceState } from '../model/WorkspaceState';
 @Component
 export struct StatusBar {
   @Consume('workspaceState') workspaceState: WorkspaceState;
+  @Consume('dataState') dataState: DataState;
 
   build() {
     Row() {
@@ -16,31 +20,31 @@ export struct StatusBar {
         Row({ space: 4 }) {
           SymbolGlyph($r('sys.symbol.waveform'))
             .fontSize(12)
-            .fontColor([Theme.muted])
-          Text(l10n(this.workspaceState.language, '后端未连接', 'Backend offline'))
+            .fontColor([Theme.colorMuted()])
+          Text(t(this.workspaceState.language, 'status.backendOffline'))
             .fontSize(12)
             .fontColor(Theme.danger)
         }
         .alignItems(VerticalAlign.Center)
 
-        if (this.workspaceState.hasData) {
+        if (this.dataState.hasData) {
           Row({ space: 4 }) {
             SymbolGlyph($r('sys.symbol.line_3_horizontal'))
               .fontSize(12)
-              .fontColor([Theme.muted])
-            Text(`${this.workspaceState.rowCount} ${l10n(this.workspaceState.language, '行', 'rows')} × ${this.workspaceState.colCount} ${l10n(this.workspaceState.language, '列', 'cols')}`)
+              .fontColor([Theme.colorMuted()])
+            Text(`${fmt(this.dataState.rowCount)} ${t(this.workspaceState.language, 'status.rows')} × ${fmt(this.dataState.colCount)} ${t(this.workspaceState.language, 'status.cols')}`)
               .fontSize(12)
-              .fontColor(Theme.muted)
+              .fontColor(Theme.colorMuted())
           }
           .alignItems(VerticalAlign.Center)
 
           Row({ space: 4 }) {
             SymbolGlyph($r('sys.symbol.bolt'))
               .fontSize(12)
-              .fontColor([Theme.muted])
-            Text(`${l10n(this.workspaceState.language, '引擎', 'engine')}: ${this.workspaceState.engine}`)
+              .fontColor([Theme.colorMuted()])
+            Text(`${t(this.workspaceState.language, 'status.engine')}: ${this.dataState.hasData ? 'arkts' : 'pandas'}`)
               .fontSize(12)
-              .fontColor(Theme.muted)
+              .fontColor(Theme.colorMuted())
           }
           .alignItems(VerticalAlign.Center)
         }
@@ -51,23 +55,24 @@ export struct StatusBar {
       Row({ space: 8 }) {
         Text(this.workspaceState.language === Language.Zh ? 'EN' : '中')
           .fontSize(10)
-          .fontColor(Theme.muted)
+          .fontColor(Theme.colorMuted())
           .padding({ left: 6, right: 6, top: 2, bottom: 2 })
           .borderRadius(4)
-          .border({ width: 1, color: Theme.borderColor })
+          .border({ width: 1, color: Theme.colorBorder() })
           .onClick(() => {
             this.workspaceState.toggleLanguage();
+            Settings.saveLanguage(this.workspaceState.language);
           })
-        Text('MetricStudio v' + (AppStorage.get<string>('appVersion') ?? '1.0.0'))
+        Text('MetricStudio v0.1.0')
           .fontSize(12)
-          .fontColor(Theme.muted)
+          .fontColor(Theme.colorMuted())
       }
       .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .height(Theme.statusBarHeight)
     .padding({ left: 12, right: 12 })
-    .backgroundColor(Theme.surface)
-    .border({ width: { top: 1 }, color: Theme.borderColor })
+    .backgroundColor(Theme.colorSurface())
+    .border({ width: { top: 1 }, color: Theme.colorBorder() })
   }
 }

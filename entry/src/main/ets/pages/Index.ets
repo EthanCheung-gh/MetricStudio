@@ -1,5 +1,7 @@
 import { Theme } from '../common/Theme';
-import { WorkspaceState } from '../model/WorkspaceState';
+import { Settings } from '../common/Settings';
+import { Language, WorkspaceState } from '../model/WorkspaceState';
+import { DataState } from '../model/DataState';
 import { TitleBar } from '../views/TitleBar';
 import { LeftActivityBar, RightActivityBar } from '../views/ActivityBar';
 import { LeftPanel } from '../views/LeftPanel';
@@ -17,6 +19,14 @@ import { SettingsDialog } from '../views/SettingsDialog';
 @Component
 struct Index {
   @Provide('workspaceState') workspaceState: WorkspaceState = new WorkspaceState();
+  @Provide('dataState') dataState: DataState = new DataState();
+
+  aboutToAppear(): void {
+    Settings.load().then((lang: Language) => {
+      this.workspaceState.language = lang;
+    });
+    Settings.applyTheme();
+  }
 
   build() {
     Column() {
@@ -49,7 +59,9 @@ struct Index {
 
       StatusBar()
 
-      SettingsDialog()
+      if (this.workspaceState.settingsOpen) {
+        SettingsDialog()
+      }
     }
     .width('100%')
     .height('100%')

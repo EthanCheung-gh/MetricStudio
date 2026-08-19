@@ -1,6 +1,8 @@
 /**
  * Design tokens, pixel-aligned with the web app (main branch, src/index.css +
- * tailwind.config.ts). Dark theme is the default.
+ * tailwind.config.ts). Dark theme is the default; light theme is available via
+ * Theme.setMode(true) — component code should read colors through the getters
+ * (e.g. Theme.colorBackground()) so both themes apply consistently.
  */
 export class Theme {
   // Colors (CSS vars from index.css, primary from tailwind.config.ts)
@@ -18,6 +20,45 @@ export class Theme {
   static readonly warning: string = '#f59e0b';
   static readonly scrollbarTrack: string = '#1a1a1a';
   static readonly scrollbarThumb: string = '#4b5563';
+
+  // Light mode tokens (index.css .light overrides)
+  static readonly backgroundLight: string = '#f7f7f8';
+  static readonly foregroundLight: string = '#1a1a1a';
+  static readonly surfaceLight: string = '#ffffff';
+  static readonly surfaceElevatedLight: string = '#f0f0f2';
+  static readonly borderLight: string = '#d9d9de';
+  static readonly mutedLight: string = '#71717a';
+
+  /** true = light mode, false = dark mode (default). */
+  static lightMode: boolean = false;
+
+  static setMode(light: boolean): void {
+    Theme.lightMode = light;
+  }
+
+  static colorBackground(): string {
+    return Theme.lightMode ? Theme.backgroundLight : Theme.background;
+  }
+
+  static colorForeground(): string {
+    return Theme.lightMode ? Theme.foregroundLight : Theme.foreground;
+  }
+
+  static colorSurface(): string {
+    return Theme.lightMode ? Theme.surfaceLight : Theme.surface;
+  }
+
+  static colorSurfaceElevated(): string {
+    return Theme.lightMode ? Theme.surfaceElevatedLight : Theme.surfaceElevated;
+  }
+
+  static colorBorder(): string {
+    return Theme.lightMode ? Theme.borderLight : Theme.borderColor;
+  }
+
+  static colorMuted(): string {
+    return Theme.lightMode ? Theme.mutedLight : Theme.muted;
+  }
 
   // Dimensions (Tailwind spacing: h-10=40, h-9=36, h-6=24, w-10=40, p-2=8, pb-16=64)
   static readonly titleBarHeight: number = 40;

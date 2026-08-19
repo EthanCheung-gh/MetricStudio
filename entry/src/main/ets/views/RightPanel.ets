@@ -1,11 +1,14 @@
 import { Theme } from '../common/Theme';
-import { l10n } from '../common/Locale';
-import { WorkspaceState } from '../model/WorkspaceState';
+import { t } from '../common/Locale';
+import { RightPanelSection, WorkspaceState } from '../model/WorkspaceState';
 import { IconButton } from './IconButton';
+import { TransformPanel } from './TransformPanel';
+import { EncodingPanel } from './EncodingPanel';
 
 /**
- * Right sidebar (web: src/components/layout/RightPanel.tsx). Header is 36px
- * tall; content is the PropertyEditor (placeholder until chart tasks land).
+ * Right sidebar (web: src/components/layout/RightPanel.tsx). Header 36px;
+ * content switches: Properties section → EncodingPanel (charts), otherwise
+ * the TransformPanel.
  */
 @Component
 export struct RightPanel {
@@ -19,7 +22,7 @@ export struct RightPanel {
           .fontWeight(600)
           .textCase(TextCase.UpperCase)
           .letterSpacing(0.6)
-          .fontColor(Theme.muted)
+          .fontColor(Theme.colorMuted())
         Blank()
         IconButton({
           icon: $r('sys.symbol.chevron_right'),
@@ -32,33 +35,33 @@ export struct RightPanel {
       .width('100%')
       .height(Theme.panelHeaderHeight)
       .padding({ left: 8, right: 8 })
-      .backgroundColor(Theme.surface)
-      .border({ width: { bottom: 1 }, color: Theme.borderColor })
+      .backgroundColor(Theme.colorSurface())
+      .border({ width: { bottom: 1 }, color: Theme.colorBorder() })
 
       Scroll() {
-        Column() {
-          Text(l10n(this.workspaceState.language, '属性编辑器将在图表任务中实现', 'Property editor lands with the chart tasks'))
-            .fontSize(12)
-            .fontColor(Theme.muted)
-            .textAlign(TextAlign.Center)
+        Column({ space: 8 }) {
+          if (this.workspaceState.rightSection === RightPanelSection.Properties) {
+            EncodingPanel()
+          } else {
+            TransformPanel()
+          }
         }
         .width('100%')
-        .padding(12)
-        .borderRadius(6)
-        .border({ width: 1, color: Theme.borderColor })
-        .backgroundColor(Theme.surfaceElevated)
+        .padding(Theme.panelPadding)
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
-      .padding(Theme.panelPadding)
-      .backgroundColor(Theme.surface)
+      .backgroundColor(Theme.colorSurface())
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(Theme.surface)
+    .backgroundColor(Theme.colorSurface())
   }
 
   sectionTitle(): string {
-    return l10n(this.workspaceState.language, '图表', 'Chart');
+    if (this.workspaceState.rightSection === RightPanelSection.Properties) {
+      return t(this.workspaceState.language, 'layout.properties');
+    }
+    return t(this.workspaceState.language, 'transform.title');
   }
 }

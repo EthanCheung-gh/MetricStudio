@@ -1,3 +1,6 @@
+import { ChartConfig } from './ChartConfig';
+import { Theme } from '../common/Theme';
+
 export enum Language {
   Zh = 0,
   En = 1
@@ -21,22 +24,22 @@ export enum CenterTab {
 }
 
 export enum AppTheme {
-  System = 0,
-  Dark = 1,
-  Light = 2
+  Dark = 0,
+  Light = 1,
+  System = 2
 }
 
-export interface LlmConfig {
-  baseUrl: string;
-  model: string;
-  apiKey: string;
+/** LLM service configuration (web: SettingsDialog LLM section). */
+export class LlmConfig {
+  baseUrl: string = '';
+  model: string = '';
+  apiKey: string = '';
+  clearApiKey: boolean = false;
 }
-
-export const EMPTY_LLM_CONFIG: LlmConfig = { baseUrl: '', model: '', apiKey: '' };
 
 /**
- * Shell-level state (web: stores/workspaceStore.ts + stores/uiStore.ts subset).
- * Data layer / charts / dashboards are implemented in later porting tasks.
+ * Shell-level state (web: stores/workspaceStore.ts + uiStore.ts subset) plus
+ * the chart registry (web: stores/chartStore.ts subset).
  */
 @Observed
 export class WorkspaceState {
@@ -46,17 +49,35 @@ export class WorkspaceState {
   rightSection: RightPanelSection = RightPanelSection.None;
   activeTab: CenterTab = CenterTab.Data;
   language: Language = Language.Zh;
-  theme: AppTheme = AppTheme.Dark;
-  settingsOpen: boolean = false;
-  llmConfig: LlmConfig = { baseUrl: '', model: '', apiKey: '' };
   wizardDismissed: boolean = false;
 
-  // Placeholder dataset info (populated by later data tasks)
-  hasData: boolean = false;
-  datasetName: string = '';
-  rowCount: number = 0;
-  colCount: number = 0;
-  engine: string = 'pandas';
+  // Chart registry
+  charts: ChartConfig[] = [];
+  activeChartId: string = '';
+  chartTick: number = 0;
+  settingsOpen: boolean = false;
+  theme: AppTheme = AppTheme.System;
+  llmConfig: LlmConfig = new LlmConfig();
+
+  setSettingsOpen(open: boolean): void {
+    this.settingsOpen = open;
+  }
+
+  setLanguage(lang: Language): void {
+    this.language = lang;
+  }
+
+  setTheme(theme: AppTheme): void {
+    this.theme = theme;
+    Theme.setMode(theme === AppTheme.Light);
+  }
+
+  applyLlmConfig(config: LlmConfig): void {
+    this.llmConfig.baseUrl = config.baseUrl;
+    this.llmConfig.model = config.model;
+    this.llmConfig.apiKey = config.apiKey;
+    this.llmConfig.clearApiKey = config.clearApiKey === true;
+  }
 
   toggleLeft(): void {
     this.leftCollapsed = !this.leftCollapsed;
@@ -82,29 +103,73 @@ export class WorkspaceState {
     this.language = this.language === Language.Zh ? Language.En : Language.Zh;
   }
 
-  setLanguage(lang: Language): void {
-    this.language = lang;
+  get hasCharts(): boolean {
+    return this.charts.length > 0;
   }
 
-  setTheme(theme: AppTheme): void {
-    this.theme = theme;
+  activeChart(): ChartConfig | null {
+    for (let i = 0; i < this.charts.length; i++) {
+      if (this.charts[i].id === this.activeChartId) {
+        return this.charts[i];
+      }
+    }
+    return null;
   }
 
-  setSettingsOpen(open: boolean): void {
-    this.settingsOpen = open;
+  createChart(datasetId: string, name?: string): ChartConfig {
+    const id = 'chart_' + Date.now().toString();
+    const n = name !== undefined && name.length > 0 ? name : 'Chart ' + (this.charts.length + 1).toString();
+    const chart = new ChartConfig(id, n, datasetId);
+    chart.title = n;
+    this.charts.push(chart);
+    this.activeChartId = id;
+    this.chartTick++;
+    return chart;
   }
 
-  applyLlmConfig(config: LlmConfig): void {
-    this.llmConfig.baseUrl = config.baseUrl;
-    this.llmConfig.model = config.model;
-    this.llmConfig.apiKey = config.apiKey;
+  setActiveChart(id: string): void {
+    this.activeChartId = id;
+    this.chartTick++;
   }
 
-  loadSampleData(): void {
-    this.hasData = true;
-    this.datasetName = 'sample_data.csv';
-    this.rowCount = 128;
-    this.colCount = 5;
-    this.engine = 'pandas';
+  removeChart(id: string): void {
+    const next: ChartConfig[] = [];
+    for (let i = 0; i < this.charts.length; i++) {
+      if (this.charts[i].id !== id) {
+        next.push(this.charts[i]);
+      }
+    }
+    this.charts = next;
+    if (this.activeChartId === id) {
+      this.activeChartId = this.charts.length > 0 ? this.charts[0].id : '';
+    }
+    this.chartTick++;
+  }
+
+  duplicateChart(id: string): ChartConfig | null {
+    const src = this.findChart(id);
+    if (src === null) {
+      return null;
+    }
+    const chart = new ChartConfig('chart_' + Date.now().toString(), src.name + ' copy', src.datasetId);
+    chart.encoding = src.encoding.clone();
+    chart.title = chart.name;
+    this.charts.push(chart);
+    this.activeChartId = chart.id;
+    this.chartTick++;
+    return chart;
+  }
+
+  findChart(id: string): ChartConfig | null {
+    for (let i = 0; i < this.charts.length; i++) {
+      if (this.charts[i].id === id) {
+        return this.charts[i];
+      }
+    }
+    return null;
+  }
+
+  refreshChart(): void {
+    this.chartTick++;
   }
 }

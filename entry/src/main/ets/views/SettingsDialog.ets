@@ -61,11 +61,10 @@ export struct SettingsDialog {
   }
 
   private save(): void {
-    const config: LlmConfig = {
-      baseUrl: this.baseUrl,
-      model: this.model,
-      apiKey: this.clearApiKey ? '' : this.apiKey
-    };
+    const config = new LlmConfig();
+    config.baseUrl = this.baseUrl;
+    config.model = this.model;
+    config.apiKey = this.clearApiKey ? '' : this.apiKey;
     this.workspaceState.applyLlmConfig(config);
     const ctx = this.getHostContext();
     if (ctx) {
