@@ -1,5 +1,6 @@
 import { picker, fileIo as fs } from '@kit.CoreFileKit';
 import { promptAction } from '@kit.ArkUI';
+import { util } from '@kit.ArkTS';
 import { Theme } from '../common/Theme';
 import { t } from '../common/Locale';
 import { DataState } from '../model/DataState';
@@ -46,8 +47,11 @@ export struct DataExplorer {
       }
       const uri = uris[0];
       const file = fs.openSync(uri, 0o0); // OpenMode.READ_ONLY
-      const text = fs.readTextSync(file.fd);
+      const stat = fs.statSync(file.fd);
+      const buffer = new ArrayBuffer(stat.size);
+      fs.readSync(file.fd, buffer);
       fs.closeSync(file);
+      const text = util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buffer));
       const base = uri.substring(uri.lastIndexOf('/') + 1);
       const name = base.length > 0 ? base : t(this.workspaceState.language, 'data.pasteName');
       this.importText(name, text);

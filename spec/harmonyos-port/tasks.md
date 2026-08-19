@@ -135,8 +135,8 @@
 
 **Purpose**: 构建与部署验证（不含 UI 验证）
 
-- [ ] T036 构建项目并修复所有编译错误（运行 `devecocli build`，迭代修复直至成功）
-- [ ] T037 部署应用到设备（`devecocli run --skip-build`；设备自连失败时用 hdc 安装链路：file send + bm install + aa start）
+- [X] T036 构建项目并修复所有编译错误（运行 `devecocli build`，迭代修复直至成功）
+- [X] T037 部署应用到设备（`devecocli run --skip-build`；设备自连失败时用 hdc 安装链路：file send + bm install + aa start）
 
 ---
 
