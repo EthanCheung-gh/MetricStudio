@@ -233,58 +233,64 @@ export function buildChartData(df: DataFrame, encoding: ChartEncoding): ChartDat
     return result;
   }
 
-  // XY (aggregated) with optional color split
+  // XY (aggregated) with optional color split — one series per Y field when
+  // multiple Y fields are configured (web multi-Y), plus color sub-split.
   if (xField !== null && y !== null) {
-    if (colorField !== null) {
-      // series per color value
-      const cIdx = df.columnIndex(colorField);
-      const xIdx = df.columnIndex(xField);
-      const yIdx = df.columnIndex(y.field);
-      if (cIdx >= 0 && xIdx >= 0 && yIdx >= 0) {
-        const byColor = new Map<string, Map<string, number[]>>();
-        const colorOrder: string[] = [];
-        for (let r = 0; r < df.rows.length; r++) {
-          const ck = cellToKey(df.rows[r][cIdx]);
-          const xk = cellToKey(df.rows[r][xIdx]);
-          const n = toNumber(df.rows[r][yIdx]);
-          let inner = byColor.get(ck);
-          if (inner === undefined) {
-            inner = new Map<string, number[]>();
-            byColor.set(ck, inner);
-            colorOrder.push(ck);
+    const yList = encoding.yFields.length > 1 ? encoding.yFields : [y];
+    for (let yi = 0; yi < yList.length; yi++) {
+      const yf = yList[yi];
+      const yAgg = yf.aggregate !== null ? yf.aggregate : 'sum';
+      if (colorField !== null) {
+        // series per (yField × color value)
+        const cIdx = df.columnIndex(colorField);
+        const xIdx = df.columnIndex(xField);
+        const yIdx = df.columnIndex(yf.field);
+        if (cIdx >= 0 && xIdx >= 0 && yIdx >= 0) {
+          const byColor = new Map<string, Map<string, number[]>>();
+          const colorOrder: string[] = [];
+          for (let r = 0; r < df.rows.length; r++) {
+            const ck = cellToKey(df.rows[r][cIdx]);
+            const xk = cellToKey(df.rows[r][xIdx]);
+            const n = toNumber(df.rows[r][yIdx]);
+            let inner = byColor.get(ck);
+            if (inner === undefined) {
+              inner = new Map<string, number[]>();
+              byColor.set(ck, inner);
+              colorOrder.push(ck);
+            }
+            let arr = inner.get(xk);
+            if (arr === undefined) {
+              arr = [];
+              inner.set(xk, arr);
+            }
+            if (n !== null) {
+              arr.push(n);
+            }
           }
-          let arr = inner.get(xk);
-          if (arr === undefined) {
-            arr = [];
-            inner.set(xk, arr);
-          }
-          if (n !== null) {
-            arr.push(n);
+          for (let i = 0; i < colorOrder.length; i++) {
+            const ck = colorOrder[i];
+            const inner = byColor.get(ck);
+            const xs: string[] = [];
+            const ys: number[] = [];
+            if (inner !== undefined) {
+              inner.forEach((values: number[], xk: string) => {
+                xs.push(xk);
+                ys.push(aggregateNumbers(values, yAgg));
+              });
+            }
+            result.series.push(new SeriesData(xs, ys, yList.length > 1 ? yf.field + ' · ' + ck : ck));
           }
         }
-        for (let i = 0; i < colorOrder.length; i++) {
-          const ck = colorOrder[i];
-          const inner = byColor.get(ck);
-          const xs: string[] = [];
-          const ys: number[] = [];
-          if (inner !== undefined) {
-            inner.forEach((values: number[], xk: string) => {
-              xs.push(xk);
-              ys.push(aggregateNumbers(values, agg));
-            });
-          }
-          result.series.push(new SeriesData(xs, ys, ck));
-        }
+      } else {
+        const groups = groupValues(df, xField, yf.field);
+        const xs: string[] = [];
+        const ys: number[] = [];
+        groups.forEach((values: number[], key: string) => {
+          xs.push(key);
+          ys.push(aggregateNumbers(values, yAgg));
+        });
+        result.series.push(new SeriesData(xs, ys, yList.length > 1 ? yf.field : yf.field));
       }
-    } else {
-      const groups = groupValues(df, xField, y.field);
-      const xs: string[] = [];
-      const ys: number[] = [];
-      groups.forEach((values: number[], key: string) => {
-        xs.push(key);
-        ys.push(aggregateNumbers(values, agg));
-      });
-      result.series.push(new SeriesData(xs, ys, y.field));
     }
   } else if (y !== null) {
     // no x: single value per color (bar summary)

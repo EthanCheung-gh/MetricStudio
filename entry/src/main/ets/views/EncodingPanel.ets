@@ -56,6 +56,45 @@ export struct EncodingPanel {
     return out;
   }
 
+  private hasYFields(): boolean {
+    const c = this.workspaceState.activeChart();
+    return c !== null && c.encoding.yFields.length > 0;
+  }
+
+  @Builder
+  addYButton() {
+    Button() {
+      Row({ space: 4 }) {
+        SymbolGlyph($r('sys.symbol.plus'))
+          .fontSize(12)
+          .fontColor([Theme.colorMuted()])
+        Text('添加 Y 字段')
+          .fontSize(11)
+          .fontColor(Theme.colorMuted())
+      }
+    }
+    .type(ButtonType.Normal)
+    .height(26)
+    .padding({ left: 10, right: 10 })
+    .backgroundColor(Color.Transparent)
+    .borderRadius(10)
+    .border({ width: 1, color: Theme.colorBorder() })
+    .onClick(() => {
+      this.addY();
+    })
+  }
+
+  private yFieldNames(): string[] {    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return [];
+    }
+    const out: string[] = [];
+    for (let i = 0; i < c.encoding.yFields.length; i++) {
+      out.push(c.encoding.yFields[i].field);
+    }
+    return out;
+  }
+
   private needsZ(): boolean {
     const c = this.workspaceState.activeChart();
     if (c === null) {
@@ -99,8 +138,34 @@ export struct EncodingPanel {
     if (c === null) {
       return;
     }
-    c.encoding.yFields = [new YFieldConfig(col, this.fieldType(col), 'sum', 'left', 'none')];
+    if (c.encoding.yFields.length === 0) {
+      c.encoding.yFields = [new YFieldConfig(col, this.fieldType(col), 'sum', 'left', 'none')];
+    } else {
+      c.encoding.yFields[0] = new YFieldConfig(col, this.fieldType(col), 'sum', 'left', 'none');
+    }
     this.selY = col;
+    this.syncFromChart();
+    this.workspaceState.refreshChart();
+  }
+
+  private addY(): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.yFields.length === 0) {
+      return;
+    }
+    const last = c.encoding.yFields[c.encoding.yFields.length - 1];
+    c.encoding.yFields.push(new YFieldConfig(last.field, last.type, 'sum', 'left', 'none'));
+    this.syncFromChart();
+    this.workspaceState.refreshChart();
+  }
+
+  private removeY(index: number): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.yFields.length <= 1) {
+      return;
+    }
+    c.encoding.yFields.splice(index, 1);
+    this.syncFromChart();
     this.workspaceState.refreshChart();
   }
 
@@ -173,6 +238,38 @@ export struct EncodingPanel {
       this.fieldRow(this.selY, (col: string) => {
         this.setY(col);
       })
+
+      // Selected Y fields list (multi-Y)
+      if (this.yFieldNames().length > 1) {
+        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
+          ForEach(this.yFieldNames(), (name: string, idx: number) => {
+            Button() {
+              Row({ space: 4 }) {
+                Text(name)
+                  .fontSize(11)
+                  .fontColor(Theme.primary)
+                Text('×')
+                  .fontSize(11)
+                  .fontColor(Theme.colorMuted())
+              }
+            }
+            .type(ButtonType.Normal)
+            .height(26)
+            .padding({ left: 10, right: 8 })
+            .backgroundColor(Theme.primaryDim)
+            .borderRadius(10)
+            .onClick(() => {
+              this.removeY(idx);
+            })
+          }, (name: string, idx: number) => idx.toString() + name)
+        }
+        .width('100%')
+      }
+
+      // Add Y button
+      if (this.hasYFields()) {
+        this.addYButton()
+      }
 
       // Aggregate
       Text(t(this.workspaceState.language, 'chart.aggregate'))

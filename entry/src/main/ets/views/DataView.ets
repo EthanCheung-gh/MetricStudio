@@ -5,13 +5,14 @@ import { CellValue } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
 import { toNumber } from '../engine/Numeric';
+import { SnapshotView } from './SnapshotView';
 
 const PAGE_SIZE: number = 100;
 
 /**
  * Data table view (web: src/components/data/DataView.tsx + DataTable.tsx).
- * Header row with column names + inferred-type badges, sortable; body renders
- * the active page (≤100 rows); pager at the bottom.
+ * Toolbar with view toggle (table / snapshots); table mode shows sortable
+ * header + paginated body; snapshots mode shows the SnapshotView.
  */
 @Component
 export struct DataView {
@@ -20,6 +21,7 @@ export struct DataView {
   @State page: number = 0;
   @State sortCol: string = '';
   @State sortAsc: boolean = true;
+  @State viewMode: string = 'table'; // 'table' | 'snapshots'
 
   private sortedRows(): CellValue[][] {
     const df = this.dataState.activeDataFrame;
@@ -68,14 +70,39 @@ export struct DataView {
     return Math.max(1, Math.ceil(total / PAGE_SIZE));
   }
 
+  lang(): Language {
+    return this.workspaceState.language;
+  }
+
   build() {
     Column() {
-      // Toolbar: dataset name + rows info + page indicator
+      // Toolbar: dataset name + view toggle + rows info
       Row() {
         Text(this.dataState.activeDataFrame !== null ? this.dataState.activeDataFrame.name : '')
           .fontSize(12)
           .fontWeight(600)
           .fontColor(Theme.colorForeground())
+        Row({ space: 4 }) {
+          Text('表格')
+            .fontSize(11)
+            .fontColor(this.viewMode === 'table' ? Theme.primary : Theme.colorMuted())
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .borderRadius(4)
+            .backgroundColor(this.viewMode === 'table' ? Theme.primaryDim : Color.Transparent)
+            .onClick(() => {
+              this.viewMode = 'table';
+            })
+          Text('快照')
+            .fontSize(11)
+            .fontColor(this.viewMode === 'snapshots' ? Theme.primary : Theme.colorMuted())
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .borderRadius(4)
+            .backgroundColor(this.viewMode === 'snapshots' ? Theme.primaryDim : Color.Transparent)
+            .onClick(() => {
+              this.viewMode = 'snapshots';
+            })
+        }
+        .margin({ left: 12 })
         Blank()
         if (this.dataState.activeDataFrame !== null) {
           Text(`${fmt(this.dataState.activeDataFrame.rowCount)} ${t(this.lang(), 'status.rows')} × ${this.dataState.activeDataFrame.colCount} ${t(this.lang(), 'status.cols')}`)
@@ -87,6 +114,26 @@ export struct DataView {
       .height(32)
       .padding({ left: 12, right: 12 })
 
+      if (this.viewMode === 'snapshots') {
+        Scroll() {
+          SnapshotView()
+            .width('100%')
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Auto)
+        .align(Alignment.TopStart)
+      } else {
+        this.tableArea()
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(Theme.colorBackground())
+  }
+
+  @Builder
+  tableArea() {
+    Column() {
       // Header row
       Scroll() {
         Row() {
@@ -148,10 +195,6 @@ export struct DataView {
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.colorBackground())
-  }
-
-  lang(): Language {
-    return this.workspaceState.language;
   }
 
   @Builder
