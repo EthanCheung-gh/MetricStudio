@@ -219,6 +219,12 @@ export function ChartConfigDialog() {
 
             {/* Right: Configuration (scrolls independently from the type list) */}
             <div className="flex-1 min-h-0 min-w-0 overflow-y-auto pl-1 pr-1">
+              {/* Selected chart type summary — fills the otherwise empty area and orients new users */}
+              <div className="mb-4 rounded border border-border bg-surface p-3">
+                <div className="text-xs font-semibold">{t(`chart.type.${encoding.chartType}`)}</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted">{t(`chart.desc.${encoding.chartType}`)}</p>
+              </div>
+
               {/* Templates */}
               <div className="mb-4">
                 <span className="text-xs font-semibold text-muted mb-2 block">{t('chart.templates')}</span>
