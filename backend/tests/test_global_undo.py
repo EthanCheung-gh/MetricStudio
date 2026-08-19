@@ -2,9 +2,11 @@
 
 
 def test_global_undo_redo_across_datasets(client, dirty_dataset):
-    # import a second dataset (clean sample)
-    with open("sample_data.csv", "rb") as f:
-        ds2 = client.post("/api/v1/data/import", files={"file": ("sample2.csv", f, "text/csv")}).json()[0]
+    # import a second dataset (self-contained; independent of sample_data.csv contents)
+    ds2 = client.post(
+        "/api/v1/data/import",
+        files={"file": ("sample2.csv", b"value\n3\n1\n2\n", "text/csv")},
+    ).json()[0]
 
     # transform dataset 1 (dedupe) then dataset 2 (sort)
     client.post(f"/api/v1/transform/{dirty_dataset['id']}/recipe/dedupe")
@@ -19,8 +21,8 @@ def test_global_undo_redo_across_datasets(client, dirty_dataset):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["dataset_id"] == ds2["id"]
-    # dataset 2 back to raw (no history applied) — but import has no ops, preview = 9 rows
-    assert body["preview"]["total_rows"] == 9
+    # dataset 2 back to raw (no history applied) — import has no ops, preview = 3 rows
+    assert body["preview"]["total_rows"] == 3
 
     # undo dataset 1's dedupe -> 10 rows (duplicate back)
     r = client.post("/api/v1/transform/global/undo")

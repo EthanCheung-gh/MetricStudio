@@ -39,8 +39,10 @@ OUT_DIR="src-tauri/binaries"
 mkdir -p "$OUT_DIR"
 
 # --distpath/--workpath/--specpath keep intermediates out of the repo root.
+# The --add-data source must be absolute: PyInstaller resolves it relative to
+# the spec file (--specpath build), not the working directory.
 "$PY" -m PyInstaller --onefile --name python-sidecar --paths . \
-  --add-data "sample_data.csv:." \
+  --add-data "$ROOT/sample_data.csv:." \
   --distpath dist --workpath build --specpath build backend/main.py
 
 cp "dist/python-sidecar" "$OUT_DIR/python-sidecar-${TRIPLE}"
