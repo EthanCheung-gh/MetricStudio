@@ -8,11 +8,13 @@ import { buildFigureJson } from '../engine/PlotlySpec';
  * Chart canvas (web: src/components/chart/ChartCanvas.tsx, port of the old
  * ChartView). An ArkUI Web component loads the bundled plotly.html and renders
  * figures injected via runJavaScript('renderFigure(json)'). Re-rendering is
- * triggered by workspaceState.chartTick (@Watch) without reloading the page.
+ * driven by an AppStorage 'chartTick' counter (@StorageLink + @Watch) — a plain
+ * number, so the watcher reliably fires whenever encoding/state changes.
  */
 @Component
 export struct ChartView {
-  @Consume('workspaceState') @Watch('onChartTick') workspaceState: WorkspaceState;
+  @StorageLink('chartTick') @Watch('onChartTick') chartTick: number = 0;
+  @Consume('workspaceState') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
   @Prop chartId: string = '';
 

@@ -183,19 +183,23 @@ export struct EncodingPanel {
 
   @Builder
   fieldRow(selected: string, onPick: (col: string) => void) {
-    // Flex wrap (no nested Scroll) so every field chip is directly tappable.
+    // Flex wrap of Button chips — no nested Scroll, direct tap semantics.
     Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
       ForEach(this.columns(), (col: string) => {
-        Text(col)
-          .fontSize(11)
-          .fontColor(selected === col ? Theme.primary : Theme.colorMuted())
-          .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-          .borderRadius(10)
-          .backgroundColor(selected === col ? Theme.primaryDim : Color.Transparent)
-          .border({ width: 1, color: selected === col ? Theme.primary : Theme.colorBorder() })
-          .onClick(() => {
-            onPick(col);
-          })
+        Button() {
+          Text(col)
+            .fontSize(11)
+            .fontColor(selected === col ? Theme.primary : Theme.colorMuted())
+        }
+        .type(ButtonType.Normal)
+        .height(26)
+        .padding({ left: 10, right: 10 })
+        .backgroundColor(selected === col ? Theme.primaryDim : Color.Transparent)
+        .borderRadius(10)
+        .border({ width: 1, color: selected === col ? Theme.primary : Theme.colorBorder() })
+        .onClick(() => {
+          onPick(col);
+        })
       }, (col: string) => col)
     }
     .width('100%')
@@ -203,15 +207,19 @@ export struct EncodingPanel {
 
   @Builder
   aggChip(agg: string, label: string) {
-    Text(label)
-      .fontSize(11)
-      .fontColor(this.selAgg === agg ? Theme.primary : Theme.colorMuted())
-      .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-      .borderRadius(10)
-      .backgroundColor(this.selAgg === agg ? Theme.primaryDim : Color.Transparent)
-      .border({ width: 1, color: this.selAgg === agg ? Theme.primary : Theme.colorBorder() })
-      .onClick(() => {
-        this.setAgg(agg);
-      })
+    Button() {
+      Text(label)
+        .fontSize(11)
+        .fontColor(this.selAgg === agg ? Theme.primary : Theme.colorMuted())
+    }
+    .type(ButtonType.Normal)
+    .height(26)
+    .padding({ left: 10, right: 10 })
+    .backgroundColor(this.selAgg === agg ? Theme.primaryDim : Color.Transparent)
+    .borderRadius(10)
+    .border({ width: 1, color: this.selAgg === agg ? Theme.primary : Theme.colorBorder() })
+    .onClick(() => {
+      this.setAgg(agg);
+    })
   }
 }

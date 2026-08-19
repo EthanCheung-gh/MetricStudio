@@ -135,13 +135,13 @@ export class WorkspaceState {
     chart.title = n;
     this.charts.push(chart);
     this.activeChartId = id;
-    this.chartTick++;
+    this.bumpTick();
     return chart;
   }
 
   setActiveChart(id: string): void {
     this.activeChartId = id;
-    this.chartTick++;
+    this.bumpTick();
   }
 
   removeChart(id: string): void {
@@ -155,7 +155,7 @@ export class WorkspaceState {
     if (this.activeChartId === id) {
       this.activeChartId = this.charts.length > 0 ? this.charts[0].id : '';
     }
-    this.chartTick++;
+    this.bumpTick();
   }
 
   duplicateChart(id: string): ChartConfig | null {
@@ -168,7 +168,7 @@ export class WorkspaceState {
     chart.title = chart.name;
     this.charts.push(chart);
     this.activeChartId = chart.id;
-    this.chartTick++;
+    this.bumpTick();
     return chart;
   }
 
@@ -182,6 +182,12 @@ export class WorkspaceState {
   }
 
   refreshChart(): void {
+    this.bumpTick();
+  }
+
+  /** Bump the local tick and mirror it to AppStorage so @StorageLink watchers fire. */
+  private bumpTick(): void {
     this.chartTick++;
+    AppStorage.setOrCreate('chartTick', this.chartTick);
   }
 }
