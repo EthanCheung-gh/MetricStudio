@@ -1,5 +1,6 @@
 import { webview } from '@kit.ArkWeb';
 import { Theme } from '../common/Theme';
+import { CellValue, DataFrame } from '../model/DataFrame';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { DataState } from '../model/DataState';
 import { buildFigureJson } from '../engine/PlotlySpec';
@@ -17,13 +18,39 @@ export struct ChartView {
   @Consume('workspaceState') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
   @Prop chartId: string = '';
+  @Prop filterField: string = '';
+  @Prop filterValue: string = '';
 
   private controller: webview.WebviewController = new webview.WebviewController();
   private pageReady: boolean = false;
 
+  /** Return the active frame, filtered when a dashboard global filter is set. */
+  private filteredFrame(): DataFrame | null {
+    const df = this.dataState.activeDataFrame;
+    if (df === null) {
+      return null;
+    }
+    if (this.filterField.length === 0 || this.filterValue.length === 0) {
+      return df;
+    }
+    const idx = df.columnIndex(this.filterField);
+    if (idx < 0) {
+      return df;
+    }
+    const clone = df.clone();
+    const kept: CellValue[][] = [];
+    for (let r = 0; r < clone.rows.length; r++) {
+      if (String(clone.rows[r][idx]) === this.filterValue) {
+        kept.push(clone.rows[r]);
+      }
+    }
+    clone.rows = kept;
+    return clone;
+  }
+
   private figureJson(): string {
     const chart = this.chartId.length > 0 ? this.workspaceState.findChart(this.chartId) : this.workspaceState.activeChart();
-    const df = this.dataState.activeDataFrame;
+    const df = this.filteredFrame();
     if (chart === null || df === null) {
       return '';
     }

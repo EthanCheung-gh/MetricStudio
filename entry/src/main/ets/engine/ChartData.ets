@@ -23,6 +23,64 @@ export class ChartDataResult {
   pieValues: number[] = [];
   // Histogram / box / violin / ecdf: raw numeric arrays (per color group)
   numericSeries: SeriesData[] = [];
+  // Heatmap / contour: x/y/z pivot matrix
+  hmXs: string[] = [];
+  hmYs: string[] = [];
+  hmZ: (number | null)[][] = [];
+}
+
+/** Pivot (x × y) cross-tabulated with z aggregated (web pivotMatrix). */
+export class PivotMatrix {
+  xs: string[] = [];
+  ys: string[] = [];
+  z: (number | null)[][] = [];
+}
+
+export function pivotMatrix(df: DataFrame, xField: string, yField: string, zField: string,
+  agg: string): PivotMatrix {
+  const out = new PivotMatrix();
+  const xIdx = df.columnIndex(xField);
+  const yIdx = df.columnIndex(yField);
+  const zIdx = df.columnIndex(zField);
+  if (xIdx < 0 || yIdx < 0 || zIdx < 0) {
+    return out;
+  }
+  const cell = new Map<string, number[]>();
+  const xOrder: string[] = [];
+  const yOrder: string[] = [];
+  for (let r = 0; r < df.rows.length; r++) {
+    const xk = cellToKey(df.rows[r][xIdx]);
+    const yk = cellToKey(df.rows[r][yIdx]);
+    const n = toNumber(df.rows[r][zIdx]);
+    if (n === null) {
+      continue;
+    }
+    if (xOrder.indexOf(xk) < 0) {
+      xOrder.push(xk);
+    }
+    if (yOrder.indexOf(yk) < 0) {
+      yOrder.push(yk);
+    }
+    const key = xk + '\u0001' + yk;
+    let arr = cell.get(key);
+    if (arr === undefined) {
+      arr = [];
+      cell.set(key, arr);
+    }
+    arr.push(n);
+  }
+  out.xs = xOrder;
+  out.ys = yOrder;
+  for (let yi = 0; yi < yOrder.length; yi++) {
+    const rowVals: (number | null)[] = [];
+    for (let xi = 0; xi < xOrder.length; xi++) {
+      const key = xOrder[xi] + '\u0001' + yOrder[yi];
+      const arr = cell.get(key);
+      rowVals.push(arr !== undefined ? aggregateNumbers(arr, agg) : null);
+    }
+    out.z.push(rowVals);
+  }
+  return out;
 }
 
 export function cellToKey(v: CellValue): string {
@@ -123,9 +181,23 @@ export function buildChartData(df: DataFrame, encoding: ChartEncoding): ChartDat
     return result;
   }
 
+  // Heatmap / contour: x + y cross-tab with z values (web pivotMatrix)
+  if (encoding.chartType === 'heatmap' || encoding.chartType === 'contour'
+    || encoding.chartType === 'density_heatmap' || encoding.chartType === 'density_contour') {
+    const xF = encoding.x !== null ? encoding.x.field : '';
+    const yF = y !== null ? y.field : '';
+    const zF = encoding.z !== null ? encoding.z.field : '';
+    if (xF.length > 0 && yF.length > 0 && zF.length > 0) {
+      const p = pivotMatrix(df, xF, yF, zF, agg);
+      result.hmXs = p.xs;
+      result.hmYs = p.ys;
+      result.hmZ = p.z;
+    }
+    return result;
+  }
+
   if (encoding.chartType === 'histogram' || encoding.chartType === 'box' || encoding.chartType === 'violin'
-    || encoding.chartType === 'ecdf') {
-    const valueField = y !== null ? y.field : (xField !== null ? xField : '');
+    || encoding.chartType === 'ecdf') {    const valueField = y !== null ? y.field : (xField !== null ? xField : '');
     const vIdx = df.columnIndex(valueField);
     if (vIdx >= 0) {
       if (colorField !== null) {

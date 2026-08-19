@@ -4,6 +4,7 @@ import { RightPanelSection, WorkspaceState } from '../model/WorkspaceState';
 import { IconButton } from './IconButton';
 import { TransformPanel } from './TransformPanel';
 import { EncodingPanel } from './EncodingPanel';
+import { ColumnStatsPanel } from './ColumnStats';
 
 /**
  * Right sidebar (web: src/components/layout/RightPanel.tsx). Header 36px;
@@ -43,6 +44,7 @@ export struct RightPanel {
           if (this.workspaceState.rightSection === RightPanelSection.Properties) {
             EncodingPanel()
           } else {
+            ColumnStatsPanel()
             TransformPanel()
           }
         }

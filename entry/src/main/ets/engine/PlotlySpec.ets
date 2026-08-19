@@ -40,10 +40,15 @@ export interface PlotlyCumulative {
   enabled: boolean;
 }
 
+export interface PlotlyContours {
+  coloring?: string;
+}
+
 export interface PlotlyTrace {
   type: string;
   x?: (string | number)[];
   y?: (string | number)[];
+  z?: (number | null)[][];
   name?: string;
   mode?: string;
   marker?: PlotlyMarker;
@@ -56,6 +61,11 @@ export interface PlotlyTrace {
   cumulative?: PlotlyCumulative;
   text?: string[];
   textposition?: string;
+  colorscale?: string;
+  contours?: PlotlyContours;
+  theta?: string[];
+  r?: number[];
+  fill?: string;
 }
 
 export interface PlotlyLayout {
@@ -236,6 +246,66 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
         });
       }
       showLegend = data.numericSeries.length > 1;
+      break;
+    case 'heatmap':
+    case 'density_heatmap':
+    case 'contour':
+    case 'density_contour':
+      if (data.hmXs.length > 0 && data.hmYs.length > 0) {
+        const trace: PlotlyTrace = {
+          type: type.indexOf('contour') >= 0 ? 'contour' : 'heatmap',
+          x: data.hmXs,
+          y: data.hmYs,
+          z: data.hmZ,
+          colorscale: 'Viridis',
+        };
+        if (type.indexOf('contour') >= 0) {
+          trace.contours = { coloring: 'heatmap' };
+        }
+        traces.push(trace);
+      } else {
+        layout.annotations = [{
+          text: 'heatmap 需要 X + Y + Z(值) 字段',
+          xref: 'paper',
+          yref: 'paper',
+          x: 0.5,
+          y: 0.5,
+          showarrow: false,
+          font: { color: '#9ca3af', size: 12 },
+        }];
+      }
+      break;
+    case 'radar':
+      // theta = x categories (aggregated), r per y field; close the loop
+      for (let i = 0; i < data.series.length; i++) {
+        const s = data.series[i];
+        const theta = s.x.slice();
+        const r = s.y.slice();
+        if (theta.length > 0) {
+          theta.push(theta[0]);
+          r.push(r[0]);
+        }
+        traces.push({
+          type: 'scatterpolar',
+          theta: theta,
+          r: r,
+          name: s.name,
+          fill: 'toself',
+          line: lineFor(i),
+        });
+      }
+      showLegend = data.series.length > 1;
+      break;
+    case 'sankey':
+      layout.annotations = [{
+        text: 'sankey 需要 Source/Target 字段',
+        xref: 'paper',
+        yref: 'paper',
+        x: 0.5,
+        y: 0.5,
+        showarrow: false,
+        font: { color: '#9ca3af', size: 12 },
+      }];
       break;
     default:
       layout.annotations = [{

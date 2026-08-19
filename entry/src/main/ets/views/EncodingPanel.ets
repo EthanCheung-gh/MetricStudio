@@ -1,7 +1,7 @@
 import { LengthMetrics } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { t } from '../common/Locale';
-import { EncodingChannel, FieldType, YFieldConfig } from '../model/ChartConfig';
+import { EncodingChannel, FieldType, YFieldConfig, chartTypeSpecs } from '../model/ChartConfig';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { ChartTypeSelector } from './ChartTypeSelector';
@@ -18,6 +18,7 @@ export struct EncodingPanel {
   @Consume('dataState') dataState: DataState;
   @State selX: string = '';
   @State selY: string = '';
+  @State selZ: string = '';
   @State selColor: string = '';
   @State selAgg: string = 'sum';
 
@@ -36,6 +37,7 @@ export struct EncodingPanel {
     }
     this.selX = c.encoding.x !== null ? c.encoding.x.field : '';
     this.selY = c.encoding.yFields.length > 0 ? c.encoding.yFields[0].field : '';
+    this.selZ = c.encoding.z !== null ? c.encoding.z.field : '';
     this.selColor = c.encoding.color !== null ? c.encoding.color.field : '';
     this.selAgg = c.encoding.yFields.length > 0 && c.encoding.yFields[0].aggregate !== null
       ? (c.encoding.yFields[0].aggregate as string)
@@ -52,6 +54,15 @@ export struct EncodingPanel {
       out.push(df.columns[i].name);
     }
     return out;
+  }
+
+  private needsZ(): boolean {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return false;
+    }
+    const spec = chartTypeSpecs[c.encoding.chartType];
+    return spec !== undefined && spec.channels.indexOf('z') >= 0;
   }
 
   private fieldType(col: string): FieldType {
@@ -104,6 +115,21 @@ export struct EncodingPanel {
     } else {
       c.encoding.color = new EncodingChannel(col, this.fieldType(col), null);
       this.selColor = col;
+    }
+    this.workspaceState.refreshChart();
+  }
+
+  private setZ(col: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return;
+    }
+    if (col.length === 0) {
+      c.encoding.z = null;
+      this.selZ = '';
+    } else {
+      c.encoding.z = new EncodingChannel(col, this.fieldType(col), null);
+      this.selZ = col;
     }
     this.workspaceState.refreshChart();
   }
@@ -172,6 +198,18 @@ export struct EncodingPanel {
       this.fieldRow(this.selColor, (col: string) => {
         this.setColor(col);
       })
+
+      // Z / value channel (heatmap & contour families)
+      if (this.needsZ()) {
+        Text('Z / Value')
+          .fontSize(11)
+          .fontWeight(600)
+          .fontColor(Theme.colorMuted())
+          .alignSelf(ItemAlign.Start)
+        this.fieldRow(this.selZ, (col: string) => {
+          this.setZ(col);
+        })
+      }
     }
     .width('100%')
     .padding(12)
