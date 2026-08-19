@@ -6,6 +6,7 @@ import { LeftPanel } from '../views/LeftPanel';
 import { RightPanel } from '../views/RightPanel';
 import { CenterArea } from '../views/CenterArea';
 import { StatusBar } from '../views/StatusBar';
+import { SettingsDialog } from '../views/SettingsDialog';
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
@@ -47,6 +48,8 @@ struct Index {
       .alignItems(VerticalAlign.Top)
 
       StatusBar()
+
+      SettingsDialog()
     }
     .width('100%')
     .height('100%')

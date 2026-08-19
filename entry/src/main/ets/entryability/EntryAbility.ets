@@ -13,19 +13,39 @@
  * limitations under the License.
  */
 
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, ConfigurationConstant, UIAbility, Want, bundleManager } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
+import { preferences } from '@kit.ArkData';
 
 const DOMAIN = 0x0000;
+const SETTINGS_STORE = 'metricstudio_settings';
+const KEY_THEME = 'theme';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
-      this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      const appCtx = this.context.getApplicationContext();
+      const store = preferences.getPreferencesSync(this.context, { name: SETTINGS_STORE });
+      const theme = store.getSync(KEY_THEME, 1) as number;
+      if (theme === 0) {
+        appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      } else if (theme === 1) {
+        appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+      } else {
+        appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+      }
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
+    // Expose the real app version to the status bar (web: __APP_VERSION__)
+    bundleManager.getBundleInfoForSelf(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT)
+      .then((info: bundleManager.BundleInfo) => {
+        AppStorage.setOrCreate<string>('appVersion', info.versionName);
+      })
+      .catch((err: Error) => {
+        hilog.error(DOMAIN, 'testTag', 'Failed to read bundle version. Cause: %{public}s', JSON.stringify(err));
+      });
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
   }
 

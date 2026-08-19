@@ -44,6 +44,13 @@ export struct TitleBar {
           action: () => {
           }
         })
+        IconButton({
+          icon: $r('sys.symbol.line_3_horizontal'),
+          iconSize: 16,
+          action: () => {
+            this.workspaceState.setSettingsOpen(true);
+          }
+        })
       }
       .alignItems(VerticalAlign.Center)
     }

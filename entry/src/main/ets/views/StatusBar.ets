@@ -58,7 +58,7 @@ export struct StatusBar {
           .onClick(() => {
             this.workspaceState.toggleLanguage();
           })
-        Text('MetricStudio v0.1.0')
+        Text('MetricStudio v' + (AppStorage.get<string>('appVersion') ?? '1.0.0'))
           .fontSize(12)
           .fontColor(Theme.muted)
       }
