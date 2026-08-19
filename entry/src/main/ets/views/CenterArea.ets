@@ -174,57 +174,63 @@ export struct CenterArea {
 
   @Builder
   tabBar() {
-    Scroll() {
-      Row({ space: 2 }) {
-        this.tabItem($r('sys.symbol.externaldrive'),
-          t(this.workspaceState.language, 'nav.data'),
-          this.workspaceState.activeTab === CenterTab.Data,
-          () => {
-            this.workspaceState.setActiveTab(CenterTab.Data);
-          })
-        this.tabItem($r('sys.symbol.square_grid_2x2'),
-          t(this.workspaceState.language, 'nav.dashboard'),
-          this.workspaceState.activeTab === CenterTab.Dashboard,
-          () => {
-            this.workspaceState.setActiveTab(CenterTab.Dashboard);
-          })
-
-        // Chart tabs
-        ForEach(this.workspaceState.charts, (chart: ChartConfigShim, idx: number) => {
-          this.chartTab(chart, idx)
-        }, (chart: ChartConfigShim, idx: number) => chart.id)
-
-        // New chart
-        if (this.dataState.hasData) {
-          this.tabItem($r('sys.symbol.plus'),
-            t(this.workspaceState.language, 'chart.newChart'),
-            false,
+    Row() {
+      Scroll() {
+        Row({ space: 2 }) {
+          this.tabItem($r('sys.symbol.externaldrive'),
+            t(this.workspaceState.language, 'nav.data'),
+            this.workspaceState.activeTab === CenterTab.Data,
             () => {
-              const df = this.dataState.activeDataFrame;
-              if (df !== null) {
-                this.workspaceState.createChart(df.name);
-              }
-              this.workspaceState.setActiveTab(CenterTab.Chart);
+              this.workspaceState.setActiveTab(CenterTab.Data);
             })
-        }
-
-        // Configure active chart
-        if (this.workspaceState.activeTab === CenterTab.Chart && this.workspaceState.hasCharts) {
-          this.tabItem($r('sys.symbol.slider_horizontal_2'),
-            t(this.workspaceState.language, 'chart.configure'),
-            false,
+          this.tabItem($r('sys.symbol.square_grid_2x2'),
+            t(this.workspaceState.language, 'nav.dashboard'),
+            this.workspaceState.activeTab === CenterTab.Dashboard,
             () => {
-              this.workspaceState.activateRightSection(RightPanelSection.Properties);
+              this.workspaceState.setActiveTab(CenterTab.Dashboard);
             })
+
+          // Chart tabs
+          ForEach(this.workspaceState.charts, (chart: ChartConfigShim, idx: number) => {
+            this.chartTab(chart, idx)
+          }, (chart: ChartConfigShim, idx: number) => chart.id)
+
+          // New chart
+          if (this.dataState.hasData) {
+            this.tabItem($r('sys.symbol.plus'),
+              t(this.workspaceState.language, 'chart.newChart'),
+              false,
+              () => {
+                const df = this.dataState.activeDataFrame;
+                if (df !== null) {
+                  this.workspaceState.createChart(df.name);
+                }
+                this.workspaceState.setActiveTab(CenterTab.Chart);
+              })
+          }
         }
+        .alignItems(VerticalAlign.Center)
       }
-      .alignItems(VerticalAlign.Center)
+      .layoutWeight(1)
+      .height('100%')
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+
+      // Configure active chart — pinned OUTSIDE the horizontal scroll so it is
+      // always visible and clickable after creating a new chart.
+      if (this.workspaceState.activeTab === CenterTab.Chart && this.workspaceState.hasCharts) {
+        this.tabItem($r('sys.symbol.slider_horizontal_2'),
+          t(this.workspaceState.language, 'chart.configure'),
+          false,
+          () => {
+            this.workspaceState.activateRightSection(RightPanelSection.Properties);
+          })
+      }
     }
     .width('100%')
     .height(Theme.tabBarHeight)
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
     .padding({ left: 8, right: 8 })
+    .alignItems(VerticalAlign.Center)
     .backgroundColor(Theme.colorSurface())
     .border({ width: { bottom: 1 }, color: Theme.colorBorder() })
   }
