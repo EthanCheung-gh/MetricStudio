@@ -1,4 +1,4 @@
-import { ChartConfig } from './ChartConfig';
+import { AggregateType, ChartConfig, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
 import { Theme } from '../common/Theme';
 
 export enum Language {
@@ -185,9 +185,138 @@ export class WorkspaceState {
     this.bumpTick();
   }
 
+  /** Serialize charts + preferences for project save (web saveProject). */
+  exportJson(): string {
+    const items: ProjectChart[] = [];
+    for (let i = 0; i < this.charts.length; i++) {
+      const c = this.charts[i];
+      const enc = c.encoding;
+      const yf: EncYJson[] = [];
+      for (let k = 0; k < enc.yFields.length; k++) {
+        const y = enc.yFields[k];
+        const yj: EncYJson = {
+          field: y.field,
+          type: y.type,
+          aggregate: y.aggregate,
+          axis: y.axis,
+          normalize: y.normalize,
+        };
+        yf.push(yj);
+      }
+      const xj: EncChannelJson | null = enc.x !== null
+        ? { field: enc.x.field, type: enc.x.type, aggregate: enc.x.aggregate }
+        : null;
+      const cj: EncChannelJson | null = enc.color !== null
+        ? { field: enc.color.field, type: enc.color.type, aggregate: enc.color.aggregate }
+        : null;
+      const zj: EncChannelJson | null = enc.z !== null
+        ? { field: enc.z.field, type: enc.z.type, aggregate: enc.z.aggregate }
+        : null;
+      const item: ProjectChart = {
+        id: c.id,
+        name: c.name,
+        datasetId: c.datasetId,
+        title: c.title,
+        chartType: enc.chartType,
+        x: xj,
+        yFields: yf,
+        color: cj,
+        z: zj,
+      };
+      items.push(item);
+    }
+    const payload: ProjectPayload = {
+      charts: items,
+      language: this.language,
+      theme: this.theme,
+      activeChartId: this.activeChartId,
+    };
+    return JSON.stringify(payload);
+  }
+
+  /** Restore charts + preferences from a saved project payload. */
+  importJson(json: string): boolean {
+    try {
+      const data = JSON.parse(json) as ProjectPayload;
+      this.charts = [];
+      this.activeChartId = '';
+      const list: ChartConfig[] = [];
+      if (data.charts !== undefined) {
+        for (let i = 0; i < data.charts.length; i++) {
+          const c = data.charts[i];
+          const chart = new ChartConfig(c.id !== undefined && c.id.length > 0 ? c.id : 'chart_' + i.toString(),
+            c.name, c.datasetId);
+          chart.title = c.title;
+          chart.encoding.chartType = c.chartType;
+          if (c.x !== null && c.x !== undefined) {
+            chart.encoding.x = new EncodingChannel(c.x.field, c.x.type as FieldType, c.x.aggregate as AggregateType);
+          }
+          if (c.yFields !== undefined) {
+            for (let k = 0; k < c.yFields.length; k++) {
+              const y = c.yFields[k];
+              chart.encoding.yFields.push(new YFieldConfig(y.field, y.type as FieldType, y.aggregate as AggregateType, y.axis, y.normalize));
+            }
+          }
+          if (c.color !== null && c.color !== undefined) {
+            chart.encoding.color = new EncodingChannel(c.color.field, c.color.type as FieldType, c.color.aggregate as AggregateType);
+          }
+          if (c.z !== null && c.z !== undefined) {
+            chart.encoding.z = new EncodingChannel(c.z.field, c.z.type as FieldType, c.z.aggregate as AggregateType);
+          }
+          list.push(chart);
+        }
+      }
+      this.charts = list;
+      if (data.activeChartId !== undefined) {
+        this.activeChartId = data.activeChartId;
+      }
+      if (data.language !== undefined) {
+        this.language = data.language === 1 ? Language.En : Language.Zh;
+      }
+      if (data.theme !== undefined) {
+        this.setTheme(data.theme);
+      }
+      this.bumpTick();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /** Bump the local tick and mirror it to AppStorage so @StorageLink watchers fire. */
   private bumpTick(): void {
     this.chartTick++;
     AppStorage.setOrCreate('chartTick', this.chartTick);
   }
+}
+
+/** JSON shape of a saved project (importJson). */
+interface ProjectPayload {
+  charts?: ProjectChart[];
+  language?: number;
+  theme?: number;
+  activeChartId?: string;
+}
+interface ProjectChart {
+  id?: string;
+  name: string;
+  datasetId: string;
+  title: string;
+  chartType: string;
+  x: EncChannelJson | null;
+  yFields?: EncYJson[];
+  color: EncChannelJson | null;
+  z: EncChannelJson | null;
+}
+interface EncChannelJson {
+  field: string;
+  type: string;
+  aggregate: string | null;
+}
+interface EncYJson {
+  field: string;
+  type: string;
+  aggregate: string | null;
+  axis: string;
+  normalize: string;
 }

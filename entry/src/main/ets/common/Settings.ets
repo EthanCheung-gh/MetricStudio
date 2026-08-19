@@ -6,6 +6,7 @@ import { Theme } from './Theme';
 const STORE_NAME = 'ms_settings';
 const KEY_LANGUAGE = 'language';
 const KEY_THEME = 'theme';
+const KEY_PROJECT = 'project';
 
 /**
  * Persists language + theme via Preferences (web: localStorage). Loaded once at
@@ -79,5 +80,33 @@ export class Settings {
     } catch (e) {
       // keep default dark
     }
+  }
+
+  /** Persist the project payload (charts/preferences). */
+  static async saveProject(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_PROJECT, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load the persisted project payload, or '' when none saved. */
+  static loadProject(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_PROJECT, '') as string;
+    } catch (e) {
+      // no project yet
+    }
+    return v;
   }
 }

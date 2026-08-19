@@ -1,5 +1,7 @@
+import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
-import { WorkspaceState } from '../model/WorkspaceState';
+import { Settings } from '../common/Settings';
+import { PanelSection, WorkspaceState } from '../model/WorkspaceState';
 import { IconButton } from './IconButton';
 
 /**
@@ -30,18 +32,34 @@ export struct TitleBar {
           icon: $r('sys.symbol.folder'),
           iconSize: 16,
           action: () => {
+            // Open project: restore persisted charts/preferences
+            const json = Settings.loadProject();
+            if (json.length === 0) {
+              promptAction.showToast({ message: 'No saved project' });
+              return;
+            }
+            if (this.workspaceState.importJson(json)) {
+              promptAction.showToast({ message: 'Project loaded' });
+            } else {
+              promptAction.showToast({ message: 'Load failed' });
+            }
           }
         })
         IconButton({
           icon: $r('sys.symbol.save'),
           iconSize: 16,
           action: () => {
+            // Save project: persist charts + preferences
+            Settings.saveProject(this.workspaceState.exportJson());
+            promptAction.showToast({ message: 'Project saved' });
           }
         })
         IconButton({
           icon: $r('sys.symbol.doc_plaintext'),
           iconSize: 16,
           action: () => {
+            // Import: expand the left panel and show the explorer (import entries)
+            this.workspaceState.openLeftSection(PanelSection.None);
           }
         })
         IconButton({
