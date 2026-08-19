@@ -64,6 +64,7 @@ export struct LeftPanel {
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
       .backgroundColor(Theme.colorSurface())
     }
     .width('100%')

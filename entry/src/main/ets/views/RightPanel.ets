@@ -51,6 +51,8 @@ export struct RightPanel {
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
+      .padding(Theme.panelPadding)
       .backgroundColor(Theme.colorSurface())
     }
     .width('100%')

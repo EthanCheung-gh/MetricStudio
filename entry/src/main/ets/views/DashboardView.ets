@@ -162,6 +162,7 @@ export struct DashboardView {
     .height('100%')
     .backgroundColor(Theme.colorBackground())
     .scrollBar(BarState.Auto)
+    .align(Alignment.TopStart)
   }
 
   @Builder
