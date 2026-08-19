@@ -9,11 +9,12 @@ import { RightPanel } from '../views/RightPanel';
 import { CenterArea } from '../views/CenterArea';
 import { StatusBar } from '../views/StatusBar';
 import { SettingsDialog } from '../views/SettingsDialog';
+import { AICommandBar } from '../views/AICommandBar';
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
  * Full-screen column: 40px title bar, flexible workspace row, 24px status bar.
- * The workspace row keeps a 64px bottom reserve for the AI command bar (pb-16).
+ * The AI command bar floats at the bottom (workspace keeps a 64px reserve).
  */
 @Entry
 @Component
@@ -29,38 +30,48 @@ struct Index {
   }
 
   build() {
-    Column() {
-      TitleBar()
+    Stack({ alignContent: Alignment.Bottom }) {
+      Column() {
+        TitleBar()
 
-      Row() {
-        LeftActivityBar()
+        Row() {
+          LeftActivityBar()
 
-        if (!this.workspaceState.leftCollapsed) {
-          LeftPanel()
-            .width('20%')
-          this.resizeHandle()
+          if (!this.workspaceState.leftCollapsed) {
+            LeftPanel()
+              .width('20%')
+            this.resizeHandle()
+          }
+
+          CenterArea()
+            .layoutWeight(1)
+
+          if (!this.workspaceState.rightCollapsed) {
+            this.resizeHandle()
+            RightPanel()
+              .width('25%')
+          }
+
+          RightActivityBar()
         }
+        .width('100%')
+        .layoutWeight(1)
+        .padding({ bottom: Theme.bottomReserve })
+        .alignItems(VerticalAlign.Top)
 
-        CenterArea()
-          .layoutWeight(1)
+        StatusBar()
 
-        if (!this.workspaceState.rightCollapsed) {
-          this.resizeHandle()
-          RightPanel()
-            .width('25%')
+        if (this.workspaceState.settingsOpen) {
+          SettingsDialog()
         }
-
-        RightActivityBar()
       }
       .width('100%')
-      .layoutWeight(1)
-      .padding({ bottom: Theme.bottomReserve })
-      .alignItems(VerticalAlign.Top)
+      .height('100%')
+      .backgroundColor(Theme.background)
 
-      StatusBar()
-
-      if (this.workspaceState.settingsOpen) {
-        SettingsDialog()
+      if (this.dataState.hasData) {
+        AICommandBar()
+          .margin({ bottom: 6 })
       }
     }
     .width('100%')
