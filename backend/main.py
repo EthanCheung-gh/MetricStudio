@@ -42,6 +42,8 @@ app.add_middleware(
         # Browser dev (Vite)
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         # Tauri production webview origins: tauri:// on Linux/macOS,
         # http(s)://tauri.localhost on Windows.
         "tauri://localhost",
@@ -52,6 +54,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return {
+        "message": "MetricStudio backend API — this is not the web app. Open the Vite dev server (http://localhost:5174) instead.",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 
 @app.get("/health")
