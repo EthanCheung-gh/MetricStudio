@@ -5,15 +5,31 @@ import { chartTypeSpecs } from '../model/ChartConfig';
 import { ChartTypeSelector } from './ChartTypeSelector';
 import { EncodingPanel } from './EncodingPanel';
 
+const PANEL_W = 680;
+const PANEL_H = 560;
+
 /**
  * Chart config dialog (web: src/components/chart/ChartConfigDialog.tsx).
- * Floating panel (680px) with a drag-style header, left chart-type column
- * (vertical buttons, independent scroll), right config column (selected type
- * summary card + encoding panel) and a Done footer.
+ * Draggable floating panel (drag on the header) so it never blocks other
+ * components; left chart-type column + right config column + Done footer.
  */
 @Component
 export struct ChartConfigDialog {
   @Consume('workspaceState') workspaceState: WorkspaceState;
+  @State posX: number = 0;
+  @State posY: number = 0;
+  private dragStartX: number = 0;
+  private dragStartY: number = 0;
+  private dragBaseX: number = 0;
+  private dragBaseY: number = 0;
+  private dragging: boolean = false;
+  @State containerW: number = 0;
+  @State containerH: number = 0;
+  private positioned: boolean = false;
+
+  aboutToAppear(): void {
+    // position initialized via onAreaChange of the full-screen Stack
+  }
 
   private typeName(): string {
     const c = this.workspaceState.activeChart();
@@ -37,8 +53,39 @@ export struct ChartConfigDialog {
     return c !== null ? c.name : '';
   }
 
+  private handleAreaChange(w: number, h: number): void {
+    this.containerW = w;
+    this.containerH = h;
+    if (!this.positioned && w > 0) {
+      this.positioned = true;
+      this.posX = Math.max(0, Math.floor((w - PANEL_W) / 2));
+      this.posY = Math.max(0, Math.floor((h - PANEL_H) / 2) - 20);
+    }
+  }
+
+  private onHeaderTouch(event: TouchEvent): void {
+    if (event.touches.length === 0) {
+      return;
+    }
+    const winW = this.containerW;
+    const winH = this.containerH;
+    const t = event.touches[0];
+    if (event.type === TouchType.Down) {
+      this.dragging = true;
+      this.dragStartX = t.windowX;
+      this.dragStartY = t.windowY;
+      this.dragBaseX = this.posX;
+      this.dragBaseY = this.posY;
+    } else if (event.type === TouchType.Move && this.dragging) {
+      this.posX = Math.min(Math.max(0, this.dragBaseX + (t.windowX - this.dragStartX)), Math.max(0, winW - 120));
+      this.posY = Math.min(Math.max(0, this.dragBaseY + (t.windowY - this.dragStartY)), Math.max(0, winH - 60));
+    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.dragging = false;
+    }
+  }
+
   build() {
-    Stack({ alignContent: Alignment.Center }) {
+    Stack() {
       // Dim backdrop (tap to close)
       Column()
         .width('100%')
@@ -49,7 +96,7 @@ export struct ChartConfigDialog {
         })
 
       Column() {
-        // Header (drag handle look)
+        // Header (drag handle)
         Row() {
           Row({ space: 8 }) {
             SymbolGlyph($r('sys.symbol.line_3_horizontal'))
@@ -78,10 +125,12 @@ export struct ChartConfigDialog {
         .height(44)
         .padding({ left: 16, right: 12 })
         .border({ width: { bottom: 1 }, color: Theme.colorBorder() })
+        .onTouch((event: TouchEvent) => {
+          this.onHeaderTouch(event);
+        })
 
         // Body: left type column + right config column
         Row() {
-          // Left: chart type list (144px, independent scroll)
           Column() {
             ChartTypeSelector()
           }
@@ -112,7 +161,6 @@ export struct ChartConfigDialog {
             .backgroundColor(Theme.colorSurface())
             .alignItems(HorizontalAlign.Start)
 
-            // Encoding config (registry-driven channel controls)
             Scroll() {
               Column() {
                 EncodingPanel()
@@ -155,15 +203,19 @@ export struct ChartConfigDialog {
         .padding({ left: 16, right: 16 })
         .border({ width: { top: 1 }, color: Theme.colorBorder() })
       }
-      .width(680)
+      .width(PANEL_W)
       .constraintSize({ maxWidth: '92%' })
-      .height(560)
+      .height(PANEL_H)
       .borderRadius(12)
       .border({ width: 1, color: Theme.colorBorder() })
       .backgroundColor(Theme.colorSurfaceElevated())
       .shadow({ radius: 32, color: 'rgba(0,0,0,0.5)', offsetY: 8 })
+      .position({ x: this.posX, y: this.posY })
     }
     .width('100%')
     .height('100%')
+    .onAreaChange((oldV: Area, newV: Area) => {
+      this.handleAreaChange(Number(newV.width), Number(newV.height));
+    })
   }
 }

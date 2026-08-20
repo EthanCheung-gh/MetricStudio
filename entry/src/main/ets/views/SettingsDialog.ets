@@ -25,11 +25,53 @@ export struct SettingsDialog {
   @State clearApiKey: boolean = false;
 
   aboutToAppear(): void {
-    this.loadPersisted();
+    // position initialized via onAreaChange of the full-screen Stack
   }
 
   private getHostContext(): Context | undefined {
     return this.getUIContext().getHostContext();
+  }
+
+  @State posX: number = 0;
+  @State posY: number = 0;
+  private dragStartX: number = 0;
+  private dragStartY: number = 0;
+  private dragBaseX: number = 0;
+  private dragBaseY: number = 0;
+  private dragging: boolean = false;
+  @State containerW: number = 0;
+  @State containerH: number = 0;
+  private positioned: boolean = false;
+
+  private handleAreaChange(w: number, h: number): void {
+    this.containerW = w;
+    this.containerH = h;
+    if (!this.positioned && w > 0) {
+      this.positioned = true;
+      this.posX = Math.max(0, Math.floor((w - 480) / 2));
+      this.posY = Math.max(0, Math.floor((h - 420) / 2) - 20);
+    }
+  }
+
+  private onHeaderTouch(event: TouchEvent): void {
+    if (event.touches.length === 0) {
+      return;
+    }
+    const winW = this.containerW;
+    const winH = this.containerH;
+    const t = event.touches[0];
+    if (event.type === TouchType.Down) {
+      this.dragging = true;
+      this.dragStartX = t.windowX;
+      this.dragStartY = t.windowY;
+      this.dragBaseX = this.posX;
+      this.dragBaseY = this.posY;
+    } else if (event.type === TouchType.Move && this.dragging) {
+      this.posX = Math.min(Math.max(0, this.dragBaseX + (t.windowX - this.dragStartX)), Math.max(0, winW - 120));
+      this.posY = Math.min(Math.max(0, this.dragBaseY + (t.windowY - this.dragStartY)), Math.max(0, winH - 60));
+    } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.dragging = false;
+    }
   }
 
   private loadPersisted(): void {
@@ -107,8 +149,11 @@ export struct SettingsDialog {
           })
 
         Column() {
-          // ModalHeader: title + close
+          // Header: title + close — the drag handle
           Row() {
+            SymbolGlyph($r('sys.symbol.line_3_horizontal'))
+              .fontSize(14)
+              .fontColor([Theme.muted])
             Text(l10n(this.workspaceState.language, '常用设置', 'Settings'))
               .fontSize(16)
               .fontWeight(600)
@@ -131,6 +176,10 @@ export struct SettingsDialog {
           .width('100%')
           .padding(16)
           .alignItems(VerticalAlign.Center)
+          .border({ width: { bottom: 1 }, color: Theme.borderColor })
+          .onTouch((event: TouchEvent) => {
+            this.onHeaderTouch(event);
+          })
 
           Column({ space: 16 }) {
             // Section 1: appearance and preferences
@@ -336,15 +385,20 @@ export struct SettingsDialog {
           .border({ width: { top: 1 }, color: Theme.borderColor })
         }
         .width('92%')
-        .constraintSize({ maxWidth: 512 })
+        .constraintSize({ maxWidth: 480 })
         .height('auto')
         .borderRadius(8)
         .border({ width: 1, color: Theme.borderColor })
         .backgroundColor(Theme.surface)
+        .shadow({ radius: 32, color: 'rgba(0,0,0,0.5)', offsetY: 8 })
+        .position({ x: this.posX, y: this.posY })
       }
       .width('100%')
       .height('100%')
       .zIndex(100)
+      .onAreaChange((oldV: Area, newV: Area) => {
+        this.handleAreaChange(Number(newV.width), Number(newV.height));
+      })
     }
   }
 }
