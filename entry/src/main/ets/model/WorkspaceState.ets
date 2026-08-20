@@ -56,11 +56,16 @@ export class WorkspaceState {
   activeChartId: string = '';
   chartTick: number = 0;
   settingsOpen: boolean = false;
+  chartConfigOpen: boolean = false;
   theme: AppTheme = AppTheme.System;
   llmConfig: LlmConfig = new LlmConfig();
 
   setSettingsOpen(open: boolean): void {
     this.settingsOpen = open;
+  }
+
+  setChartConfigOpen(open: boolean): void {
+    this.chartConfigOpen = open;
   }
 
   setLanguage(lang: Language): void {

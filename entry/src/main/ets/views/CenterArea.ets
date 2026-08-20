@@ -223,7 +223,7 @@ export struct CenterArea {
           t(this.workspaceState.language, 'chart.configure'),
           false,
           () => {
-            this.workspaceState.activateRightSection(RightPanelSection.Properties);
+            this.workspaceState.setChartConfigOpen(true);
           })
       }
     }

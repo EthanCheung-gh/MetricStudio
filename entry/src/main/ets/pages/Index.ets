@@ -10,6 +10,7 @@ import { CenterArea } from '../views/CenterArea';
 import { StatusBar } from '../views/StatusBar';
 import { SettingsDialog } from '../views/SettingsDialog';
 import { AICommandBar } from '../views/AICommandBar';
+import { ChartConfigDialog } from '../views/ChartConfigDialog';
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
@@ -72,6 +73,10 @@ struct Index {
       if (this.dataState.hasData) {
         AICommandBar()
           .margin({ bottom: 6 })
+      }
+
+      if (this.workspaceState.chartConfigOpen) {
+        ChartConfigDialog()
       }
     }
     .width('100%')

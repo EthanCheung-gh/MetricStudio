@@ -75,8 +75,8 @@ export struct RightActivityBar {
         iconSize: 16,
         active: this.workspaceState.rightSection === RightPanelSection.Properties,
         action: () => {
-          // Chart config: expand right panel and show the encoding/properties section
-          this.workspaceState.openRightSection(RightPanelSection.Properties);
+          // Chart config: open the floating config dialog (web ChartConfigDialog)
+          this.workspaceState.setChartConfigOpen(true);
         }
       })
       IconButton({

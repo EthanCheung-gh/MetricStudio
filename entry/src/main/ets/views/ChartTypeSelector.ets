@@ -1,15 +1,12 @@
 import { Theme } from '../common/Theme';
+import { t } from '../common/Locale';
 import { WorkspaceState } from '../model/WorkspaceState';
-import { chartTypeSpecs } from '../model/ChartConfig';
-
-const GROUP_CORE = ['line', 'bar', 'barh', 'area', 'step', 'scatter', 'dot', 'scatter3d', 'pie'];
-const GROUP_DIST = ['histogram', 'box', 'violin', 'ecdf', 'density_heatmap', 'density_contour'];
-const GROUP_MATRIX = ['heatmap', 'contour', 'splom'];
-const GROUP_HIER = ['treemap', 'sunburst', 'icicle', 'sankey', 'parcoords', 'parcats'];
+import { chartTypeSpecs, chartTypeList } from '../model/ChartConfig';
 
 /**
- * Chart type selector (web: src/components/chart/ChartTypeSelector.tsx).
- * Grouped chips over all 33 chart types; selecting updates the active chart.
+ * Chart type selector (web: src/components/chart/ChartConfigDialog.tsx left
+ * column). Vertical button list in a 144px scroll column — selected = solid
+ * primary, unselected = flat; each button is left-aligned (12px text).
  */
 @Component
 export struct ChartTypeSelector {
@@ -30,28 +27,29 @@ export struct ChartTypeSelector {
   }
 
   build() {
-    Column({ space: 6 }) {
-      this.groupRow(GROUP_CORE)
-      this.groupRow(GROUP_DIST)
-      this.groupRow(GROUP_MATRIX)
-      this.groupRow(GROUP_HIER)
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
-  }
+    Column() {
+      Text(t(this.workspaceState.language, 'chart.type'))
+        .fontSize(12)
+        .fontWeight(600)
+        .fontColor(Theme.colorMuted())
+        .alignSelf(ItemAlign.Start)
+        .margin({ bottom: 8 })
 
-  @Builder
-  groupRow(types: string[]) {
-    Scroll() {
-      Row({ space: 4 }) {
-        ForEach(types, (type: string) => {
-          this.typeChip(type)
-        }, (type: string) => type)
+      Scroll() {
+        Column({ space: 4 }) {
+          ForEach(chartTypeList, (type: string) => {
+            this.typeButton(type)
+          }, (type: string) => type)
+        }
+        .width('100%')
       }
+      .layoutWeight(1)
+      .scrollBar(BarState.Off)
+      .align(Alignment.TopStart)
     }
     .width('100%')
-    .scrollable(ScrollDirection.Horizontal)
-    .scrollBar(BarState.Off)
+    .height('100%')
+    .alignItems(HorizontalAlign.Start)
   }
 
   private typeLabel(type: string): string {
@@ -60,16 +58,22 @@ export struct ChartTypeSelector {
   }
 
   @Builder
-  typeChip(type: string) {
-    Text(this.typeLabel(type))
-      .fontSize(11)
-      .fontColor(this.currentType() === type ? Theme.primary : Theme.colorMuted())
-      .padding({ left: 10, right: 10, top: 4, bottom: 4 })
-      .borderRadius(10)
-      .backgroundColor(this.currentType() === type ? Theme.primaryDim : Color.Transparent)
-      .border({ width: 1, color: this.currentType() === type ? Theme.primary : Theme.colorBorder() })
-      .onClick(() => {
-        this.setType(type);
-      })
+  typeButton(type: string) {
+    Button() {
+      Text(this.typeLabel(type))
+        .fontSize(12)
+        .fontColor(this.currentType() === type ? Color.White : Theme.colorForeground())
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .type(ButtonType.Normal)
+    .width('100%')
+    .height(30)
+    .padding({ left: 10, right: 10 })
+    .backgroundColor(this.currentType() === type ? Theme.primary : Theme.colorSurface())
+    .borderRadius(6)
+    .onClick(() => {
+      this.setType(type);
+    })
   }
 }

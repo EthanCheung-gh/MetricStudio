@@ -1,16 +1,13 @@
-import { LengthMetrics } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { t } from '../common/Locale';
-import { EncodingChannel, FieldType, YFieldConfig, chartTypeSpecs } from '../model/ChartConfig';
+import { AggregateType, EncodingChannel, FieldType, YFieldConfig, chartTypeSpecs } from '../model/ChartConfig';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
-import { ChartTypeSelector } from './ChartTypeSelector';
 
 /**
- * Encoding panel (web: src/components/chart/EncodingPanel.tsx). Field picks for
- * X / Y(1) / Color plus aggregate. Selection state is kept in local @State so
- * the highlighted chip always re-renders immediately, independent of the
- * @Observed dependency chain; syncFromChart() re-syncs when switching charts.
+ * Encoding panel (web: src/components/chart/EncodingPanel.tsx). Registry-driven
+ * channel config with native Select dropdowns (field / aggregate) and a Y-field
+ * row list (field + aggregate + remove, add-Y button) — UI aligned to the web.
  */
 @Component
 export struct EncodingPanel {
@@ -56,54 +53,6 @@ export struct EncodingPanel {
     return out;
   }
 
-  private hasYFields(): boolean {
-    const c = this.workspaceState.activeChart();
-    return c !== null && c.encoding.yFields.length > 0;
-  }
-
-  @Builder
-  addYButton() {
-    Button() {
-      Row({ space: 4 }) {
-        SymbolGlyph($r('sys.symbol.plus'))
-          .fontSize(12)
-          .fontColor([Theme.colorMuted()])
-        Text('添加 Y 字段')
-          .fontSize(11)
-          .fontColor(Theme.colorMuted())
-      }
-    }
-    .type(ButtonType.Normal)
-    .height(26)
-    .padding({ left: 10, right: 10 })
-    .backgroundColor(Color.Transparent)
-    .borderRadius(10)
-    .border({ width: 1, color: Theme.colorBorder() })
-    .onClick(() => {
-      this.addY();
-    })
-  }
-
-  private yFieldNames(): string[] {    const c = this.workspaceState.activeChart();
-    if (c === null) {
-      return [];
-    }
-    const out: string[] = [];
-    for (let i = 0; i < c.encoding.yFields.length; i++) {
-      out.push(c.encoding.yFields[i].field);
-    }
-    return out;
-  }
-
-  private needsZ(): boolean {
-    const c = this.workspaceState.activeChart();
-    if (c === null) {
-      return false;
-    }
-    const spec = chartTypeSpecs[c.encoding.chartType];
-    return spec !== undefined && spec.channels.indexOf('z') >= 0;
-  }
-
   private fieldType(col: string): FieldType {
     const df = this.dataState.activeDataFrame;
     if (df === null) {
@@ -113,11 +62,11 @@ export struct EncodingPanel {
     if (idx < 0) {
       return 'nominal';
     }
-    const t = df.columns[idx].inferredType;
-    if (t === 'quantitative') {
+    const ft = df.columns[idx].inferredType;
+    if (ft === 'quantitative') {
       return 'quantitative';
     }
-    if (t === 'temporal') {
+    if (ft === 'temporal') {
       return 'temporal';
     }
     return 'nominal';
@@ -128,7 +77,7 @@ export struct EncodingPanel {
     if (c === null) {
       return;
     }
-    c.encoding.x = new EncodingChannel(col, this.fieldType(col), null);
+    c.encoding.x = col.length > 0 ? new EncodingChannel(col, this.fieldType(col), null) : null;
     this.selX = col;
     this.workspaceState.refreshChart();
   }
@@ -144,27 +93,6 @@ export struct EncodingPanel {
       c.encoding.yFields[0] = new YFieldConfig(col, this.fieldType(col), 'sum', 'left', 'none');
     }
     this.selY = col;
-    this.syncFromChart();
-    this.workspaceState.refreshChart();
-  }
-
-  private addY(): void {
-    const c = this.workspaceState.activeChart();
-    if (c === null || c.encoding.yFields.length === 0) {
-      return;
-    }
-    const last = c.encoding.yFields[c.encoding.yFields.length - 1];
-    c.encoding.yFields.push(new YFieldConfig(last.field, last.type, 'sum', 'left', 'none'));
-    this.syncFromChart();
-    this.workspaceState.refreshChart();
-  }
-
-  private removeY(index: number): void {
-    const c = this.workspaceState.activeChart();
-    if (c === null || c.encoding.yFields.length <= 1) {
-      return;
-    }
-    c.encoding.yFields.splice(index, 1);
     this.syncFromChart();
     this.workspaceState.refreshChart();
   }
@@ -199,162 +127,270 @@ export struct EncodingPanel {
     this.workspaceState.refreshChart();
   }
 
-  private setAgg(agg: string): void {
+  private setYRowAgg(agg: string): void {
     const c = this.workspaceState.activeChart();
     if (c === null || c.encoding.yFields.length === 0) {
       return;
     }
-    c.encoding.yFields[0].aggregate = agg as 'sum' | 'mean' | 'count' | 'min' | 'max';
+    c.encoding.yFields[0].aggregate = agg as AggregateType;
     this.selAgg = agg;
     this.workspaceState.refreshChart();
   }
 
+  private addY(): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.yFields.length === 0) {
+      return;
+    }
+    const last = c.encoding.yFields[c.encoding.yFields.length - 1];
+    c.encoding.yFields.push(new YFieldConfig(last.field, last.type, 'sum', 'left', 'none'));
+    this.syncFromChart();
+    this.workspaceState.refreshChart();
+  }
+
+  private removeY(index: number): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.yFields.length <= 1) {
+      return;
+    }
+    c.encoding.yFields.splice(index, 1);
+    this.syncFromChart();
+    this.workspaceState.refreshChart();
+  }
+
+  private needsZ(): boolean {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return false;
+    }
+    const spec = chartTypeSpecs[c.encoding.chartType];
+    return spec !== undefined && spec.channels.indexOf('z') >= 0;
+  }
+
+  private hasY(): boolean {
+    const c = this.workspaceState.activeChart();
+    return c !== null && c.encoding.yFields.length > 0;
+  }
+
   build() {
-    Column({ space: 10 }) {
-      // Chart type
-      Text(t(this.workspaceState.language, 'chart.type'))
-        .fontSize(11)
-        .fontWeight(600)
-        .fontColor(Theme.colorMuted())
-        .alignSelf(ItemAlign.Start)
-      ChartTypeSelector()
-
+    Column({ space: 12 }) {
       // X axis
-      Text(t(this.workspaceState.language, 'chart.xAxis'))
-        .fontSize(11)
-        .fontWeight(600)
-        .fontColor(Theme.colorMuted())
-        .alignSelf(ItemAlign.Start)
-      this.fieldRow(this.selX, (col: string) => {
-        this.setX(col);
-      })
+      this.fieldSelect(t(this.workspaceState.language, 'chart.xAxis'), this.columns(), this.selX,
+        (col: string) => {
+          this.setX(col);
+        })
 
-      // Y axis
+      // Y axis: row list (field + aggregate + remove) + add button
       Text(t(this.workspaceState.language, 'chart.yAxis'))
         .fontSize(11)
         .fontWeight(600)
         .fontColor(Theme.colorMuted())
         .alignSelf(ItemAlign.Start)
-      this.fieldRow(this.selY, (col: string) => {
-        this.setY(col);
-      })
-
-      // Selected Y fields list (multi-Y)
-      if (this.yFieldNames().length > 1) {
-        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-          ForEach(this.yFieldNames(), (name: string, idx: number) => {
-            Button() {
-              Row({ space: 4 }) {
-                Text(name)
-                  .fontSize(11)
-                  .fontColor(Theme.primary)
-                Text('×')
-                  .fontSize(11)
-                  .fontColor(Theme.colorMuted())
-              }
-            }
-            .type(ButtonType.Normal)
-            .height(26)
-            .padding({ left: 10, right: 8 })
-            .backgroundColor(Theme.primaryDim)
-            .borderRadius(10)
-            .onClick(() => {
-              this.removeY(idx);
-            })
-          }, (name: string, idx: number) => idx.toString() + name)
+      if (this.hasY()) {
+        Column({ space: 6 }) {
+          ForEach(this.yRows(), (row: YRowShim, idx: number) => {
+            this.yRow(row, idx)
+          }, (row: YRowShim, idx: number) => idx.toString() + '_' + row.field + row.agg)
         }
         .width('100%')
       }
-
-      // Add Y button
-      if (this.hasYFields()) {
-        this.addYButton()
+      Button() {
+        Row({ space: 4 }) {
+          SymbolGlyph($r('sys.symbol.plus'))
+            .fontSize(12)
+            .fontColor([Theme.colorMuted()])
+          Text('添加 Y 字段')
+            .fontSize(11)
+            .fontColor(Theme.colorMuted())
+        }
       }
-
-      // Aggregate
-      Text(t(this.workspaceState.language, 'chart.aggregate'))
-        .fontSize(11)
-        .fontWeight(600)
-        .fontColor(Theme.colorMuted())
-        .alignSelf(ItemAlign.Start)
-      Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-        this.aggChip('sum', t(this.workspaceState.language, 'chart.sum'))
-        this.aggChip('mean', t(this.workspaceState.language, 'chart.mean'))
-        this.aggChip('count', t(this.workspaceState.language, 'chart.count'))
-        this.aggChip('min', t(this.workspaceState.language, 'chart.min'))
-        this.aggChip('max', t(this.workspaceState.language, 'chart.max'))
-      }
-      .width('100%')
+      .type(ButtonType.Normal)
+      .height(26)
+      .padding({ left: 10, right: 10 })
+      .backgroundColor(Color.Transparent)
+      .borderRadius(10)
+      .border({ width: 1, color: Theme.colorBorder() })
+      .onClick(() => {
+        this.addY();
+      })
 
       // Color
-      Text(t(this.workspaceState.language, 'chart.color'))
-        .fontSize(11)
-        .fontWeight(600)
-        .fontColor(Theme.colorMuted())
-        .alignSelf(ItemAlign.Start)
-      this.fieldRow(this.selColor, (col: string) => {
-        this.setColor(col);
-      })
+      this.fieldSelect(t(this.workspaceState.language, 'chart.color'), this.columns(), this.selColor,
+        (col: string) => {
+          this.setColor(col);
+        })
 
       // Z / value channel (heatmap & contour families)
       if (this.needsZ()) {
-        Text('Z / Value')
-          .fontSize(11)
-          .fontWeight(600)
-          .fontColor(Theme.colorMuted())
-          .alignSelf(ItemAlign.Start)
-        this.fieldRow(this.selZ, (col: string) => {
+        this.fieldSelect('Z / Value', this.columns(), this.selZ, (col: string) => {
           this.setZ(col);
         })
       }
     }
     .width('100%')
-    .padding(12)
-    .borderRadius(8)
-    .border({ width: 1, color: Theme.colorBorder() })
-    .backgroundColor(Theme.colorSurfaceElevated())
     .alignItems(HorizontalAlign.Start)
   }
 
-  @Builder
-  fieldRow(selected: string, onPick: (col: string) => void) {
-    // Flex wrap of Button chips — no nested Scroll, direct tap semantics.
-    Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-      ForEach(this.columns(), (col: string) => {
-        Button() {
-          Text(col)
-            .fontSize(11)
-            .fontColor(selected === col ? Theme.primary : Theme.colorMuted())
-        }
-        .type(ButtonType.Normal)
-        .height(26)
-        .padding({ left: 10, right: 10 })
-        .backgroundColor(selected === col ? Theme.primaryDim : Color.Transparent)
-        .borderRadius(10)
-        .border({ width: 1, color: selected === col ? Theme.primary : Theme.colorBorder() })
-        .onClick(() => {
-          onPick(col);
-        })
-      }, (col: string) => col)
+  private yRows(): YRowShim[] {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return [];
     }
-    .width('100%')
+    const out: YRowShim[] = [];
+    for (let i = 0; i < c.encoding.yFields.length; i++) {
+      const y = c.encoding.yFields[i];
+      out.push({
+        field: y.field,
+        agg: y.aggregate !== null ? (y.aggregate as string) : 'sum',
+      });
+    }
+    return out;
   }
 
   @Builder
-  aggChip(agg: string, label: string) {
-    Button() {
+  yRow(row: YRowShim, idx: number) {
+    Row({ space: 6 }) {
+      // Field select
+      Select(this.columnOptions())
+        .selected(this.columnIndex(row.field))
+        .value(row.field)
+        .font({ size: 12 })
+        .height(28)
+        .layoutWeight(1)
+        .backgroundColor(Theme.colorSurface())
+        .borderRadius(6)
+        .onSelect((index: number, value: string) => {
+          const c = this.workspaceState.activeChart();
+          if (c !== null && idx < c.encoding.yFields.length) {
+            c.encoding.yFields[idx].field = value;
+            c.encoding.yFields[idx].type = this.fieldType(value);
+            this.syncFromChart();
+            this.workspaceState.refreshChart();
+          }
+        })
+
+      // Aggregate select
+      Select(this.aggOptions())
+        .selected(this.aggIndex(row.agg))
+        .value(this.aggLabel(row.agg))
+        .font({ size: 12 })
+        .height(28)
+        .width(90)
+        .backgroundColor(Theme.colorSurface())
+        .borderRadius(6)
+        .onSelect((index: number, value: string) => {
+          const c = this.workspaceState.activeChart();
+          if (c !== null && idx < c.encoding.yFields.length) {
+            c.encoding.yFields[idx].aggregate = this.aggFromLabel(value);
+            this.syncFromChart();
+            this.workspaceState.refreshChart();
+          }
+        })
+
+      SymbolGlyph($r('sys.symbol.xmark'))
+        .fontSize(14)
+        .fontColor([Theme.colorMuted()])
+        .padding(4)
+        .onClick(() => {
+          this.removeY(idx);
+        })
+    }
+    .width('100%')
+    .padding(6)
+    .borderRadius(6)
+    .border({ width: 1, color: Theme.colorBorder() })
+    .backgroundColor(Theme.colorSurface())
+  }
+
+  @Builder
+  fieldSelect(label: string, cols: string[], selected: string, onPick: (col: string) => void) {
+    Column({ space: 4 }) {
       Text(label)
         .fontSize(11)
-        .fontColor(this.selAgg === agg ? Theme.primary : Theme.colorMuted())
+        .fontWeight(600)
+        .fontColor(Theme.colorMuted())
+        .alignSelf(ItemAlign.Start)
+      Select(this.columnOptions())
+        .selected(this.columnIndex(selected))
+        .value(selected.length > 0 ? selected : '请选择字段')
+        .font({ size: 12 })
+        .width('100%')
+        .height(30)
+        .backgroundColor(Theme.colorSurface())
+        .borderRadius(6)
+        .onSelect((index: number, value: string) => {
+          onPick(value);
+        })
     }
-    .type(ButtonType.Normal)
-    .height(26)
-    .padding({ left: 10, right: 10 })
-    .backgroundColor(this.selAgg === agg ? Theme.primaryDim : Color.Transparent)
-    .borderRadius(10)
-    .border({ width: 1, color: this.selAgg === agg ? Theme.primary : Theme.colorBorder() })
-    .onClick(() => {
-      this.setAgg(agg);
-    })
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
   }
+
+  private columnOptions(): SelectOption[] {
+    const cols = this.columns();
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < cols.length; i++) {
+      opts.push({ value: cols[i] });
+    }
+    return opts;
+  }
+
+  private columnIndex(field: string): number {
+    const cols = this.columns();
+    for (let i = 0; i < cols.length; i++) {
+      if (cols[i] === field) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  private aggOptions(): SelectOption[] {
+    const labels: string[] = [t(this.workspaceState.language, 'chart.sum'),
+      t(this.workspaceState.language, 'chart.mean'),
+      t(this.workspaceState.language, 'chart.count'),
+      t(this.workspaceState.language, 'chart.min'),
+      t(this.workspaceState.language, 'chart.max')];
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < labels.length; i++) {
+      opts.push({ value: labels[i] });
+    }
+    return opts;
+  }
+
+  private aggLabel(agg: string): string {
+    return t(this.workspaceState.language, 'chart.' + (agg.length > 0 ? agg : 'sum'));
+  }
+
+  private aggIndex(agg: string): number {
+    const order: string[] = ['sum', 'mean', 'count', 'min', 'max'];
+    for (let i = 0; i < order.length; i++) {
+      if (order[i] === agg) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  private aggFromLabel(label: string): AggregateType {
+    if (label === t(this.workspaceState.language, 'chart.mean')) {
+      return 'mean';
+    }
+    if (label === t(this.workspaceState.language, 'chart.count')) {
+      return 'count';
+    }
+    if (label === t(this.workspaceState.language, 'chart.min')) {
+      return 'min';
+    }
+    if (label === t(this.workspaceState.language, 'chart.max')) {
+      return 'max';
+    }
+    return 'sum';
+  }
+}
+
+/** Row shape for the multi-Y list. */
+interface YRowShim {
+  field: string;
+  agg: string;
 }
