@@ -38,18 +38,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        # Browser dev (Vite)
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        # Tauri production webview origins: tauri:// on Linux/macOS,
-        # http(s)://tauri.localhost on Windows.
-        "tauri://localhost",
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-    ],
+    # Local personal tool: allow any origin so browser dev works over
+    # localhost, LAN IPs (e.g. 172.x:5174) and Tauri webview origins alike.
+    # allow_credentials stays False, so the wildcard is valid.
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
