@@ -39,6 +39,23 @@ export interface ComputeParams {
 export interface DropColParams {
   columns: string[];
 }
+export interface StrCleanParams {
+  column: string;
+  action: string; // trim | lower | upper
+  newColumn?: string;
+}
+export interface SampleParams {
+  n: number;
+}
+export interface PivotParams {
+  index: string;
+  columns: string;
+  values: string;
+  agg: string;
+}
+export interface MeltParams {
+  idVars: string[];
+}
 
 export function parseParams<T>(op: TransformOp): T {
   return JSON.parse(op.params) as T;
@@ -135,6 +152,29 @@ export function applyTransformOp(df: DataFrame, op: TransformOp): DataFrame {
       const p = parseParams<DropColParams>(op);
       dropColumns(next, p.columns);
       break;
+    }
+    case 'dropNa': {
+      const p = parseParams<DedupeParams>(op);
+      next.rows = dropNaRows(next, p.columns);
+      break;
+    }
+    case 'strClean': {
+      const p = parseParams<StrCleanParams>(op);
+      strClean(next, p.column, p.action, p.newColumn);
+      break;
+    }
+    case 'sample': {
+      const p = parseParams<SampleParams>(op);
+      next.rows = sampleRows(next, p.n);
+      break;
+    }
+    case 'pivot': {
+      const p = parseParams<PivotParams>(op);
+      return pivotTable(next, p);
+    }
+    case 'melt': {
+      const p = parseParams<MeltParams>(op);
+      return meltTable(next, p.idVars);
     }
     default:
       throw new Error('Unknown transform op: ' + op.type);
@@ -413,4 +453,187 @@ function columnIdxs(df: DataFrame, columns: string[] | null): number[] {
     }
   }
   return out;
+}
+
+function dropNaRows(df: DataFrame, columns: string[] | null): CellValue[][] {
+  const idxs = columnIdxs(df, columns);
+  const out: CellValue[][] = [];
+  for (let r = 0; r < df.rows.length; r++) {
+    let hasNull = false;
+    for (let k = 0; k < idxs.length; k++) {
+      if (df.rows[r][idxs[k]] === null || df.rows[r][idxs[k]] === undefined) {
+        hasNull = true;
+        break;
+      }
+    }
+    if (!hasNull) {
+      out.push(df.rows[r]);
+    }
+  }
+  return out;
+}
+
+function strClean(df: DataFrame, column: string, action: string, newColumn?: string): void {
+  const idx = df.columnIndex(column);
+  if (idx < 0) {
+    throw new Error('Column not found: ' + column);
+  }
+  const outIdx = newColumn !== undefined && newColumn.length > 0 ? idx : -1;
+  if (outIdx < 0 && newColumn !== undefined && newColumn.length > 0) {
+    if (df.columnIndex(newColumn) >= 0) {
+      throw new Error('Column already exists: ' + newColumn);
+    }
+    df.columns.push(new ColumnMeta(newColumn, 'string', 'nominal', false));
+    for (let r = 0; r < df.rows.length; r++) {
+      df.rows[r].push(null);
+    }
+  }
+  const target = outIdx < 0 ? idx : df.columnIndex(newColumn !== undefined ? newColumn : column);
+  for (let r = 0; r < df.rows.length; r++) {
+    const v = df.rows[r][idx];
+    if (v === null || v === undefined) {
+      continue;
+    }
+    const s = String(v);
+    if (action === 'trim') {
+      df.rows[r][target] = s.trim();
+    } else if (action === 'lower') {
+      df.rows[r][target] = s.toLowerCase();
+    } else if (action === 'upper') {
+      df.rows[r][target] = s.toUpperCase();
+    }
+  }
+}
+
+function sampleRows(df: DataFrame, n: number): CellValue[][] {
+  const count = Math.max(0, Math.min(n, df.rowCount));
+  const out: CellValue[][] = [];
+  for (let r = 0; r < count; r++) {
+    out.push(df.rows[r]);
+  }
+  return out;
+}
+
+function pivotTable(df: DataFrame, p: PivotParams): DataFrame {
+  const iIdx = df.columnIndex(p.index);
+  const cIdx = df.columnIndex(p.columns);
+  const vIdx = df.columnIndex(p.values);
+  if (iIdx < 0 || cIdx < 0 || vIdx < 0) {
+    throw new Error('pivot 需要 index/columns/values 三个字段');
+  }
+  const cell = new Map<string, number[]>();
+  const rowOrder: string[] = [];
+  const colOrder: string[] = [];
+  for (let r = 0; r < df.rows.length; r++) {
+    const rk = df.rows[r][iIdx] === null ? '' : String(df.rows[r][iIdx]);
+    const ck = df.rows[r][cIdx] === null ? '' : String(df.rows[r][cIdx]);
+    const n = toNumber(df.rows[r][vIdx]);
+    if (rowOrder.indexOf(rk) < 0) {
+      rowOrder.push(rk);
+    }
+    if (colOrder.indexOf(ck) < 0) {
+      colOrder.push(ck);
+    }
+    const key = rk + '\u0001' + ck;
+    let arr = cell.get(key);
+    if (arr === undefined) {
+      arr = [];
+      cell.set(key, arr);
+    }
+    if (n !== null) {
+      arr.push(n);
+    }
+  }
+  const cols: ColumnMeta[] = [new ColumnMeta(p.index, 'string', 'nominal', false)];
+  for (let k = 0; k < colOrder.length; k++) {
+    cols.push(new ColumnMeta(colOrder[k], 'number', 'quantitative', false));
+  }
+  const rows: CellValue[][] = [];
+  for (let i = 0; i < rowOrder.length; i++) {
+    const row: CellValue[] = [rowOrder[i]];
+    for (let k = 0; k < colOrder.length; k++) {
+      const arr = cell.get(rowOrder[i] + '\u0001' + colOrder[k]);
+      row.push(arr !== undefined ? aggregateNumbers(arr, p.agg) : null);
+    }
+    rows.push(row);
+  }
+  return new DataFrame(df.name + ' (pivot)', cols, rows);
+}
+
+function meltTable(df: DataFrame, idVars: string[]): DataFrame {
+  if (idVars.length === 0) {
+    throw new Error('melt 需要至少一个 ID 列');
+  }
+  const idIdxs: number[] = [];
+  for (let i = 0; i < df.columns.length; i++) {
+    if (idVars.indexOf(df.columns[i].name) >= 0) {
+      idIdxs.push(i);
+    }
+  }
+  const cols: ColumnMeta[] = [];
+  for (let k = 0; k < idIdxs.length; k++) {
+    cols.push(new ColumnMeta(df.columns[idIdxs[k]].name, df.columns[idIdxs[k]].dtype,
+      df.columns[idIdxs[k]].inferredType, df.columns[idIdxs[k]].nullable));
+  }
+  cols.push(new ColumnMeta('variable', 'string', 'nominal', false));
+  cols.push(new ColumnMeta('value', 'string', 'nominal', true));
+  const rows: CellValue[][] = [];
+  for (let r = 0; r < df.rows.length; r++) {
+    for (let c = 0; c < df.columns.length; c++) {
+      if (idIdxs.indexOf(c) >= 0) {
+        continue;
+      }
+      const row: CellValue[] = [];
+      for (let k = 0; k < idIdxs.length; k++) {
+        row.push(df.rows[r][idIdxs[k]]);
+      }
+      row.push(df.columns[c].name);
+      row.push(df.rows[r][c]);
+      rows.push(row);
+    }
+  }
+  return new DataFrame(df.name + ' (melt)', cols, rows);
+}
+
+function aggregateNumbers(values: number[], agg: string): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  switch (agg) {
+    case 'mean': {
+      let s = 0;
+      for (let i = 0; i < values.length; i++) {
+        s += values[i];
+      }
+      return s / values.length;
+    }
+    case 'count':
+      return values.length;
+    case 'min': {
+      let m = values[0];
+      for (let i = 1; i < values.length; i++) {
+        if (values[i] < m) {
+          m = values[i];
+        }
+      }
+      return m;
+    }
+    case 'max': {
+      let m = values[0];
+      for (let i = 1; i < values.length; i++) {
+        if (values[i] > m) {
+          m = values[i];
+        }
+      }
+      return m;
+    }
+    case 'sum':
+    default: {
+      let s = 0;
+      for (let i = 0; i < values.length; i++) {
+        s += values[i];
+      }
+      return s;
+    }
+  }
 }
