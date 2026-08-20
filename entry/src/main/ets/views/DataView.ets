@@ -134,33 +134,40 @@ export struct DataView {
   @Builder
   tableArea() {
     Column() {
-      // Header row
-      Scroll() {
-        Row() {
-          ForEach(this.dataState.activeDataFrame !== null ? this.dataState.activeDataFrame.columns : [], (col: ColumnMetaShim, idx: number) => {
-            this.headerCellBuilder(col, idx)
-          }, (col: ColumnMetaShim, idx: number) => idx.toString())
-        }
-      }
-      .width('100%')
-      .height(36)
-      .scrollable(ScrollDirection.Horizontal)
-      .scrollBar(BarState.Off)
-      .backgroundColor(Theme.colorSurface())
-      .border({ width: { top: 1, bottom: 1 }, color: Theme.colorBorder() })
-
-      // Body
+      // Single horizontal scroll hosts BOTH header and body so column widths
+      // always stay perfectly aligned regardless of panel widths / collapses.
       Scroll() {
         Column() {
-          ForEach(this.pageRows(), (row: CellValue[], rIdx: number) => {
-            this.bodyRow(row, rIdx)
-          }, (row: CellValue[], rIdx: number) => rIdx.toString())
+          // Header row
+          Row() {
+            ForEach(this.dataState.activeDataFrame !== null ? this.dataState.activeDataFrame.columns : [], (col: ColumnMetaShim, idx: number) => {
+              this.headerCellBuilder(col, idx)
+            }, (col: ColumnMetaShim, idx: number) => idx.toString())
+          }
+          .width(this.tableWidth())
+
+          // Body (vertical scroll inside the shared horizontal scroll)
+          Scroll() {
+            Column() {
+              ForEach(this.pageRows(), (row: CellValue[], rIdx: number) => {
+                this.bodyRow(row, rIdx)
+              }, (row: CellValue[], rIdx: number) => rIdx.toString())
+            }
+            .width(this.tableWidth())
+          }
+          .layoutWeight(1)
+          .scrollBar(BarState.Auto)
+          .align(Alignment.TopStart)
         }
-        .width('100%')
+        .width(this.tableWidth())
+        .height('100%')
       }
       .layoutWeight(1)
+      .scrollable(ScrollDirection.Horizontal)
       .scrollBar(BarState.Auto)
       .align(Alignment.TopStart)
+      .backgroundColor(Theme.colorSurface())
+      .border({ width: { top: 1, bottom: 1 }, color: Theme.colorBorder() })
 
       // Pager
       Row({ space: 8 }) {
@@ -195,6 +202,13 @@ export struct DataView {
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.colorBackground())
+  }
+
+  /** Total table width = number of columns × 160px (web min column size). */
+  private tableWidth(): number {
+    const df = this.dataState.activeDataFrame;
+    const n = df !== null ? df.colCount : 0;
+    return Math.max(1, n) * 160;
   }
 
   @Builder

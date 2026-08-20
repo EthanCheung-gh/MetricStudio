@@ -72,7 +72,7 @@ struct Index {
 
       if (this.dataState.hasData) {
         AICommandBar()
-          .margin({ bottom: 6 })
+          .margin({ bottom: 32 })
       }
 
       if (this.workspaceState.chartConfigOpen) {
