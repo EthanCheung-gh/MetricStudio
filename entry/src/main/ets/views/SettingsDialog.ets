@@ -67,8 +67,8 @@ export struct SettingsDialog {
       this.dragBaseX = this.posX;
       this.dragBaseY = this.posY;
     } else if (event.type === TouchType.Move && this.dragging) {
-      this.posX = Math.min(Math.max(0, this.dragBaseX + (t.windowX - this.dragStartX)), Math.max(0, winW - 120));
-      this.posY = Math.min(Math.max(0, this.dragBaseY + (t.windowY - this.dragStartY)), Math.max(0, winH - 60));
+      this.posX = Math.min(Math.max(-(480 - 120), this.dragBaseX + (t.windowX - this.dragStartX)), Math.max(120, winW - 120));
+      this.posY = Math.min(Math.max(-(420 - 60), this.dragBaseY + (t.windowY - this.dragStartY)), Math.max(60, winH - 60));
     } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
       this.dragging = false;
     }
