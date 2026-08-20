@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MetricStudio",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "identifier": "com.metricstudio.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "./scripts/build-sidecar.sh && pnpm build",
+    "beforeBuildCommand": "node scripts/build-sidecar-entry.js && pnpm build",
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173"
   },
@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm"],
+    "targets": "all",
     "externalBin": [
       "binaries/python-sidecar"
     ],

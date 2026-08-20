@@ -1,6 +1,6 @@
 # MetricStudio
 
-基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.2.2**。
+基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.3.0**。
 
 ## 技术栈
 
@@ -59,6 +59,21 @@ cargo check --manifest-path src-tauri/Cargo.toml
 ```bash
 pnpm tauri build
 ```
+
+### CI 发布链本地检查
+
+```bash
+# 生成当前平台 sidecar（需要 .venv 和 PyInstaller）
+python scripts/build-sidecar.py
+
+# 检查 sidecar：健康检查 + 内置示例数据导入
+python scripts/smoke-sidecar.py src-tauri/binaries/python-sidecar-$(rustc -vV | sed -n 's/^host: //p')
+
+# 检查 Linux 安装包是否含主程序和 sidecar
+python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.3.0_amd64.deb
+```
+
+推送 `v0.3.0` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
 
 ## 项目结构
 
@@ -126,6 +141,6 @@ metricstudio/
 - [x] 剪贴板 / JSON 数据导入
 - [x] 数据快照与版本对比
 - [x] Tauri 本地打包与 sidecar 集成
-- [ ] CI 多平台打包、安装包冒烟测试与 Release 产物上传
+- [x] CI 多平台打包、sidecar 健康冒烟、安装包内容检查与 Release 产物上传
 - [ ] 分类筛选值服务端搜索 / 分页与大数据量性能基准
 - [ ] 多轮 AI 数据问答、答案证据引用与敏感列脱敏

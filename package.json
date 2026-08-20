@@ -1,7 +1,7 @@
 {
   "name": "metricstudio",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,9 @@
     "test:backend": ".venv/bin/python -m pytest backend/tests -q",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:sidecar": "node scripts/build-sidecar-entry.js",
+    "smoke:sidecar": "node scripts/smoke-sidecar-entry.js",
+    "check:bundle": "node scripts/check-bundle-entry.js",
     "backend:dev": ".venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8123",
     "backend:start": ".venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8123"
   },
