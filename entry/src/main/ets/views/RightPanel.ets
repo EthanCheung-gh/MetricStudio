@@ -1,15 +1,13 @@
 import { Theme } from '../common/Theme';
 import { t } from '../common/Locale';
-import { RightPanelSection, WorkspaceState } from '../model/WorkspaceState';
+import { WorkspaceState } from '../model/WorkspaceState';
 import { IconButton } from './IconButton';
-import { TransformPanel } from './TransformPanel';
 import { EncodingPanel } from './EncodingPanel';
-import { ColumnStatsPanel } from './ColumnStats';
 
 /**
- * Right sidebar (web: src/components/layout/RightPanel.tsx). Header 36px;
- * content switches: Properties section → EncodingPanel (charts), otherwise
- * the TransformPanel.
+ * Right sidebar (web: src/components/layout/RightPanel.tsx). Web keeps the
+ * chart PropertyEditor here; HarmonyOS shows the encoding config. The data
+ * rail (insights/transforms/column stats) lives inside the DataView per web.
  */
 @Component
 export struct RightPanel {
@@ -41,20 +39,16 @@ export struct RightPanel {
 
       Scroll() {
         Column({ space: 8 }) {
-          if (this.workspaceState.rightSection === RightPanelSection.Properties) {
-            EncodingPanel()
-          } else {
-            ColumnStatsPanel()
-            TransformPanel()
-          }
+          EncodingPanel()
+            .width('100%')
         }
         .width('100%')
         .padding(Theme.panelPadding)
+        .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
       .scrollBar(BarState.Off)
       .align(Alignment.TopStart)
-      .padding(Theme.panelPadding)
       .backgroundColor(Theme.colorSurface())
     }
     .width('100%')
@@ -63,9 +57,6 @@ export struct RightPanel {
   }
 
   sectionTitle(): string {
-    if (this.workspaceState.rightSection === RightPanelSection.Properties) {
-      return t(this.workspaceState.language, 'layout.properties');
-    }
-    return t(this.workspaceState.language, 'transform.title');
+    return t(this.workspaceState.language, 'layout.properties');
   }
 }

@@ -6,8 +6,6 @@ import { ChartConfig } from '../model/ChartConfig';
 import { IconButton } from './IconButton';
 import { DataExplorer } from './DataExplorer';
 import { DatasetList } from './DatasetList';
-import { InsightsPanel } from './InsightsPanel';
-import { AskPanel } from './AskPanel';
 
 /**
  * Left sidebar (web: src/components/layout/LeftPanel.tsx). Header 36px;
@@ -54,10 +52,6 @@ export struct LeftPanel {
             DataExplorer()
               .width('100%')
             DatasetList()
-              .width('100%')
-            InsightsPanel()
-              .width('100%')
-            AskPanel()
               .width('100%')
           }
         }

@@ -7,6 +7,9 @@ import { parseCsvText } from '../engine/CsvParser';
 import { DataView } from './DataView';
 import { ChartView } from './ChartView';
 import { DashboardView } from './DashboardView';
+import { InsightsPanel } from './InsightsPanel';
+import { TransformPanel } from './TransformPanel';
+import { ColumnStatsPanel } from './ColumnStats';
 
 /**
  * Center work area (web: src/components/layout/CenterArea.tsx).
@@ -26,7 +29,32 @@ export struct CenterArea {
         this.tabBar()
         Column() {
           if (this.workspaceState.activeTab === CenterTab.Data) {
-            DataView()
+            // Web DataView layout: table card (flex-1) + 288px right rail with
+            // Insights / Transforms / ColumnStats (web w-72 column)
+            Row() {
+              DataView()
+                .layoutWeight(1)
+              Scroll() {
+                Column({ space: 8 }) {
+                  InsightsPanel()
+                    .width('100%')
+                  TransformPanel()
+                    .width('100%')
+                  ColumnStatsPanel()
+                    .width('100%')
+                }
+                .width('100%')
+                .padding(8)
+                .alignItems(HorizontalAlign.Start)
+              }
+              .width(288)
+              .height('100%')
+              .scrollBar(BarState.Off)
+              .align(Alignment.TopStart)
+              .border({ width: { left: 1 }, color: Theme.colorBorder() })
+            }
+            .width('100%')
+            .height('100%')
           } else if (this.workspaceState.activeTab === CenterTab.Dashboard) {
             DashboardView()
           } else {
