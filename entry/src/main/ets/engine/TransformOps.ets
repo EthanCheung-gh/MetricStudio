@@ -56,6 +56,11 @@ export interface PivotParams {
 export interface MeltParams {
   idVars: string[];
 }
+export interface ClipParams {
+  column: string;
+  min?: number;
+  max?: number;
+}
 
 export function parseParams<T>(op: TransformOp): T {
   return JSON.parse(op.params) as T;
@@ -175,6 +180,16 @@ export function applyTransformOp(df: DataFrame, op: TransformOp): DataFrame {
     case 'melt': {
       const p = parseParams<MeltParams>(op);
       return meltTable(next, p.idVars);
+    }
+    case 'clip': {
+      const p = parseParams<ClipParams>(op);
+      clipColumn(next, p.column, p.min, p.max);
+      break;
+    }
+    case 'parse_numeric': {
+      const p = parseParams<ConvertTypeParams>(op);
+      castColumn(next, p.column, 'number');
+      break;
     }
     default:
       throw new Error('Unknown transform op: ' + op.type);
@@ -593,6 +608,27 @@ function meltTable(df: DataFrame, idVars: string[]): DataFrame {
     }
   }
   return new DataFrame(df.name + ' (melt)', cols, rows);
+}
+
+function clipColumn(df: DataFrame, column: string, min?: number, max?: number): void {
+  const idx = df.columnIndex(column);
+  if (idx < 0) {
+    throw new Error('Column not found: ' + column);
+  }
+  for (let r = 0; r < df.rows.length; r++) {
+    const n = toNumber(df.rows[r][idx]);
+    if (n === null) {
+      continue;
+    }
+    let out = n;
+    if (min !== undefined && out < min) {
+      out = min;
+    }
+    if (max !== undefined && out > max) {
+      out = max;
+    }
+    df.rows[r][idx] = out;
+  }
 }
 
 function aggregateNumbers(values: number[], agg: string): number {

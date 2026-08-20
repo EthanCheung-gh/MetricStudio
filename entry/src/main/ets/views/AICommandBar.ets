@@ -5,6 +5,7 @@ import { DataFrame, TransformOp } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { computeQualityMetrics } from '../engine/ColumnStats';
+import { parseNlOps } from '../engine/NlParser';
 
 /**
  * AI command bar (web: src/components/ai/AICommandBar.tsx). Bottom-centered
@@ -45,22 +46,15 @@ export struct AICommandBar {
   }
 
   private parseQueryOps(): TransformOp[] {
-    const q = this.input.toLowerCase();
+    const df = this.dataState.activeDataFrame;
+    if (df === null) {
+      return [];
+    }
+    // Local NL → operation chain (web backend/api/nl.py without LLM)
+    const nl = parseNlOps(df, this.input);
     const ops: TransformOp[] = [];
-    if (q.indexOf('去重') >= 0 || q.indexOf('重复') >= 0 || q.indexOf('dedupe') >= 0) {
-      ops.push(new TransformOp('dedupe', JSON.stringify({ columns: null })));
-    }
-    if (q.indexOf('缺失') >= 0 || q.indexOf('填充') >= 0 || q.indexOf('fill') >= 0) {
-      ops.push(new TransformOp('fillMissing', JSON.stringify({ column: this.firstNumeric(), value: '0' })));
-    }
-    const col = this.matchingColumn();
-    if (col.length > 0) {
-      if (q.indexOf('排序') >= 0 || q.indexOf('sort') >= 0) {
-        ops.push(new TransformOp('sort', JSON.stringify({ column: col, ascending: true })));
-      }
-      if (q.indexOf('删') >= 0 || q.indexOf('drop') >= 0 || q.indexOf('去掉') >= 0) {
-        ops.push(new TransformOp('dropCol', JSON.stringify({ columns: [col] })));
-      }
+    for (let i = 0; i < nl.length; i++) {
+      ops.push(new TransformOp(nl[i].type, nl[i].params));
     }
     return ops;
   }
@@ -87,12 +81,20 @@ export struct AICommandBar {
     const m = computeQualityMetrics(df);
     let text = `该数据集「${df.name}」共 ${fmt(df.rowCount)} 行 × ${fmt(df.colCount)} 列。`;
     text += `缺失单元格 ${fmt(m.missingCells)} 个，重复行 ${fmt(m.duplicateRows)} 行。`;
-    if (q.indexOf('均值') >= 0 || q.indexOf('平均') >= 0 || q.indexOf('mean') >= 0) {
-      const n = this.firstNumeric();
-      if (n.length > 0) {
-        const idx = df.columnIndex(n);
+
+    // Numeric column summary (web _build_data_context describe())
+    if (q.indexOf('统计') >= 0 || q.indexOf('均值') >= 0 || q.indexOf('平均') >= 0
+      || q.indexOf('最值') >= 0 || q.indexOf('statistics') >= 0 || q.indexOf('summary') >= 0) {
+      for (let c = 0; c < df.columns.length; c++) {
+        const col = df.columns[c];
+        if (col.dtype !== 'number') {
+          continue;
+        }
+        const idx = df.columnIndex(col.name);
         let sum = 0;
         let cnt = 0;
+        let min: number | null = null;
+        let max: number | null = null;
         for (let r = 0; r < df.rows.length; r++) {
           const v = df.rows[r][idx];
           if (v !== null && v !== undefined) {
@@ -100,10 +102,31 @@ export struct AICommandBar {
             if (!Number.isNaN(num)) {
               sum += num;
               cnt++;
+              if (min === null || num < min) {
+                min = num;
+              }
+              if (max === null || num > max) {
+                max = num;
+              }
             }
           }
         }
-        text += `「${n}」列均值 ${cnt > 0 ? (sum / cnt).toFixed(2) : '—'}。`;
+        if (cnt > 0) {
+          text += `「${col.name}」: min=${min !== null ? min.toFixed(2) : '—'}, max=${max !== null ? max.toFixed(2) : '—'}, mean=${(sum / cnt).toFixed(2)}。`;
+        }
+      }
+    }
+
+    // Sample rows (web sample rows)
+    if (q.indexOf('样例') >= 0 || q.indexOf('示例') >= 0 || q.indexOf('sample') >= 0 || q.indexOf('前') >= 0) {
+      const n = Math.min(3, df.rowCount);
+      text += ' 前' + n + '行: ';
+      for (let r = 0; r < n; r++) {
+        const parts: string[] = [];
+        for (let c = 0; c < Math.min(3, df.colCount); c++) {
+          parts.push(df.columns[c].name + '=' + String(df.rows[r][c] ?? ''));
+        }
+        text += parts.join(', ') + '; ';
       }
     }
     return text;
