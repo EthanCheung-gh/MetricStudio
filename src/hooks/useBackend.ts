@@ -4,6 +4,7 @@ import { useUIStore } from '@/stores/uiStore'
 
 // Spec §3.2: runtime health check every 30s; §3.3: declare disconnect after 3 consecutive failures
 const HEALTH_INTERVAL = 30_000
+const STARTUP_RETRY_INTERVAL = 1_000
 const MAX_CONSECUTIVE_FAILURES = 3
 
 export function useBackend() {
@@ -26,30 +27,44 @@ export function useBackend() {
       }
     } catch {
       failuresRef.current += 1
-      // Only declare disconnect after N consecutive failures (spec §3.3)
-      if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES && connectedRef.current) {
+      if (!connectedRef.current) {
+        setBackendStatus(false, `Backend unavailable — retrying (${failuresRef.current})`)
+      } else if (failuresRef.current >= MAX_CONSECUTIVE_FAILURES) {
         connectedRef.current = false
         setConnected(false)
-        setBackendStatus(false, 'Connection lost')
+        setBackendStatus(false, 'Connection lost — retrying')
       }
     }
   }, [setBackendStatus])
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const healthIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const startupIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     // Discover the sidecar port first (Tauri), then start health checks.
     let cancelled = false
-    initBackendPort().finally(() => {
+    const initialize = async () => {
+      try {
+        await initBackendPort()
+      } catch (error) {
+        if (!cancelled) setBackendStatus(false, error instanceof Error ? error.message : 'Backend initialization failed')
+      }
       if (cancelled) return
-      check()
-      intervalRef.current = setInterval(check, HEALTH_INTERVAL)
-    })
+      void check()
+      startupIntervalRef.current = setInterval(() => {
+        if (!connectedRef.current) void check()
+      }, STARTUP_RETRY_INTERVAL)
+      healthIntervalRef.current = setInterval(() => {
+        if (connectedRef.current) void check()
+      }, HEALTH_INTERVAL)
+    }
+    void initialize()
     return () => {
       cancelled = true
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (startupIntervalRef.current) clearInterval(startupIntervalRef.current)
+      if (healthIntervalRef.current) clearInterval(healthIntervalRef.current)
     }
-  }, [check])
+  }, [check, setBackendStatus])
 
   return { connected, recheck: check }
 }

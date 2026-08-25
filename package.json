@@ -1,21 +1,22 @@
 {
   "name": "metricstudio",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/start-dev.js",
+    "dev:frontend": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test": "vitest run",
-    "test:backend": ".venv/bin/python -m pytest backend/tests -q",
+    "test:backend": "node scripts/start-backend.js --test",
     "preview": "vite preview",
     "tauri": "tauri",
     "build:sidecar": "node scripts/build-sidecar-entry.js",
     "smoke:sidecar": "node scripts/smoke-sidecar-entry.js",
     "check:bundle": "node scripts/check-bundle-entry.js",
-    "backend:dev": ".venv/bin/uvicorn backend.main:app --reload --host 127.0.0.1 --port 8123",
-    "backend:start": ".venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8123"
+    "backend:dev": "node scripts/start-backend.js --reload",
+    "backend:start": "node scripts/start-backend.js"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

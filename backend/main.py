@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MetricStudio Backend",
-    version="0.4.0",
+    version="0.4.1",
     lifespan=lifespan,
 )
 
@@ -51,7 +51,7 @@ app.add_middleware(
 @app.get("/", include_in_schema=False)
 async def root():
     return {
-        "message": "MetricStudio backend API — this is not the web app. Open the Vite dev server (http://localhost:5174) instead.",
+        "message": "MetricStudio backend API — this is not the web app. Open the Vite dev server (http://localhost:5173) instead.",
         "docs": "/docs",
         "health": "/health",
     }

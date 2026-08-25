@@ -16,6 +16,20 @@ def _make_db(tmp_path):
     return str(path)
 
 
+def test_upload_database(client, tmp_path):
+    path = _make_db(tmp_path)
+    with open(path, "rb") as database:
+        resp = client.post(
+            "/api/v1/sql/upload",
+            files={"file": ("uploaded.sqlite", database, "application/octet-stream")},
+        )
+    assert resp.status_code == 200, resp.text
+    uploaded_path = resp.json()["path"]
+    tables = client.post("/api/v1/sql/tables", json={"engine": "sqlite", "path": uploaded_path})
+    assert tables.status_code == 200, tables.text
+    assert "sales" in tables.json()["tables"]
+
+
 def test_list_tables(client, tmp_path):
     path = _make_db(tmp_path)
     resp = client.post("/api/v1/sql/tables", json={"engine": "sqlite", "path": path})

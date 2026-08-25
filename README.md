@@ -1,6 +1,6 @@
 # MetricStudio
 
-基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.4.0**。
+基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.4.1**。
 
 ## 技术栈
 
@@ -37,12 +37,15 @@ uv pip install -r requirements.txt
 ### 启动开发
 
 ```bash
-# 1. 启动后端（127.0.0.1:8123）
-pnpm backend:dev
-
-# 2. 启动前端（新终端）
+# 同时启动后端和前端（推荐，后端监听 127.0.0.1:8123）
 pnpm dev
+
+# 或者分两个终端启动
+pnpm backend:dev
+pnpm dev:frontend
 ```
+
+`pnpm dev` 会自动查找根目录 `.venv`、`backend/.venv` 或系统 Python，并在后端进程退出时保留前端日志。若依赖缺失，请在 `backend` 目录重新执行 `uv venv` 和 `uv pip install -r requirements.txt`。
 
 ### 测试与静态检查
 
@@ -70,10 +73,10 @@ python scripts/build-sidecar.py
 python scripts/smoke-sidecar.py src-tauri/binaries/python-sidecar-$(rustc -vV | sed -n 's/^host: //p')
 
 # 检查 Linux 安装包是否含主程序和 sidecar
-python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.4.0_amd64.deb
+python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.4.1_amd64.deb
 ```
 
-推送 `v0.4.0` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
+推送 `v0.4.1` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
 
 ## 项目结构
 

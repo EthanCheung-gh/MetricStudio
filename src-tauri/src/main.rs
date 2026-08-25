@@ -32,11 +32,16 @@ fn find_free_port() -> u16 {
 }
 
 fn start_sidecar(app: &tauri::AppHandle, port: u16) -> Result<(), String> {
-    let shell = app.shell();
-    // In production, the sidecar binary is bundled as `python-sidecar`.
-    // In development, we spawn `python backend/main.py` from the project root.
-    let command: &str = if cfg!(dev) { "python" } else { "python-sidecar" };
-    let sidecar = shell.sidecar(command).map_err(|e| e.to_string())?;
+    // In development, `pnpm dev` owns the Vite + backend processes. The
+    // bundled sidecar is only needed for packaged builds.
+    if cfg!(debug_assertions) {
+        return Ok(());
+    }
+
+    let sidecar = app
+        .shell()
+        .sidecar("python-sidecar")
+        .map_err(|e| e.to_string())?;
     let (_rx, child) = sidecar
         .env("METRICSTUDIO_PORT", port.to_string())
         .spawn()
@@ -57,7 +62,7 @@ fn stop_sidecar(app: &tauri::AppHandle) {
 }
 
 fn main() {
-    let port = find_free_port();
+    let port = if cfg!(debug_assertions) { 8123 } else { find_free_port() };
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(SidecarState {
@@ -66,9 +71,7 @@ fn main() {
         })
         .setup(move |app| {
             let handle = app.handle().clone();
-            start_sidecar(&handle, port).map_err(|e| {
-                eprintln!("Failed to start sidecar: {}", e);
-            }).ok();
+            start_sidecar(&handle, port)?;
             Ok(())
         })
         .on_window_event(|window, event| {

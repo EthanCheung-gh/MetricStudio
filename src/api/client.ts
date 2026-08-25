@@ -54,6 +54,7 @@ export interface LoadProjectResponse {
 
 const DEFAULT_BACKEND_PORT = 8123;
 let backendPort: number | null = null;
+const isTauriRuntime = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 /**
  * In Tauri production the Python sidecar binds a random free port
@@ -61,11 +62,11 @@ let backendPort: number | null = null;
  * before issuing any API requests. Browser dev keeps the default port.
  */
 export async function initBackendPort(): Promise<void> {
-  if (import.meta.env.VITE_BACKEND_PORT) return;
+  if (import.meta.env.VITE_BACKEND_PORT || !isTauriRuntime) return;
   try {
     backendPort = await invoke<number>('get_backend_port');
-  } catch {
-    // Non-Tauri environment (browser dev): keep the default port.
+  } catch (error) {
+    throw new Error('无法获取 Tauri 后端端口。请确认后端 sidecar 已成功启动。', { cause: error })
   }
 }
 
@@ -86,10 +87,15 @@ function getBaseUrl(): string {
 
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`
-  const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    })
+  } catch (error) {
+    throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
+  }
   if (!response.ok) {
     let detail = ''
     try {
@@ -105,10 +111,15 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
 
 async function postForm<T>(path: string, formData: FormData): Promise<T> {
   const url = `${getBaseUrl()}${path}`
-  const response = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    })
+  } catch (error) {
+    throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
+  }
   if (!response.ok) {
     let detail = ''
     try {
@@ -398,6 +409,11 @@ export const api = {
     fetchJson<{ recommendations: ChartRecommendation[] }>(`/api/v1/data/${id}/chart-recommendations`),
 
   // SQL import
+  sqlUpload: (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return postForm<{ path: string; name: string }>('/api/v1/sql/upload', formData)
+  },
   sqlBrowse: (dir?: string) =>
     fetchJson<{
       dir: string

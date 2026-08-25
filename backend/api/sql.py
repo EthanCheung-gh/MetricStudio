@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 import pandas as pd
@@ -30,6 +31,30 @@ class ImportRequest(BaseModel):
 
 
 DB_EXTENSIONS = {".db", ".sqlite", ".sqlite3", ".db3"}
+_MAX_UPLOAD_BYTES = 512 * 1024 * 1024
+_UPLOAD_DIR = Path.home() / ".metricstudio" / "uploads"
+
+
+@router.post("/upload")
+async def upload_database(file: UploadFile = File(...)):
+    filename = Path(file.filename or "database.sqlite").name
+    if Path(filename).suffix.lower() not in DB_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="请选择 SQLite 数据库文件（.db、.sqlite、.sqlite3 或 .db3）")
+    contents = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="SQLite 文件不能超过 512 MB")
+    if not contents.startswith(b"SQLite format 3\x00"):
+        raise HTTPException(status_code=400, detail="文件不是有效的 SQLite 数据库")
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    target = _UPLOAD_DIR / f"{secrets.token_hex(8)}-{filename}"
+    temp = target.with_suffix(target.suffix + ".tmp")
+    try:
+        temp.write_bytes(contents)
+        temp.replace(target)
+    except OSError as exc:
+        temp.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"无法保存 SQLite 文件: {exc}") from exc
+    return {"path": str(target), "name": filename}
 
 
 @router.get("/browse")

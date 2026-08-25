@@ -16,6 +16,7 @@ interface BrowseState {
 export function DataExplorer() {
   const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
+  const sqlInputRef = useRef<HTMLInputElement>(null)
   const importFile = useDataStore((s) => s.importFile)
   const importText = useDataStore((s) => s.importText)
   const loading = useDataStore((s) => s.loading)
@@ -51,6 +52,17 @@ export function DataExplorer() {
     setSqlTables([])
     setSqlSelectedTable('')
     listTables(path)
+  }
+
+  const uploadDbFile = async (file: File) => {
+    setSqlLoading(true)
+    try {
+      const uploaded = await api.sqlUpload(file)
+      pickDbFile(uploaded.path)
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('import.importFailed'))
+      setSqlLoading(false)
+    }
   }
 
   const listTables = async (path?: string) => {
@@ -135,10 +147,7 @@ export function DataExplorer() {
             className={`flex-1 rounded px-2 py-1 text-xs transition-colors ${
               importMode === 'sqlite' ? 'bg-primary/20 text-primary' : 'text-muted hover:text-foreground'
             }`}
-            onClick={() => {
-              setImportMode('sqlite')
-              if (!browse && !manualPath) browseDir()
-            }}
+            onClick={() => setImportMode('sqlite')}
           >
             <Database className="mr-1 inline h-3 w-3" />
             SQLite
@@ -217,6 +226,27 @@ export function DataExplorer() {
         )}
         {importMode === 'sqlite' && (
           <div className="flex flex-col gap-1 rounded border border-border p-2">
+            <input
+              ref={sqlInputRef}
+              type="file"
+              accept=".db,.sqlite,.sqlite3,.db3"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                event.target.value = ''
+                if (file) void uploadDbFile(file)
+              }}
+            />
+            {!manualPath && (
+              <div className="flex gap-1">
+                <Button size="sm" color="primary" className="flex-1" isLoading={sqlLoading} onPress={() => sqlInputRef.current?.click()}>
+                  {t('import.chooseDb')}
+                </Button>
+                <Button size="sm" variant="light" className="flex-1" isDisabled={sqlLoading} onPress={() => void browseDir()}>
+                  {t('import.browseFile')}
+                </Button>
+              </div>
+            )}
             {manualPath ? (
               <>
                 <Input

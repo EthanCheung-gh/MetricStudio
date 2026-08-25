@@ -6,7 +6,7 @@ interface BackendBannerProps {
   onRetry: () => Promise<void>
 }
 
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 
 /** Ask the Tauri shell to kill and respawn the Python sidecar (no-op in browser mode). */
 async function restartSidecar(): Promise<boolean> {
