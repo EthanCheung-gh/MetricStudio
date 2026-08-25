@@ -1,6 +1,6 @@
 # MetricStudio
 
-基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.3.2**。
+基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.3.3**。
 
 ## 技术栈
 
@@ -70,10 +70,10 @@ python scripts/build-sidecar.py
 python scripts/smoke-sidecar.py src-tauri/binaries/python-sidecar-$(rustc -vV | sed -n 's/^host: //p')
 
 # 检查 Linux 安装包是否含主程序和 sidecar
-python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.3.2_amd64.deb
+python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.3.3_amd64.deb
 ```
 
-推送 `v0.3.2` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
+推送 `v0.3.3` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
 
 ## 项目结构
 
@@ -149,7 +149,7 @@ metricstudio/
 
 ### P0：核心分析闭环
 
-- [ ] 多轮 AI 问答：上下文追问、答案证据引用、数据不足时明确提示
+- [x] 多轮 AI 问答：上下文追问、答案证据引用、数据不足时明确提示
 - [ ] AI 数据隐私：敏感列识别、脱敏、可控字段范围与本地 / 云端模型选择
 - [ ] 高基数字段筛选：服务端搜索、分页、缓存与大数据量性能基准
 - [ ] 数据质量中心：缺失值、重复值、异常值、格式问题与修复前后预览

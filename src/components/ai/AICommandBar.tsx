@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Play, Send, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
+import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
 
 interface NLOp {
@@ -11,25 +12,27 @@ interface NLOp {
   params: Record<string, unknown>
 }
 
-interface AskTurn {
-  question: string
-  answer: string
-}
-
 type Mode = 'query' | 'ask'
 
 export function AICommandBar() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const refreshActiveDataFrame = useDataStore((s) => s.refreshActiveDataFrame)
+  const datasetId = useQAStore((s) => s.datasetId)
+  const turns = useQAStore((s) => s.turns)
+  const setDataset = useQAStore((s) => s.setDataset)
+  const addTurn = useQAStore((s) => s.addTurn)
   const addNotification = useUIStore((s) => s.addNotification)
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('query')
   const [input, setInput] = useState('')
   const [operations, setOperations] = useState<NLOp[] | null>(null)
   const [answer, setAnswer] = useState<string | null>(null)
-  const [askHistory, setAskHistory] = useState<AskTurn[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
+
+  useEffect(() => {
+    if (datasetId !== activeDataFrameId) setDataset(activeDataFrameId)
+  }, [activeDataFrameId, datasetId, setDataset])
 
   const submit = async () => {
     if (!activeDataFrameId || !input.trim()) return
@@ -42,9 +45,14 @@ export function AICommandBar() {
         setOperations(res.operations)
       } else {
         const currentQuestion = input.trim()
-        const res = await api.nlAsk(activeDataFrameId, currentQuestion, askHistory)
-        setAskHistory((history) => [...history, { question: currentQuestion, answer: res.answer }])
+        const res = await api.nlAsk(
+          activeDataFrameId,
+          currentQuestion,
+          turns.map(({ question, answer }) => ({ question, answer })),
+        )
+        addTurn({ question: currentQuestion, answer: res.answer, evidence: res.evidence })
         setAnswer(res.answer)
+        setInput('')
       }
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('ai.requestFailed'))
