@@ -1,6 +1,6 @@
 # MetricStudio
 
-基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.3.4**。
+基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.4.0**。
 
 ## 技术栈
 
@@ -70,10 +70,10 @@ python scripts/build-sidecar.py
 python scripts/smoke-sidecar.py src-tauri/binaries/python-sidecar-$(rustc -vV | sed -n 's/^host: //p')
 
 # 检查 Linux 安装包是否含主程序和 sidecar
-python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.3.4_amd64.deb
+python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.4.0_amd64.deb
 ```
 
-推送 `v0.3.4` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
+推送 `v0.4.0` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
 
 ## 项目结构
 
@@ -193,10 +193,10 @@ metricstudio/
 
 ### 阶段三：可复现问答与导出（v0.4.0）
 
-- [ ] 将问答会话保存到 `.metricstudio` 项目
-- [ ] 问答绑定数据集、快照和筛选条件
-- [ ] 保存模型信息、生成时间和问答元数据
-- [ ] 回答中的句子与具体证据精确绑定
-- [ ] 问答历史导出为 Markdown / HTML
-- [ ] 将回答转为文本卡片或报告内容
-- [ ] 长会话摘要与上下文压缩
+- [x] 将问答会话保存到 `.metricstudio` 项目
+- [ ] 问答绑定快照和筛选条件（已绑定数据集）
+- [x] 保存模型信息、生成时间和问答元数据
+- [x] 回答证据生成稳定引用 ID，并记录数据集 / 字段 / 行来源
+- [x] 问答历史导出为 Markdown / HTML
+- [ ] 将回答转为 Dashboard 文本卡片或报告内容
+- [x] 长会话上下文压缩（保留最近 8 轮，压缩早期上下文）

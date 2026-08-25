@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -164,8 +165,8 @@ def _build_data_evidence(dataset: Any) -> list[dict[str, str]]:
     from backend.core.insights import generate_insights
 
     df = dataset.df
-    evidence: list[dict[str, str]] = [
-        {"kind": "schema", "detail": ", ".join(f"{c.name} ({c.dtype})" for c in dataset.meta.columns)},
+    evidence: list[dict[str, Any]] = [
+        {"id": "schema", "kind": "schema", "detail": ", ".join(f"{c.name} ({c.dtype})" for c in dataset.meta.columns), "source": {"datasetId": dataset.id}},
     ]
     numeric = df.select_dtypes(include="number")
     if not numeric.empty:
@@ -174,18 +175,20 @@ def _build_data_evidence(dataset: Any) -> list[dict[str, str]]:
             row = desc.loc[col]
             evidence.append(
                 {
+                    "id": f"statistics:{col}",
                     "kind": "statistics",
                     "detail": (
                         f"{col}: min={row['min']}, max={row['max']}, "
                         f"mean={row['mean']:.2f}, median={df[col].median():.2f}"
                     ),
+                    "source": {"datasetId": dataset.id, "field": str(col)},
                 }
             )
     for index, row in df.head(3).iterrows():
         values = ", ".join(f"{key}={value}" for key, value in row.items())
-        evidence.append({"kind": "sample", "detail": f"row {index}: {values}"})
-    for insight in generate_insights(df)[:3]:
-        evidence.append({"kind": "insight", "detail": str(insight["text"])})
+        evidence.append({"id": f"sample:{index}", "kind": "sample", "detail": f"row {index}: {values}", "source": {"datasetId": dataset.id, "row": str(index)}})
+    for insight_index, insight in enumerate(generate_insights(df)[:3]):
+        evidence.append({"id": f"insight:{insight_index}", "kind": "insight", "detail": str(insight["text"]), "source": {"datasetId": dataset.id}})
     return evidence[:12]
 
 
@@ -197,7 +200,12 @@ async def nl_ask(request: NLAskRequest):
     conversation = "\n".join(
         f"User: {turn.question}\nAssistant: {turn.answer}" for turn in history
     )
-    history_block = f"Previous conversation:\n{conversation}\n\n" if conversation else ""
+    older = request.history[:-8]
+    summary_block = ""
+    if older:
+        summary = "\n".join(f"Q: {turn.question}\nA: {turn.answer}" for turn in older)
+        summary_block = f"Earlier conversation summary (truncated):\n{summary[:2000]}\n\n"
+    history_block = f"{summary_block}Previous conversation:\n{conversation}\n\n" if conversation or summary_block else ""
     prompt = (
         "You are analyzing a dataset. Use ONLY the data context below; never invent numbers. "
         "Treat previous answers as conversation context, not as evidence.\n\n"
@@ -210,7 +218,13 @@ async def nl_ask(request: NLAskRequest):
         answer = chat([{"role": "user", "content": prompt}])
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
-    return {"answer": answer, "evidence": _build_data_evidence(dataset)}
+    config = load_config()
+    return {
+        "answer": answer,
+        "evidence": _build_data_evidence(dataset),
+        "model": config.get("model", "unknown"),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.post("/narrate")

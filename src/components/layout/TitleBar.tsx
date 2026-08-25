@@ -6,6 +6,7 @@ import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
+import { useQAStore } from '@/stores/qaStore'
 import { api } from '@/api/client'
 import { loadProjectByPath } from '@/utils/project'
 
@@ -31,7 +32,8 @@ export function TitleBar() {
     try {
       const charts = useChartStore.getState().charts
       const dashboards = useDashboardStore.getState().dashboards
-      const result = await api.saveProject({ path: projectPath, name: projectName, charts, dashboards })
+      const qaConversations = useQAStore.getState().conversations
+      const result = await api.saveProject({ path: projectPath, name: projectName, charts, dashboards, qa_conversations: qaConversations })
       addNotification('success', `Project saved: ${result.datasets} dataset(s) to ${result.path}`)
       setSaveProjectModalOpen(false)
     } catch (err) {

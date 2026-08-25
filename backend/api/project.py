@@ -39,18 +39,20 @@ async def save_project(payload: dict):
     name = payload.get("name", "Untitled")
     charts = payload.get("charts", [])
     dashboards = payload.get("dashboards", [])
+    qa_conversations = payload.get("qa_conversations", [])
     temp_path = path.with_suffix(path.suffix + ".tmp")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
             manifest = {
                 "name": name,
-                "version": "0.3.4",
+                "version": "0.4.0",
                 "created_at": datetime.utcnow().isoformat(),
                 "engine": "pandas",
                 "data_sources": [],
                 "charts": charts,
                 "dashboards": dashboards,
+                "qa_conversations": qa_conversations,
                 "snapshots": [session._snapshot_public(snapshot) for snapshot in session.snapshots.values()],
             }
             for ds in session.list_datasets():
@@ -162,6 +164,7 @@ async def load_project(payload: dict):
             "datasets": [ds.to_meta() for ds in session.list_datasets()],
             "charts": manifest.get("charts", []),
             "dashboards": manifest.get("dashboards", []),
+            "qa_conversations": manifest.get("qa_conversations", []),
         }
     except KeyError as exc:
         raise HTTPException(status_code=400, detail=f"Project file malformed: missing {exc}") from exc

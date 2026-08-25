@@ -53,7 +53,13 @@ export function AICommandBar() {
           currentQuestion,
           turns.map(({ question, answer }) => ({ question, answer })),
         )
-        addTurn({ question: currentQuestion, answer: res.answer, evidence: res.evidence })
+        addTurn({
+          question: currentQuestion,
+          answer: res.answer,
+          evidence: res.evidence,
+          generatedAt: res.generated_at,
+          context: { datasetId: activeDataFrameId, model: res.model },
+        })
         setAnswer(res.answer)
         setInput('')
       }

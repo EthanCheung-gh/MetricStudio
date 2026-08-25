@@ -3,6 +3,7 @@ import { useDataStore } from '@/stores/dataStore';
 import { useChartStore } from '@/stores/chartStore';
 import { useDashboardStore } from '@/stores/dashboardStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useQAStore } from '@/stores/qaStore';
 
 export interface LoadProjectResult {
   restored: number;
@@ -27,6 +28,7 @@ export async function loadProjectByPath(path: string): Promise<LoadProjectResult
   if (result.dashboards && result.dashboards.length > 0) {
     useDashboardStore.getState().loadDashboards(result.dashboards);
   }
+  useQAStore.getState().hydrate(result.qa_conversations ?? result.project.qa_conversations ?? []);
   const name = result.project.name || path;
   useUIStore.getState().addRecentProject({ path, name });
   return { restored: result.restored.length, name };

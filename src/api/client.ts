@@ -19,6 +19,7 @@ import type {
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
 import type { DashboardConfig } from '@/types/dashboard';
+import type { QAConversation } from '@/stores/qaStore';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface DepsReport {
@@ -42,11 +43,13 @@ export interface LoadProjectResponse {
     data_sources: { id: string; name: string; rows: number; cols: number }[];
     charts: ChartConfig[];
     dashboards?: DashboardConfig[];
+    qa_conversations?: QAConversation[];
   };
   restored: string[];
   datasets: DataFrameMeta[];
   charts: ChartConfig[];
   dashboards: DashboardConfig[];
+  qa_conversations?: QAConversation[];
 }
 
 const DEFAULT_BACKEND_PORT = 8123;
@@ -342,7 +345,9 @@ export const api = {
   ) =>
     fetchJson<{
       answer: string
-      evidence: { kind: string; detail: string }[]
+      evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
+      model?: string
+      generated_at?: string
     }>('/api/v1/nl/ask', {
       method: 'POST',
       body: JSON.stringify({ dataset_id: datasetId, question, history }),
@@ -422,7 +427,7 @@ export const api = {
     fetchJson<{ deleted: boolean }>(`/api/v1/chart/templates/${templateId}`, { method: 'DELETE' }),
 
   // Project
-  saveProject: (payload: { path: string; name: string; charts?: ChartConfig[]; dashboards?: DashboardConfig[] }) =>
+  saveProject: (payload: { path: string; name: string; charts?: ChartConfig[]; dashboards?: DashboardConfig[]; qa_conversations?: QAConversation[] }) =>
     fetchJson<{ path: string; datasets: number }>('/api/v1/project/save', {
       method: 'POST',
       body: JSON.stringify(payload),

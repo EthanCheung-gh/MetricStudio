@@ -2,14 +2,25 @@ import { create } from 'zustand'
 import { generateId } from '@/utils/id'
 
 export interface QAEvidence {
+  id?: string
   kind: string
   detail: string
+  source?: { datasetId?: string; snapshotId?: string; field?: string; row?: string | number }
+}
+
+export interface QAContext {
+  datasetId: string
+  snapshotId?: string
+  filters?: Record<string, unknown>
+  model?: string
 }
 
 export interface QATurn {
   question: string
   answer: string
   evidence: QAEvidence[]
+  context?: QAContext
+  generatedAt?: string
 }
 
 export interface QAConversation {
@@ -33,6 +44,7 @@ interface QAState {
   addTurn: (turn: QATurn) => void
   deleteTurn: (index: number) => void
   replaceTurn: (index: number, turn: QATurn) => void
+  hydrate: (conversations: QAConversation[], activeConversationId?: string | null) => void
   clear: () => void
 }
 
@@ -124,6 +136,17 @@ export const useQAStore = create<QAState>((set) => ({
           : item,
       ),
     })),
+
+  hydrate: (conversations, activeConversationId = null) =>
+    set(() => {
+      const datasetId = conversations.find((item) => item.id === activeConversationId)?.datasetId
+        ?? conversations[0]?.datasetId
+        ?? null
+      const activeId = conversations.some((item) => item.id === activeConversationId)
+        ? activeConversationId
+        : conversations.find((item) => item.datasetId === datasetId)?.id ?? null
+      return { conversations, datasetId, activeConversationId: activeId }
+    }),
 
   clear: () =>
     set((state) => ({

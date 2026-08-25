@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Download,
+  FileText,
   MessageSquarePlus,
   Pencil,
   RefreshCw,
@@ -19,6 +21,7 @@ import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
+import { conversationToHtml, conversationToMarkdown, downloadText } from '@/utils/qaExport'
 
 export function AskPanel() {
   const { t } = useTranslation()
@@ -62,7 +65,7 @@ export function AskPanel() {
     setLoading(true)
     try {
       const currentQuestion = value.trim()
-      const { answer, evidence } = await api.nlAsk(
+      const response = await api.nlAsk(
         activeDataFrameId,
         currentQuestion,
         turns.map(({ question: previousQuestion, answer: previousAnswer }) => ({
@@ -70,7 +73,13 @@ export function AskPanel() {
           answer: previousAnswer,
         })),
       )
-      addTurn({ question: currentQuestion, answer, evidence })
+      addTurn({
+        question: currentQuestion,
+        answer: response.answer,
+        evidence: response.evidence,
+        generatedAt: response.generated_at,
+        context: { datasetId: activeDataFrameId, model: response.model },
+      })
       setQuestion('')
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Ask failed')
@@ -84,7 +93,7 @@ export function AskPanel() {
     setRegeneratingIndex(index)
     try {
       const turn = turns[index]
-      const { answer, evidence } = await api.nlAsk(
+      const response = await api.nlAsk(
         activeDataFrameId,
         turn.question,
         turns.slice(0, index).map(({ question: previousQuestion, answer: previousAnswer }) => ({
@@ -92,7 +101,13 @@ export function AskPanel() {
           answer: previousAnswer,
         })),
       )
-      replaceTurn(index, { question: turn.question, answer, evidence })
+      replaceTurn(index, {
+        question: turn.question,
+        answer: response.answer,
+        evidence: response.evidence,
+        generatedAt: response.generated_at,
+        context: { datasetId: activeDataFrameId, model: response.model },
+      })
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')
     } finally {
@@ -116,6 +131,13 @@ export function AskPanel() {
     } catch {
       addNotification('error', t('ai.copyFailed'))
     }
+  }
+
+  const exportConversation = (format: 'markdown' | 'html') => {
+    if (!activeConversation) return
+    const content = format === 'markdown' ? conversationToMarkdown(activeConversation) : conversationToHtml(activeConversation)
+    downloadText(`${activeConversation.name}.${format === 'markdown' ? 'md' : 'html'}`, content, format === 'markdown' ? 'text/markdown;charset=utf-8' : 'text/html;charset=utf-8')
+    addNotification('success', t('ai.exported'))
   }
 
   const startRename = () => {
@@ -177,6 +199,12 @@ export function AskPanel() {
               </Button>
               <Button isIconOnly size="sm" variant="light" onPress={startRename} aria-label={t('ai.renameConversation')} title={t('ai.renameConversation')}>
                 <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button isIconOnly size="sm" variant="light" onPress={() => exportConversation('markdown')} aria-label={t('ai.exportMarkdown')} title={t('ai.exportMarkdown')}>
+                <FileText className="h-3.5 w-3.5" />
+              </Button>
+              <Button isIconOnly size="sm" variant="light" onPress={() => exportConversation('html')} aria-label={t('ai.exportHtml')} title={t('ai.exportHtml')}>
+                <Download className="h-3.5 w-3.5" />
               </Button>
               <Button isIconOnly size="sm" variant="light" onPress={() => activeConversationId && deleteConversation(activeConversationId)} aria-label={t('ai.deleteConversation')} title={t('ai.deleteConversation')}>
                 <Trash2 className="h-3.5 w-3.5" />
