@@ -1,6 +1,6 @@
 # MetricStudio
 
-基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.3.0**。
+基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.3.1**。
 
 ## 技术栈
 
@@ -70,10 +70,10 @@ python scripts/build-sidecar.py
 python scripts/smoke-sidecar.py src-tauri/binaries/python-sidecar-$(rustc -vV | sed -n 's/^host: //p')
 
 # 检查 Linux 安装包是否含主程序和 sidecar
-python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.3.0_amd64.deb
+python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.3.1_amd64.deb
 ```
 
-推送 `v0.3.0` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
+推送 `v0.3.1` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
 
 ## 项目结构
 

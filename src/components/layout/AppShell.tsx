@@ -15,7 +15,7 @@ export function AppShell() {
   return (
     <div className="flex h-screen w-full flex-col bg-background text-foreground">
       <TitleBar />
-      <div className="min-h-0 flex-1 overflow-hidden pb-16">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <WorkspaceLayout />
       </div>
       <StatusBar />

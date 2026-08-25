@@ -69,7 +69,7 @@ export function AICommandBar() {
       : t('ai.askPlaceholder')
 
   return (
-    <div className="fixed bottom-4 left-1/2 z-40 w-[680px] max-w-[92vw] -translate-x-1/2">
+    <div className="fixed bottom-5 left-1/2 z-40 w-[680px] max-w-[92vw] -translate-x-1/2">
       {/* Result card */}
       {operations !== null && (
         <div className="mb-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
