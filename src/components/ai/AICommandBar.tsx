@@ -18,7 +18,8 @@ export function AICommandBar() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const refreshActiveDataFrame = useDataStore((s) => s.refreshActiveDataFrame)
   const datasetId = useQAStore((s) => s.datasetId)
-  const turns = useQAStore((s) => s.turns)
+  const activeConversationId = useQAStore((s) => s.activeConversationId)
+  const conversations = useQAStore((s) => s.conversations)
   const setDataset = useQAStore((s) => s.setDataset)
   const addTurn = useQAStore((s) => s.addTurn)
   const addNotification = useUIStore((s) => s.addNotification)
@@ -33,6 +34,8 @@ export function AICommandBar() {
   useEffect(() => {
     if (datasetId !== activeDataFrameId) setDataset(activeDataFrameId)
   }, [activeDataFrameId, datasetId, setDataset])
+
+  const turns = conversations.find((conversation) => conversation.id === activeConversationId)?.turns ?? []
 
   const submit = async () => {
     if (!activeDataFrameId || !input.trim()) return
