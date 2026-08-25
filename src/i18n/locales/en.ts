@@ -92,6 +92,7 @@ export default {
   'ai.ask': 'Ask',
   'ai.cleanPlaceholder': 'Describe cleaning, e.g. remove rows where value > 100, then sort by date…',
   'ai.askPlaceholder': 'Ask data, e.g. which region has the highest value?',
+  'ai.evidence': 'Evidence',
   'ai.apply': 'Apply',
   'ai.cancel': 'Cancel',
   'ai.operations': 'operation(s)',

@@ -92,6 +92,7 @@ export default {
   'ai.ask': '问答',
   'ai.cleanPlaceholder': '描述数据清洗需求，如：删除 value>100 的行，然后按 date 排序…',
   'ai.askPlaceholder': '向数据提问，如：哪个地区 value 最高？',
+  'ai.evidence': '证据来源',
   'ai.apply': '应用',
   'ai.cancel': '取消',
   'ai.operations': '个操作',

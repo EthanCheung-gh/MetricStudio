@@ -11,6 +11,11 @@ interface NLOp {
   params: Record<string, unknown>
 }
 
+interface AskTurn {
+  question: string
+  answer: string
+}
+
 type Mode = 'query' | 'ask'
 
 export function AICommandBar() {
@@ -22,6 +27,7 @@ export function AICommandBar() {
   const [input, setInput] = useState('')
   const [operations, setOperations] = useState<NLOp[] | null>(null)
   const [answer, setAnswer] = useState<string | null>(null)
+  const [askHistory, setAskHistory] = useState<AskTurn[]>([])
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
 
@@ -35,7 +41,9 @@ export function AICommandBar() {
         const res = await api.nlTransform(activeDataFrameId, input.trim())
         setOperations(res.operations)
       } else {
-        const res = await api.nlAsk(activeDataFrameId, input.trim())
+        const currentQuestion = input.trim()
+        const res = await api.nlAsk(activeDataFrameId, currentQuestion, askHistory)
+        setAskHistory((history) => [...history, { question: currentQuestion, answer: res.answer }])
         setAnswer(res.answer)
       }
     } catch (err) {

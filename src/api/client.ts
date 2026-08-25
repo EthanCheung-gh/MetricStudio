@@ -335,10 +335,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ dataset_id: datasetId }),
     }),
-  nlAsk: (datasetId: string, question: string) =>
-    fetchJson<{ answer: string }>('/api/v1/nl/ask', {
+  nlAsk: (
+    datasetId: string,
+    question: string,
+    history: { question: string; answer: string }[] = [],
+  ) =>
+    fetchJson<{
+      answer: string
+      evidence: { kind: string; detail: string }[]
+    }>('/api/v1/nl/ask', {
       method: 'POST',
-      body: JSON.stringify({ dataset_id: datasetId, question }),
+      body: JSON.stringify({ dataset_id: datasetId, question, history }),
     }),
   explainChart: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {

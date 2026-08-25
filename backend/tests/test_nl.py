@@ -116,6 +116,35 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
     # prompt carries real data context
     assert "value" in captured["prompt"]
     assert "a=10" in captured["prompt"] or "name=a" in captured["prompt"]
+    assert resp.json()["evidence"]
+    assert any(item["kind"] == "statistics" for item in resp.json()["evidence"])
+
+
+def test_ask_endpoint_includes_previous_conversation(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,value\na,10\nb,20\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+    captured = {}
+
+    def fake_chat(messages):
+        captured["prompt"] = messages[0]["content"]
+        return "b 最高。"
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post(
+        "/api/v1/nl/ask",
+        json={
+            "dataset_id": dsid,
+            "question": "那它的值是多少？",
+            "history": [{"question": "谁最高？", "answer": "b"}],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert "Previous conversation:" in captured["prompt"]
+    assert "谁最高？" in captured["prompt"]
+    assert "b" in captured["prompt"]
 
 
 def test_ask_llm_unavailable(client, monkeypatch):

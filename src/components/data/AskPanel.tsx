@@ -6,9 +6,15 @@ import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 
+interface Evidence {
+  kind: string
+  detail: string
+}
+
 interface QA {
   question: string
   answer: string
+  evidence: Evidence[]
 }
 
 export function AskPanel() {
@@ -23,8 +29,16 @@ export function AskPanel() {
     if (!activeDataFrameId || !question.trim()) return
     setLoading(true)
     try {
-      const { answer } = await api.nlAsk(activeDataFrameId, question.trim())
-      setHistory((h) => [...h, { question: question.trim(), answer }])
+      const currentQuestion = question.trim()
+      const { answer, evidence } = await api.nlAsk(
+        activeDataFrameId,
+        currentQuestion,
+        history.map(({ question: previousQuestion, answer: previousAnswer }) => ({
+          question: previousQuestion,
+          answer: previousAnswer,
+        })),
+      )
+      setHistory((h) => [...h, { question: currentQuestion, answer, evidence }])
       setQuestion('')
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Ask failed')
@@ -46,6 +60,16 @@ export function AskPanel() {
         <div key={i} className="flex flex-col gap-1 rounded border border-border/60 bg-surface-elevated/40 p-2">
           <div className="text-[11px] font-semibold text-primary">Q: {qa.question}</div>
           <div className="whitespace-pre-wrap text-[11px] leading-snug">{qa.answer}</div>
+          {qa.evidence.length > 0 && (
+            <div className="mt-1 border-t border-border/50 pt-1">
+              <div className="text-[10px] font-semibold text-muted">{t('ai.evidence')}</div>
+              <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[10px] text-muted">
+                {qa.evidence.map((item, evidenceIndex) => (
+                  <li key={`${item.kind}-${evidenceIndex}`}>{item.detail}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ))}
 

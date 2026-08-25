@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from backend.core.llm import chat, load_config, save_config
 from backend.core.session import session
@@ -40,9 +40,15 @@ class NLTransformRequest(BaseModel):
     query: str
 
 
+class NLAskTurn(BaseModel):
+    question: str
+    answer: str
+
+
 class NLAskRequest(BaseModel):
     dataset_id: str
     question: str
+    history: list[NLAskTurn] = Field(default_factory=list)
 
 
 class LLMConfig(BaseModel):
@@ -153,21 +159,58 @@ def _build_data_context(dataset: Any) -> str:
     return "\n".join(lines)
 
 
+def _build_data_evidence(dataset: Any) -> list[dict[str, str]]:
+    """Build deterministic references shown with an answer."""
+    from backend.core.insights import generate_insights
+
+    df = dataset.df
+    evidence: list[dict[str, str]] = [
+        {"kind": "schema", "detail": ", ".join(f"{c.name} ({c.dtype})" for c in dataset.meta.columns)},
+    ]
+    numeric = df.select_dtypes(include="number")
+    if not numeric.empty:
+        desc = numeric.describe().T
+        for col in desc.index:
+            row = desc.loc[col]
+            evidence.append(
+                {
+                    "kind": "statistics",
+                    "detail": (
+                        f"{col}: min={row['min']}, max={row['max']}, "
+                        f"mean={row['mean']:.2f}, median={df[col].median():.2f}"
+                    ),
+                }
+            )
+    for index, row in df.head(3).iterrows():
+        values = ", ".join(f"{key}={value}" for key, value in row.items())
+        evidence.append({"kind": "sample", "detail": f"row {index}: {values}"})
+    for insight in generate_insights(df)[:3]:
+        evidence.append({"kind": "insight", "detail": str(insight["text"])})
+    return evidence[:12]
+
+
 @router.post("/ask")
 async def nl_ask(request: NLAskRequest):
     dataset = session.get(request.dataset_id)
     context = _build_data_context(dataset)
+    history = request.history[-8:]
+    conversation = "\n".join(
+        f"User: {turn.question}\nAssistant: {turn.answer}" for turn in history
+    )
+    history_block = f"Previous conversation:\n{conversation}\n\n" if conversation else ""
     prompt = (
-        "You are analyzing a dataset. Use ONLY the data context below; never invent numbers.\n\n"
+        "You are analyzing a dataset. Use ONLY the data context below; never invent numbers. "
+        "Treat previous answers as conversation context, not as evidence.\n\n"
         f"Data context:\n{context}\n\n"
+        f"{history_block}"
         f"Question: {request.question}\n\n"
-        "请用简体中文简洁回答，引用上下文中的具体数字。"
+        "请用简体中文简洁回答，引用上下文中的具体数字；如果数据不足，请明确说明。"
     )
     try:
         answer = chat([{"role": "user", "content": prompt}])
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
-    return {"answer": answer}
+    return {"answer": answer, "evidence": _build_data_evidence(dataset)}
 
 
 @router.post("/narrate")
