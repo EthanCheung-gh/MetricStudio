@@ -2,15 +2,27 @@
 
 import json
 
+import pandas as pd
 import pytest
 
 from backend.api.nl import _build_prompt, _parse_chain, _validate_ops
+from backend.core.privacy import prepare_for_llm, sensitive_columns
 from backend.core.session import session
 
 
 def test_parse_chain_extracts_plain_json():
     ops = _parse_chain('[{"type":"dedupe","params":{}}]')
     assert ops == [{"type": "dedupe", "params": {}}]
+
+
+def test_privacy_detection_and_field_scopes():
+    df = pd.DataFrame({"email": ["a@example.com"], "customer_id": ["123"], "value": [10]})
+    assert sensitive_columns(list(df.columns)) == ["email", "customer_id"]
+    redacted, sensitive = prepare_for_llm(df, {"data_scope": "redact_sensitive"})
+    assert sensitive == ["email", "customer_id"]
+    assert redacted["email"].tolist() == ["[REDACTED]"]
+    excluded, _ = prepare_for_llm(df, {"data_scope": "exclude_sensitive"})
+    assert excluded.columns.tolist() == ["value"]
 
 
 def test_parse_chain_tolerates_markdown_fence():
@@ -277,7 +289,7 @@ def test_llm_config_round_trip(client, monkeypatch, tmp_path):
     monkeypatch.setattr("backend.api.nl.load_config", llm_module.load_config)
     monkeypatch.setattr("backend.api.nl.save_config", llm_module.save_config)
 
-    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret"}
+    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret", "provider": "cloud", "data_scope": "redact_sensitive"}
     response = client.post("/api/v1/nl/config", json=payload)
     assert response.status_code == 200, response.text
     public_payload = {**payload, "api_key": ""}
@@ -289,7 +301,7 @@ def test_llm_config_round_trip(client, monkeypatch, tmp_path):
     assert not config_path.with_suffix(".tmp").exists()
 
     # Leaving the key blank updates endpoint/model without erasing the saved secret.
-    updated = {"base_url": "https://other.invalid/v1", "model": "other-model", "api_key": ""}
+    updated = {**payload, "base_url": "https://other.invalid/v1", "model": "other-model", "api_key": ""}
     response = client.post("/api/v1/nl/config", json=updated)
     assert response.status_code == 200
     assert response.json() == updated

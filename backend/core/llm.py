@@ -19,6 +19,8 @@ DEFAULT_CONFIG: dict[str, str] = {
     "base_url": "http://localhost:11434/v1",
     "model": "llama3",
     "api_key": "",
+    "provider": "local",
+    "data_scope": "all",
 }
 
 

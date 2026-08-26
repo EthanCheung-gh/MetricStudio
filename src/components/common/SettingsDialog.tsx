@@ -4,6 +4,7 @@ import { Keyboard, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { api } from '@/api/client'
+import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
@@ -11,9 +12,11 @@ interface LLMConfig {
   base_url: string
   model: string
   api_key: string
+  provider: 'local' | 'cloud'
+  data_scope: 'all' | 'redact_sensitive' | 'exclude_sensitive'
 }
 
-const EMPTY_CONFIG: LLMConfig = { base_url: '', model: '', api_key: '' }
+const EMPTY_CONFIG: LLMConfig = { base_url: '', model: '', api_key: '', provider: 'local', data_scope: 'all' }
 
 export function SettingsDialog() {
   const { t } = useTranslation()
@@ -24,7 +27,9 @@ export function SettingsDialog() {
   const addNotification = useUIStore((s) => s.addNotification)
   const theme = useWorkspaceStore((s) => s.theme)
   const setTheme = useWorkspaceStore((s) => s.setTheme)
+  const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [config, setConfig] = useState<LLMConfig>(EMPTY_CONFIG)
+  const [sensitiveColumns, setSensitiveColumns] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [clearApiKey, setClearApiKey] = useState(false)
@@ -34,6 +39,12 @@ export function SettingsDialog() {
     let active = true
     setLoading(true)
     setClearApiKey(false)
+    setSensitiveColumns([])
+    if (activeDataFrameId) {
+      void api.getPrivacySummary(activeDataFrameId).then((value) => {
+        if (active) setSensitiveColumns(value.sensitive_columns)
+      })
+    }
     api.getLLMConfig()
       .then((value) => { if (active) setConfig(value) })
       .catch((error) => {
@@ -41,7 +52,7 @@ export function SettingsDialog() {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [open, addNotification])
+  }, [open, activeDataFrameId, addNotification])
 
   const save = async () => {
     setSaving(true)
@@ -110,6 +121,26 @@ export function SettingsDialog() {
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t('settings.llm')}</h3>
               <p className="mt-1 text-[11px] text-muted">{t('settings.llmHint')}</p>
             </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Select size="sm" label={t('settings.modelLocation')} selectedKeys={[config.provider]} onSelectionChange={(keys) => {
+                const provider = [...keys][0]
+                if (provider) setConfig((current) => ({ ...current, provider: String(provider) as LLMConfig['provider'] }))
+              }}>
+                <SelectItem key="local">{t('settings.localModel')}</SelectItem>
+                <SelectItem key="cloud">{t('settings.cloudModel')}</SelectItem>
+              </Select>
+              <Select size="sm" label={t('settings.dataScope')} selectedKeys={[config.data_scope]} onSelectionChange={(keys) => {
+                const data_scope = [...keys][0]
+                if (data_scope) setConfig((current) => ({ ...current, data_scope: String(data_scope) as LLMConfig['data_scope'] }))
+              }}>
+                <SelectItem key="all">{t('settings.dataScopeAll')}</SelectItem>
+                <SelectItem key="redact_sensitive">{t('settings.dataScopeRedact')}</SelectItem>
+                <SelectItem key="exclude_sensitive">{t('settings.dataScopeExclude')}</SelectItem>
+              </Select>
+            </div>
+            {sensitiveColumns.length > 0 && (
+              <p className="text-[11px] text-warning">{t('settings.sensitiveColumns', { columns: sensitiveColumns.join(', ') })}</p>
+            )}
             <Input
               size="sm"
               label={t('nlq.baseUrl')}

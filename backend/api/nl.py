@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.chart import _filter_by_filters
 from backend.core.llm import chat, load_config, save_config
+from backend.core.privacy import prepare_for_llm, sensitive_columns
 from backend.core.session import session
 from backend.models.chart import FilterSpec
 
@@ -60,6 +61,8 @@ class LLMConfig(BaseModel):
     base_url: str
     model: str
     api_key: str = ""
+    provider: Literal["local", "cloud"] = "local"
+    data_scope: Literal["all", "redact_sensitive", "exclude_sensitive"] = "all"
     clear_api_key: bool = False
 
     @field_validator("base_url", "model")
@@ -78,6 +81,9 @@ class ExplainChartRequest(BaseModel):
 
 def _build_prompt(dataset: Any, query: str) -> str:
     columns = [(c.name, c.dtype) for c in dataset.meta.columns]
+    if load_config().get("data_scope") == "exclude_sensitive":
+        protected = set(sensitive_columns([name for name, _ in columns]))
+        columns = [(name, dtype) for name, dtype in columns if name not in protected]
     col_desc = ", ".join(f"{name}({dtype})" for name, dtype in columns)
     return (
         f"Dataset columns: {col_desc}\n\n"
@@ -144,6 +150,7 @@ async def nl_transform(request: NLTransformRequest):
 def _build_data_context(dataset: Any, df: Any) -> str:
     from backend.core.insights import generate_insights
 
+    df, _ = prepare_for_llm(df, load_config())
     lines = ["Columns: " + ", ".join(f"{name}({dtype})" for name, dtype in df.dtypes.items())]
     if df.empty:
         lines.append("No rows matched the selected context.")
@@ -169,6 +176,7 @@ def _build_data_evidence(dataset: Any, df: Any, snapshot_id: str | None) -> list
     """Build deterministic references shown with an answer."""
     from backend.core.insights import generate_insights
 
+    df, _ = prepare_for_llm(df, load_config())
     source: dict[str, str] = {"datasetId": dataset.id}
     if snapshot_id:
         source["snapshotId"] = snapshot_id
@@ -265,7 +273,8 @@ async def nl_narrate(payload: dict):
     dataset = session.get(dataset_id)
     from backend.core.insights import generate_insights
 
-    insights = generate_insights(dataset.df)
+    protected_df, _ = prepare_for_llm(dataset.df, load_config())
+    insights = generate_insights(protected_df)
     if not insights:
         return {"narrative": ""}
     insight_texts = "\n".join("- " + i["text"] for i in insights)

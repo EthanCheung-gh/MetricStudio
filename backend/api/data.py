@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
+from backend.core.privacy import sensitive_columns
 from backend.core.session import session
 from backend.models.data import DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta
 
@@ -172,6 +173,15 @@ async def distinct_values(dataset_id: str, column: str, limit: int = 1000):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/privacy")
+async def dataset_privacy(dataset_id: str):
+    try:
+        dataset = session.get(dataset_id)
+        return {"sensitive_columns": sensitive_columns(list(dataset.df.columns))}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/columns", response_model=list[ColumnMeta], response_model_by_alias=True)

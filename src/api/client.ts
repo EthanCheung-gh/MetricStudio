@@ -202,6 +202,7 @@ export const api = {
     return fetchJson<DataPreview>(`/api/v1/data/${id}/preview?${params}`)
   },
   getColumns: (id: string) => fetchJson<import('@/types/data').ColumnMeta[]>(`/api/v1/data/${id}/columns`),
+  getPrivacySummary: (id: string) => fetchJson<{ sensitive_columns: string[] }>(`/api/v1/data/${id}/privacy`),
   distinctValues: (id: string, column: string) =>
     fetchJson<{ values: string[] }>(`/api/v1/data/${id}/values?column=${encodeURIComponent(column)}`),
   describeDataFrame: (id: string) => fetchJson<DescribeResponse>(`/api/v1/data/${id}/describe`),
@@ -376,9 +377,9 @@ export const api = {
       body: JSON.stringify({ dataset_id: datasetId, encoding }),
     }),
   getLLMConfig: () =>
-    fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config'),
-  setLLMConfig: (config: { base_url: string; model: string; api_key: string; clear_api_key?: boolean }) =>
-    fetchJson<{ base_url: string; model: string; api_key: string }>('/api/v1/nl/config', {
+    fetchJson<{ base_url: string; model: string; api_key: string; provider: 'local' | 'cloud'; data_scope: 'all' | 'redact_sensitive' | 'exclude_sensitive' }>('/api/v1/nl/config'),
+  setLLMConfig: (config: { base_url: string; model: string; api_key: string; provider: 'local' | 'cloud'; data_scope: 'all' | 'redact_sensitive' | 'exclude_sensitive'; clear_api_key?: boolean }) =>
+    fetchJson<{ base_url: string; model: string; api_key: string; provider: 'local' | 'cloud'; data_scope: 'all' | 'redact_sensitive' | 'exclude_sensitive' }>('/api/v1/nl/config', {
       method: 'POST',
       body: JSON.stringify(config),
     }),
