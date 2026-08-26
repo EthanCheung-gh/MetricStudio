@@ -14,7 +14,7 @@ interface DashboardState {
   setActiveDashboard: (id: string | null) => void
   addItem: (dashboardId: string, chartId: string) => void
   addKpiItem: (dashboardId: string, kpi: KpiItemConfig) => void
-  addTextItem: (dashboardId: string) => void
+  addTextItem: (dashboardId: string, text?: string) => void
   updateItemText: (dashboardId: string, itemId: string, text: string) => void
   updateItemKpi: (dashboardId: string, itemId: string, kpi: Partial<KpiItemConfig>) => void
   removeItem: (dashboardId: string, chartId: string) => void
@@ -102,11 +102,11 @@ export const useDashboardStore = create<DashboardState>()(
           })),
         })),
 
-      addTextItem: (dashboardId) =>
+      addTextItem: (dashboardId, text = '') =>
         set((s) => ({
           dashboards: touch(s.dashboards, dashboardId, (d) => ({
             ...d,
-            items: [...d.items, { chartId: generateId(), kind: 'text', text: '', x: 0, y: 0, w: 4, h: 2 }],
+            items: [...d.items, { chartId: generateId(), kind: 'text', text, x: 0, y: 0, w: 4, h: 2 }],
             updatedAt: new Date().toISOString(),
           })),
         })),

@@ -28,6 +28,7 @@ interface UIState {
   saveProjectModalOpen: boolean;
   loadProjectModalOpen: boolean;
   reportDialogOpen: boolean;
+  reportNotesDraft: string;
   settingsOpen: boolean;
   shortcutsOpen: boolean;
   diffModalOpen: boolean;
@@ -49,6 +50,7 @@ interface UIState {
   setSaveProjectModalOpen: (open: boolean) => void;
   setLoadProjectModalOpen: (open: boolean) => void;
   setReportDialogOpen: (open: boolean) => void;
+  setReportNotesDraft: (notes: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
   setDiffModalOpen: (open: boolean) => void;
@@ -72,6 +74,7 @@ export const useUIStore = create<UIState>()(
   saveProjectModalOpen: false,
   loadProjectModalOpen: false,
   reportDialogOpen: false,
+  reportNotesDraft: '',
   settingsOpen: false,
   shortcutsOpen: false,
   diffModalOpen: false,
@@ -106,6 +109,7 @@ export const useUIStore = create<UIState>()(
   setSaveProjectModalOpen: (open) => set({ saveProjectModalOpen: open }),
   setLoadProjectModalOpen: (open) => set({ loadProjectModalOpen: open }),
   setReportDialogOpen: (open) => set({ reportDialogOpen: open }),
+  setReportNotesDraft: (reportNotesDraft) => set({ reportNotesDraft }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
   setDiffModalOpen: (open) => set({ diffModalOpen: open }),
@@ -138,6 +142,7 @@ export const useUIStore = create<UIState>()(
       // Notifications/backend status are session-scoped; persist dialog + recent projects
       partialize: (state) => ({
         chartConfigDialogOpen: state.chartConfigDialogOpen,
+        reportNotesDraft: state.reportNotesDraft,
         recentProjects: state.recentProjects,
         reportTemplates: state.reportTemplates,
         language: state.language,

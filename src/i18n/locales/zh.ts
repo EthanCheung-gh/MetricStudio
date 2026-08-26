@@ -544,6 +544,10 @@ export default {
   'ai.snapshotBound': '已绑定快照 {{id}}',
   'ai.dashboardFiltersBound': '已绑定 {{count}} 个 Dashboard 筛选',
   'ai.clearSnapshotBinding': '取消快照绑定',
+  'ai.addToDashboard': '添加到 Dashboard',
+  'ai.addedToDashboard': '已添加为 Dashboard 文本卡片',
+  'ai.addToReport': '添加到报告',
+  'ai.addedToReport': '已添加为报告段落',
   // 通用
   'sample.welcome': '欢迎使用 MetricStudio',
   'sample.description': '使用内置销售数据快速体验数据浏览、图表构建和 Dashboard 工作流。',

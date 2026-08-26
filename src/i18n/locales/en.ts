@@ -544,6 +544,10 @@ export default {
   'ai.snapshotBound': 'Snapshot {{id}} bound',
   'ai.dashboardFiltersBound': '{{count}} Dashboard filter(s) bound',
   'ai.clearSnapshotBinding': 'Clear snapshot binding',
+  'ai.addToDashboard': 'Add to Dashboard',
+  'ai.addedToDashboard': 'Added as a Dashboard text card',
+  'ai.addToReport': 'Add to report',
+  'ai.addedToReport': 'Added as a report paragraph',
   // Common
   'sample.welcome': 'Welcome to MetricStudio',
   'sample.description': 'Use the bundled sales data to explore data browsing, chart building, and the Dashboard workflow.',

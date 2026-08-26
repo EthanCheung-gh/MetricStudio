@@ -11,7 +11,9 @@ import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
 export function ReportDialog() {
   const { t } = useTranslation()
   const open = useUIStore((s) => s.reportDialogOpen)
+  const reportNotesDraft = useUIStore((s) => s.reportNotesDraft)
   const setOpen = useUIStore((s) => s.setReportDialogOpen)
+  const setReportNotesDraft = useUIStore((s) => s.setReportNotesDraft)
   const addNotification = useUIStore((s) => s.addNotification)
   const charts = useChartStore((s) => s.charts)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
@@ -24,10 +26,12 @@ export function ReportDialog() {
   const reportTemplates = useUIStore((s) => s.reportTemplates)
   const saveReportTemplate = useUIStore((s) => s.saveReportTemplate)
 
-  // Default to all charts whenever the dialog opens
+  // Default to all charts and load the current report draft whenever the dialog opens.
   useEffect(() => {
-    if (open) setSelected(charts.map((c) => c.id))
-  }, [open, charts])
+    if (!open) return
+    setSelected(charts.map((c) => c.id))
+    setNotes(reportNotesDraft)
+  }, [open, charts, reportNotesDraft])
 
   const generate = async () => {
     setGenerating(true)
@@ -54,6 +58,7 @@ export function ReportDialog() {
       a.click()
       URL.revokeObjectURL(url)
       addNotification('success', t('report.generated', { count: figures.length }))
+      setReportNotesDraft('')
       setOpen(false)
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('report.generationFailed'))
@@ -123,7 +128,10 @@ export function ReportDialog() {
           <Textarea
             label={t('report.notes')}
             value={notes}
-            onValueChange={setNotes}
+            onValueChange={(value) => {
+              setNotes(value)
+              setReportNotesDraft(value)
+            }}
             minRows={3}
           />
           <Checkbox

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Play, Send, Sparkles, Wand2, X } from 'lucide-react'
+import { FilePlus2, LayoutDashboard, Play, Send, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
@@ -28,12 +28,16 @@ export function AICommandBar() {
   const addTurn = useQAStore((s) => s.addTurn)
   const activeDashboardId = useDashboardStore((s) => s.activeDashboardId)
   const dashboards = useDashboardStore((s) => s.dashboards)
+  const createDashboard = useDashboardStore((s) => s.createDashboard)
+  const addTextItem = useDashboardStore((s) => s.addTextItem)
   const addNotification = useUIStore((s) => s.addNotification)
+  const setReportNotesDraft = useUIStore((s) => s.setReportNotesDraft)
+  const setReportDialogOpen = useUIStore((s) => s.setReportDialogOpen)
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('query')
   const [input, setInput] = useState('')
   const [operations, setOperations] = useState<NLOp[] | null>(null)
-  const [answer, setAnswer] = useState<string | null>(null)
+  const [answer, setAnswer] = useState<{ question: string; text: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
 
@@ -70,7 +74,7 @@ export function AICommandBar() {
           generatedAt: res.generated_at,
           context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters, model: res.model },
         })
-        setAnswer(res.answer)
+        setAnswer({ question: currentQuestion, text: res.answer })
         setInput('')
       }
     } catch (err) {
@@ -78,6 +82,22 @@ export function AICommandBar() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const addAnswerToDashboard = () => {
+    if (!answer) return
+    const dashboard = activeDashboard ?? dashboards[0] ?? createDashboard()
+    addTextItem(dashboard.id, `${answer.question}\n\n${answer.text}`)
+    addNotification('success', t('ai.addedToDashboard'))
+  }
+
+  const addAnswerToReport = () => {
+    if (!answer) return
+    const paragraph = `## ${answer.question}\n\n${answer.text}`
+    const draft = useUIStore.getState().reportNotesDraft
+    setReportNotesDraft(draft ? `${draft}\n\n${paragraph}` : paragraph)
+    setReportDialogOpen(true)
+    addNotification('success', t('ai.addedToReport'))
   }
 
   const apply = async () => {
@@ -137,7 +157,15 @@ export function AICommandBar() {
         <div className="mb-2 flex items-start gap-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
-            <div className="whitespace-pre-wrap text-xs leading-relaxed">{answer}</div>
+            <div className="whitespace-pre-wrap text-xs leading-relaxed">{answer.text}</div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <Button size="sm" variant="light" startContent={<LayoutDashboard className="h-3 w-3" />} onPress={addAnswerToDashboard}>
+                {t('ai.addToDashboard')}
+              </Button>
+              <Button size="sm" variant="light" startContent={<FilePlus2 className="h-3 w-3" />} onPress={addAnswerToReport}>
+                {t('ai.addToReport')}
+              </Button>
+            </div>
           </div>
           <button className="text-muted hover:text-foreground" onClick={() => setAnswer(null)} aria-label={t('common.close')}>
             <X className="h-3.5 w-3.5" />

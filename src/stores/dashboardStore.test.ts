@@ -40,6 +40,16 @@ describe('dashboard lifecycle', () => {
     expect(state.brushSelections.one).toBeUndefined()
   })
 
+  it('adds supplied answer text to a Dashboard text card', () => {
+    useDashboardStore.setState({ dashboards: [dashboard('dash')], activeDashboardId: 'dash' })
+
+    useDashboardStore.getState().addTextItem('dash', 'Question\n\nAnswer')
+
+    expect(useDashboardStore.getState().dashboards[0].items).toContainEqual(
+      expect.objectContaining({ kind: 'text', text: 'Question\n\nAnswer' }),
+    )
+  })
+
   it('resets the active dashboard and brushes when loading a project', () => {
     useDashboardStore.setState({
       dashboards: [dashboard('old')],

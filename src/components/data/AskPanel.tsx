@@ -6,7 +6,9 @@ import {
   ChevronUp,
   Copy,
   Download,
+  FilePlus2,
   FileText,
+  LayoutDashboard,
   MessageSquarePlus,
   Pencil,
   RefreshCw,
@@ -34,6 +36,8 @@ export function AskPanel() {
   const conversations = useQAStore((s) => s.conversations)
   const activeDashboardId = useDashboardStore((s) => s.activeDashboardId)
   const dashboards = useDashboardStore((s) => s.dashboards)
+  const createDashboard = useDashboardStore((s) => s.createDashboard)
+  const addTextItem = useDashboardStore((s) => s.addTextItem)
   const setDataset = useQAStore((s) => s.setDataset)
   const createConversation = useQAStore((s) => s.createConversation)
   const selectConversation = useQAStore((s) => s.selectConversation)
@@ -44,6 +48,8 @@ export function AskPanel() {
   const replaceTurn = useQAStore((s) => s.replaceTurn)
   const clear = useQAStore((s) => s.clear)
   const addNotification = useUIStore((s) => s.addNotification)
+  const setReportNotesDraft = useUIStore((s) => s.setReportNotesDraft)
+  const setReportDialogOpen = useUIStore((s) => s.setReportDialogOpen)
   const [question, setQuestion] = useState('')
   const [conversationSearch, setConversationSearch] = useState('')
   const [renameValue, setRenameValue] = useState('')
@@ -143,6 +149,20 @@ export function AskPanel() {
     } catch {
       addNotification('error', t('ai.copyFailed'))
     }
+  }
+
+  const addAnswerToDashboard = (question: string, answer: string) => {
+    const dashboard = activeDashboard ?? dashboards[0] ?? createDashboard()
+    addTextItem(dashboard.id, `${question}\n\n${answer}`)
+    addNotification('success', t('ai.addedToDashboard'))
+  }
+
+  const addAnswerToReport = (question: string, answer: string) => {
+    const paragraph = `## ${question}\n\n${answer}`
+    const draft = useUIStore.getState().reportNotesDraft
+    setReportNotesDraft(draft ? `${draft}\n\n${paragraph}` : paragraph)
+    setReportDialogOpen(true)
+    addNotification('success', t('ai.addedToReport'))
   }
 
   const exportConversation = (format: 'markdown' | 'html') => {
@@ -275,6 +295,12 @@ export function AskPanel() {
                   <div className="mt-1.5 flex flex-wrap items-center gap-1 border-t border-border/50 pt-1">
                     <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => copyAnswer(turn.answer)} startContent={<Copy className="h-3 w-3" />}>
                       {t('ai.copyAnswer')}
+                    </Button>
+                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToDashboard(turn.question, turn.answer)} startContent={<LayoutDashboard className="h-3 w-3" />}>
+                      {t('ai.addToDashboard')}
+                    </Button>
+                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToReport(turn.question, turn.answer)} startContent={<FilePlus2 className="h-3 w-3" />}>
+                      {t('ai.addToReport')}
                     </Button>
                     <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => regenerate(index)} isLoading={isRegenerating} startContent={<RefreshCw className="h-3 w-3" />}>
                       {t('ai.regenerate')}
