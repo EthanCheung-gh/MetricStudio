@@ -161,18 +161,44 @@ async def preview_dataframe(
 
 
 @router.get("/{dataset_id}/values")
-async def distinct_values(dataset_id: str, column: str, limit: int = 1000):
-    """Return distinct values from the full derived dataset for filter controls."""
+async def distinct_values(
+    dataset_id: str,
+    column: str,
+    search: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+):
+    """Distinct values from the full derived dataset for filter controls.
+
+    High-cardinality fields: server-side substring search + pagination over a
+    cached sorted unique list (see backend.core.value_index).
+    """
+    from backend.core.value_index import sorted_unique_values
+
     try:
         dataset = session.get(dataset_id)
         if column not in dataset.df.columns:
             raise ValueError(f"Column not found: {column}")
-        values = dataset.df[column].dropna().astype(str).drop_duplicates().sort_values().head(limit)
-        return {"values": values.tolist()}
+        all_values = sorted_unique_values(dataset, column)
+        total = len(all_values)
+        if search:
+            needle = search.casefold()
+            all_values = [value for value in all_values if needle in value.casefold()]
+        filtered_total = len(all_values)
+        offset = min(max(0, offset), filtered_total)
+        limit = min(max(1, limit), 5000)
+        return {
+            "values": all_values[offset : offset + limit],
+            "total": total,
+            "filteredTotal": filtered_total,
+            "offset": offset,
+            "limit": limit,
+        }
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 
 @router.get("/{dataset_id}/privacy")

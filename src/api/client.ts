@@ -203,8 +203,19 @@ export const api = {
   },
   getColumns: (id: string) => fetchJson<import('@/types/data').ColumnMeta[]>(`/api/v1/data/${id}/columns`),
   getPrivacySummary: (id: string) => fetchJson<{ sensitive_columns: string[] }>(`/api/v1/data/${id}/privacy`),
-  distinctValues: (id: string, column: string) =>
-    fetchJson<{ values: string[] }>(`/api/v1/data/${id}/values?column=${encodeURIComponent(column)}`),
+  distinctValues: (
+    id: string,
+    column: string,
+    options: { search?: string; offset?: number; limit?: number } = {},
+  ) => {
+    const params = new URLSearchParams({ column })
+    if (options.search) params.set('search', options.search)
+    if (options.offset !== undefined) params.set('offset', String(options.offset))
+    if (options.limit !== undefined) params.set('limit', String(options.limit))
+    return fetchJson<{ values: string[]; total: number; filteredTotal: number; offset: number; limit: number }>(
+      `/api/v1/data/${id}/values?${params}`,
+    )
+  },
   describeDataFrame: (id: string) => fetchJson<DescribeResponse>(`/api/v1/data/${id}/describe`),
   deleteDataFrame: (id: string) => fetchJson<void>(`/api/v1/data/${id}`, { method: 'DELETE' }),
   refreshDataset: (id: string) =>
