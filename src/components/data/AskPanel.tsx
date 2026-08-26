@@ -19,16 +19,21 @@ import {
 import { Button, Input } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
+import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
+import { dashboardFiltersForDataset } from '@/utils/qaContext'
 import { conversationToHtml, conversationToMarkdown, downloadText } from '@/utils/qaExport'
 
 export function AskPanel() {
   const { t } = useTranslation()
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const datasetId = useQAStore((s) => s.datasetId)
+  const snapshotId = useQAStore((s) => s.snapshotId)
   const activeConversationId = useQAStore((s) => s.activeConversationId)
   const conversations = useQAStore((s) => s.conversations)
+  const activeDashboardId = useDashboardStore((s) => s.activeDashboardId)
+  const dashboards = useDashboardStore((s) => s.dashboards)
   const setDataset = useQAStore((s) => s.setDataset)
   const createConversation = useQAStore((s) => s.createConversation)
   const selectConversation = useQAStore((s) => s.selectConversation)
@@ -59,6 +64,9 @@ export function AskPanel() {
   )
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId)
   const turns = activeConversation?.turns ?? []
+  const activeDashboard = dashboards.find((dashboard) => dashboard.id === activeDashboardId)
+  const filters = dashboardFiltersForDataset(activeDashboard?.filters ?? [], activeDataFrameId ?? '')
+  const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
 
   const ask = async (value = question) => {
     if (!activeDataFrameId || !activeConversationId || !value.trim() || loading || regeneratingIndex !== null) return
@@ -72,13 +80,14 @@ export function AskPanel() {
           question: previousQuestion,
           answer: previousAnswer,
         })),
+        { snapshotId: boundSnapshotId, filters },
       )
       addTurn({
         question: currentQuestion,
         answer: response.answer,
         evidence: response.evidence,
         generatedAt: response.generated_at,
-        context: { datasetId: activeDataFrameId, model: response.model },
+        context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters, model: response.model },
       })
       setQuestion('')
     } catch (err) {
@@ -93,20 +102,23 @@ export function AskPanel() {
     setRegeneratingIndex(index)
     try {
       const turn = turns[index]
+      const requestDatasetId = turn.context?.datasetId ?? activeDataFrameId
+      const context = { snapshotId: turn.context?.snapshotId, filters: turn.context?.filters ?? [] }
       const response = await api.nlAsk(
-        activeDataFrameId,
+        requestDatasetId,
         turn.question,
         turns.slice(0, index).map(({ question: previousQuestion, answer: previousAnswer }) => ({
           question: previousQuestion,
           answer: previousAnswer,
         })),
+        context,
       )
       replaceTurn(index, {
         question: turn.question,
         answer: response.answer,
         evidence: response.evidence,
         generatedAt: response.generated_at,
-        context: { datasetId: activeDataFrameId, model: response.model },
+        context: { datasetId: requestDatasetId, ...context, model: response.model },
       })
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')

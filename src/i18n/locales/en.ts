@@ -541,6 +541,9 @@ export default {
   'ai.applyFailed': 'Apply failed',
   'ai.appliedOps': 'Applied {{count}} operation(s)',
   'ai.send': 'Send',
+  'ai.snapshotBound': 'Snapshot {{id}} bound',
+  'ai.dashboardFiltersBound': '{{count}} Dashboard filter(s) bound',
+  'ai.clearSnapshotBinding': 'Clear snapshot binding',
   // Common
   'sample.welcome': 'Welcome to MetricStudio',
   'sample.description': 'Use the bundled sales data to explore data browsing, chart building, and the Dashboard workflow.',

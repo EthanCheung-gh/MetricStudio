@@ -1,6 +1,6 @@
 # MetricStudio
 
-基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.4.1**。
+基于 Plotly 的个人数据分析桌面工具，支持数据导入、清洗与变换、可视化图表构建、交互式 Dashboard、不可变数据快照与 AI 辅助分析。当前版本：**0.4.2**。
 
 ## 技术栈
 
@@ -73,10 +73,10 @@ python scripts/build-sidecar.py
 python scripts/smoke-sidecar.py src-tauri/binaries/python-sidecar-$(rustc -vV | sed -n 's/^host: //p')
 
 # 检查 Linux 安装包是否含主程序和 sidecar
-python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.4.1_amd64.deb
+python scripts/check-bundle.py src-tauri/target/release/bundle/deb/MetricStudio_0.4.2_amd64.deb
 ```
 
-推送 `v0.4.1` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
+推送 `v0.4.2` 等版本标签会触发 `.github/workflows/release.yml`，在 Linux、Windows、macOS runner 上构建并上传 Release 产物。
 
 ## 项目结构
 
@@ -150,6 +150,14 @@ metricstudio/
 
 ## 实现 Checklist（大方向）
 
+### 近期版本分配
+
+- [x] **v0.4.2 问答上下文复现**：绑定数据快照和当前 Dashboard 筛选条件，并在证据与导出中保留上下文。
+- [ ] **v0.4.3 问答转化为分析产物**：将回答一键添加为 Dashboard 文本卡片或报告段落。
+- [ ] **v0.5.0 数据隐私控制**：敏感列识别与脱敏、可控字段范围、本地 / 云端模型选择。
+- [ ] **v0.5.1 大数据筛选能力**：高基数字段服务端搜索、分页、缓存和性能基准。
+- [ ] **v0.6.0 数据质量中心**：缺失值、重复值、异常值与格式问题的诊断和修复预览。
+
 ### P0：核心分析闭环
 
 - [x] 多轮 AI 问答：上下文追问、答案证据引用、数据不足时明确提示
@@ -194,10 +202,10 @@ metricstudio/
 - [x] 快捷追问建议
 - [x] 会话按数据集隔离并恢复
 
-### 阶段三：可复现问答与导出（v0.4.0）
+### 阶段三：可复现问答与导出（v0.4.0 - v0.4.2）
 
 - [x] 将问答会话保存到 `.metricstudio` 项目
-- [ ] 问答绑定快照和筛选条件（已绑定数据集）
+- [x] 问答绑定数据快照和当前 Dashboard 筛选条件，并在证据与导出中保留上下文
 - [x] 保存模型信息、生成时间和问答元数据
 - [x] 回答证据生成稳定引用 ID，并记录数据集 / 字段 / 行来源
 - [x] 问答历史导出为 Markdown / HTML

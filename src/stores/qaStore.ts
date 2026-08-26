@@ -8,10 +8,17 @@ export interface QAEvidence {
   source?: { datasetId?: string; snapshotId?: string; field?: string; row?: string | number }
 }
 
+export interface QAFilter {
+  field: string
+  op: 'range' | 'in'
+  range?: [string | number | null, string | number | null]
+  values?: string[]
+}
+
 export interface QAContext {
   datasetId: string
   snapshotId?: string
-  filters?: Record<string, unknown>
+  filters?: QAFilter[]
   model?: string
 }
 
@@ -34,9 +41,11 @@ export interface QAConversation {
 
 interface QAState {
   datasetId: string | null
+  snapshotId: string | null
   activeConversationId: string | null
   conversations: QAConversation[]
   setDataset: (datasetId: string | null) => void
+  setSnapshotId: (snapshotId: string | null) => void
   createConversation: (name?: string) => string | null
   selectConversation: (id: string) => void
   renameConversation: (id: string, name: string) => void
@@ -55,22 +64,26 @@ function newConversation(datasetId: string, name = '新建问答'): QAConversati
 
 export const useQAStore = create<QAState>((set) => ({
   datasetId: null,
+  snapshotId: null,
   activeConversationId: null,
   conversations: [],
 
   setDataset: (datasetId) =>
     set((state) => {
       if (state.datasetId === datasetId) return state
-      if (!datasetId) return { datasetId: null, activeConversationId: null }
+      if (!datasetId) return { datasetId: null, snapshotId: null, activeConversationId: null }
       const existing = state.conversations.find((item) => item.datasetId === datasetId)
-      if (existing) return { datasetId, activeConversationId: existing.id }
+      if (existing) return { datasetId, snapshotId: null, activeConversationId: existing.id }
       const conversation = newConversation(datasetId)
       return {
         datasetId,
+        snapshotId: null,
         activeConversationId: conversation.id,
         conversations: [...state.conversations, conversation],
       }
     }),
+
+  setSnapshotId: (snapshotId) => set({ snapshotId }),
 
   createConversation: (name) => {
     let createdId: string | null = null
@@ -145,7 +158,7 @@ export const useQAStore = create<QAState>((set) => ({
       const activeId = conversations.some((item) => item.id === activeConversationId)
         ? activeConversationId
         : conversations.find((item) => item.datasetId === datasetId)?.id ?? null
-      return { conversations, datasetId, activeConversationId: activeId }
+      return { conversations, datasetId, snapshotId: null, activeConversationId: activeId }
     }),
 
   clear: () =>

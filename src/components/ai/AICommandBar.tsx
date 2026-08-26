@@ -4,8 +4,10 @@ import { Play, Send, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
+import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
+import { dashboardFiltersForDataset } from '@/utils/qaContext'
 
 interface NLOp {
   type: string
@@ -18,10 +20,14 @@ export function AICommandBar() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const refreshActiveDataFrame = useDataStore((s) => s.refreshActiveDataFrame)
   const datasetId = useQAStore((s) => s.datasetId)
+  const snapshotId = useQAStore((s) => s.snapshotId)
   const activeConversationId = useQAStore((s) => s.activeConversationId)
   const conversations = useQAStore((s) => s.conversations)
   const setDataset = useQAStore((s) => s.setDataset)
+  const setSnapshotId = useQAStore((s) => s.setSnapshotId)
   const addTurn = useQAStore((s) => s.addTurn)
+  const activeDashboardId = useDashboardStore((s) => s.activeDashboardId)
+  const dashboards = useDashboardStore((s) => s.dashboards)
   const addNotification = useUIStore((s) => s.addNotification)
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('query')
@@ -36,6 +42,9 @@ export function AICommandBar() {
   }, [activeDataFrameId, datasetId, setDataset])
 
   const turns = conversations.find((conversation) => conversation.id === activeConversationId)?.turns ?? []
+  const activeDashboard = dashboards.find((dashboard) => dashboard.id === activeDashboardId)
+  const filters = dashboardFiltersForDataset(activeDashboard?.filters ?? [], activeDataFrameId ?? '')
+  const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
 
   const submit = async () => {
     if (!activeDataFrameId || !input.trim()) return
@@ -52,13 +61,14 @@ export function AICommandBar() {
           activeDataFrameId,
           currentQuestion,
           turns.map(({ question, answer }) => ({ question, answer })),
+          { snapshotId: boundSnapshotId, filters },
         )
         addTurn({
           question: currentQuestion,
           answer: res.answer,
           evidence: res.evidence,
           generatedAt: res.generated_at,
-          context: { datasetId: activeDataFrameId, model: res.model },
+          context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters, model: res.model },
         })
         setAnswer(res.answer)
         setInput('')
@@ -132,6 +142,24 @@ export function AICommandBar() {
           <button className="text-muted hover:text-foreground" onClick={() => setAnswer(null)} aria-label={t('common.close')}>
             <X className="h-3.5 w-3.5" />
           </button>
+        </div>
+      )}
+
+      {mode === 'ask' && (boundSnapshotId || filters.length > 0) && (
+        <div className="mb-2 flex flex-wrap gap-1 text-[11px] text-muted">
+          {boundSnapshotId && (
+            <span className="flex items-center gap-1 rounded-full border border-border bg-surface-elevated px-2 py-1">
+              {t('ai.snapshotBound', { id: boundSnapshotId.slice(0, 8) })}
+              <button onClick={() => setSnapshotId(null)} aria-label={t('ai.clearSnapshotBinding')}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+          {filters.length > 0 && (
+            <span className="rounded-full border border-border bg-surface-elevated px-2 py-1">
+              {t('ai.dashboardFiltersBound', { count: filters.length })}
+            </span>
+          )}
         </div>
       )}
 

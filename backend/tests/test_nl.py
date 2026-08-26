@@ -120,6 +120,51 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
     assert any(item["kind"] == "statistics" for item in resp.json()["evidence"])
 
 
+def test_ask_endpoint_uses_bound_snapshot_and_filters(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,region,value\na,North,10\nb,South,20\nc,North,30\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+    snapshot = client.post(f"/api/v1/data/{dataset_id}/snapshots", json={"name": "Original"}).json()
+    client.post(f"/api/v1/transform/{dataset_id}/filter", json={"column": "value", "operator": "gt", "value": 20})
+    captured = {}
+
+    def fake_chat(messages):
+        captured["prompt"] = messages[0]["content"]
+        return "North values are 10 and 30."
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    response = client.post(
+        "/api/v1/nl/ask",
+        json={
+            "dataset_id": dataset_id,
+            "question": "North 的值有哪些？",
+            "snapshot_id": snapshot["id"],
+            "filters": [{"field": "region", "op": "in", "values": ["North"]}],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert "name=a" in captured["prompt"]
+    assert "name=c" in captured["prompt"]
+    assert "name=b" not in captured["prompt"]
+    assert all(item["source"].get("snapshotId") == snapshot["id"] for item in response.json()["evidence"])
+
+
+def test_ask_endpoint_rejects_snapshot_from_other_dataset(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    first_id = client.post("/api/v1/data/import", files={"file": ("first.csv", b"value\n1\n", "text/csv")}).json()[0]["id"]
+    second_id = client.post("/api/v1/data/import", files={"file": ("second.csv", b"value\n2\n", "text/csv")}).json()[0]["id"]
+    snapshot = client.post(f"/api/v1/data/{second_id}/snapshots", json={"name": "Other"}).json()
+    monkeypatch.setattr(nl_module, "chat", lambda messages: "unused")
+
+    response = client.post(
+        "/api/v1/nl/ask",
+        json={"dataset_id": first_id, "question": "test", "snapshot_id": snapshot["id"]},
+    )
+    assert response.status_code == 400
+
+
 def test_ask_endpoint_includes_previous_conversation(client, monkeypatch):
     import backend.api.nl as nl_module
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useQAStore } from './qaStore'
 
 beforeEach(() => {
-  useQAStore.setState({ datasetId: null, activeConversationId: null, conversations: [] })
+  useQAStore.setState({ datasetId: null, snapshotId: null, activeConversationId: null, conversations: [] })
 })
 
 describe('QA conversation store', () => {
@@ -39,5 +39,13 @@ describe('QA conversation store', () => {
     expect(useQAStore.getState().conversations.find((item) => item.id === activeId)?.turns).toEqual([
       { question: 'Q1', answer: 'A1 updated', evidence: [] },
     ])
+  })
+
+  it('clears the selected snapshot when switching datasets', () => {
+    useQAStore.getState().setDataset('dataset-1')
+    useQAStore.getState().setSnapshotId('snapshot-1')
+    useQAStore.getState().setDataset('dataset-2')
+
+    expect(useQAStore.getState().snapshotId).toBeNull()
   })
 })

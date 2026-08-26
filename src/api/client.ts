@@ -19,7 +19,7 @@ import type {
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
 import type { DashboardConfig } from '@/types/dashboard';
-import type { QAConversation } from '@/stores/qaStore';
+import type { QAConversation, QAFilter } from '@/stores/qaStore';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface DepsReport {
@@ -353,6 +353,7 @@ export const api = {
     datasetId: string,
     question: string,
     history: { question: string; answer: string }[] = [],
+    context?: { snapshotId?: string; filters?: QAFilter[] },
   ) =>
     fetchJson<{
       answer: string
@@ -361,7 +362,13 @@ export const api = {
       generated_at?: string
     }>('/api/v1/nl/ask', {
       method: 'POST',
-      body: JSON.stringify({ dataset_id: datasetId, question, history }),
+      body: JSON.stringify({
+        dataset_id: datasetId,
+        question,
+        history,
+        snapshot_id: context?.snapshotId,
+        filters: context?.filters ?? [],
+      }),
     }),
   explainChart: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {

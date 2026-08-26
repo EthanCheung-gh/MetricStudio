@@ -4,6 +4,7 @@ import { Button, Input, Textarea } from '@heroui/react'
 import { Camera, GitCompare, RotateCcw, Trash2 } from 'lucide-react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
+import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
 import type { DataDiffResult, DataPreview, DataSnapshot } from '@/types/data'
 
@@ -11,6 +12,8 @@ export function SnapshotView({ datasetId }: { datasetId: string | null }) {
   const { t } = useTranslation()
   const loadDataFrames = useDataStore((state) => state.loadDataFrames)
   const setActiveDataFrame = useDataStore((state) => state.setActiveDataFrame)
+  const snapshotId = useQAStore((state) => state.snapshotId)
+  const setSnapshotId = useQAStore((state) => state.setSnapshotId)
   const addNotification = useUIStore((state) => state.addNotification)
   const [snapshots, setSnapshots] = useState<DataSnapshot[]>([])
   const [name, setName] = useState('')
@@ -33,10 +36,11 @@ export function SnapshotView({ datasetId }: { datasetId: string | null }) {
   useEffect(() => {
     setSnapshots([])
     setSelectedId(null)
+    setSnapshotId(null)
     setPreview(null)
     setDiff(null)
     load()
-  }, [load])
+  }, [load, setSnapshotId])
 
   const create = async () => {
     if (!datasetId || !name.trim()) return
@@ -57,6 +61,7 @@ export function SnapshotView({ datasetId }: { datasetId: string | null }) {
   const select = async (snapshot: DataSnapshot) => {
     const currentRequest = ++requestId.current
     setSelectedId(snapshot.id)
+    setSnapshotId(snapshot.id)
     setDiff(null)
     try {
       const result = await api.previewSnapshot(snapshot.id)
@@ -102,6 +107,7 @@ export function SnapshotView({ datasetId }: { datasetId: string | null }) {
         setPreview(null)
         setDiff(null)
       }
+      if (snapshotId === snapshot.id) setSnapshotId(null)
       await load()
       addNotification('success', t('snapshot.deleted'))
     } catch (error) {

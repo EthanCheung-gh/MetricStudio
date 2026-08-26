@@ -541,6 +541,9 @@ export default {
   'ai.applyFailed': '应用失败',
   'ai.appliedOps': '已应用 {{count}} 个操作',
   'ai.send': '发送',
+  'ai.snapshotBound': '已绑定快照 {{id}}',
+  'ai.dashboardFiltersBound': '已绑定 {{count}} 个 Dashboard 筛选',
+  'ai.clearSnapshotBinding': '取消快照绑定',
   // 通用
   'sample.welcome': '欢迎使用 MetricStudio',
   'sample.description': '使用内置销售数据快速体验数据浏览、图表构建和 Dashboard 工作流。',

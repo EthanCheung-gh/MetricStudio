@@ -10,8 +10,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+from backend.api.chart import _filter_by_filters
 from backend.core.llm import chat, load_config, save_config
 from backend.core.session import session
+from backend.models.chart import FilterSpec
 
 router = APIRouter(prefix="/api/v1/nl", tags=["nl"])
 
@@ -50,6 +52,8 @@ class NLAskRequest(BaseModel):
     dataset_id: str
     question: str
     history: list[NLAskTurn] = Field(default_factory=list)
+    snapshot_id: str | None = None
+    filters: list[FilterSpec] = Field(default_factory=list)
 
 
 class LLMConfig(BaseModel):
@@ -137,12 +141,13 @@ async def nl_transform(request: NLTransformRequest):
     return {"operations": ops, "raw": raw}
 
 
-def _build_data_context(dataset: Any) -> str:
+def _build_data_context(dataset: Any, df: Any) -> str:
     from backend.core.insights import generate_insights
 
-    df = dataset.df
-    lines: list[str] = []
-    lines.append("Columns: " + ", ".join(f"{c.name}({c.dtype})" for c in dataset.meta.columns))
+    lines = ["Columns: " + ", ".join(f"{name}({dtype})" for name, dtype in df.dtypes.items())]
+    if df.empty:
+        lines.append("No rows matched the selected context.")
+        return "\n".join(lines)
     numeric = df.select_dtypes(include="number")
     if not numeric.empty:
         desc = numeric.describe().T
@@ -152,22 +157,26 @@ def _build_data_context(dataset: Any) -> str:
                 f"{col}: min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, median={df[col].median():.2f}"
             )
     lines.append("Sample rows:")
-    for _, r in df.head(5).iterrows():
-        lines.append("  " + ", ".join(f"{k}={v}" for k, v in r.items()))
+    for _, row in df.head(5).iterrows():
+        lines.append("  " + ", ".join(f"{key}={value}" for key, value in row.items()))
     insights = generate_insights(df)
     if insights:
-        lines.append("Insights: " + "; ".join(i["text"] for i in insights))
+        lines.append("Insights: " + "; ".join(item["text"] for item in insights))
     return "\n".join(lines)
 
 
-def _build_data_evidence(dataset: Any) -> list[dict[str, str]]:
+def _build_data_evidence(dataset: Any, df: Any, snapshot_id: str | None) -> list[dict[str, Any]]:
     """Build deterministic references shown with an answer."""
     from backend.core.insights import generate_insights
 
-    df = dataset.df
+    source: dict[str, str] = {"datasetId": dataset.id}
+    if snapshot_id:
+        source["snapshotId"] = snapshot_id
     evidence: list[dict[str, Any]] = [
-        {"id": "schema", "kind": "schema", "detail": ", ".join(f"{c.name} ({c.dtype})" for c in dataset.meta.columns), "source": {"datasetId": dataset.id}},
+        {"id": "schema", "kind": "schema", "detail": ", ".join(f"{name} ({dtype})" for name, dtype in df.dtypes.items()), "source": source},
     ]
+    if df.empty:
+        return evidence
     numeric = df.select_dtypes(include="number")
     if not numeric.empty:
         desc = numeric.describe().T
@@ -181,21 +190,41 @@ def _build_data_evidence(dataset: Any) -> list[dict[str, str]]:
                         f"{col}: min={row['min']}, max={row['max']}, "
                         f"mean={row['mean']:.2f}, median={df[col].median():.2f}"
                     ),
-                    "source": {"datasetId": dataset.id, "field": str(col)},
+                    "source": {**source, "field": str(col)},
                 }
             )
     for index, row in df.head(3).iterrows():
         values = ", ".join(f"{key}={value}" for key, value in row.items())
-        evidence.append({"id": f"sample:{index}", "kind": "sample", "detail": f"row {index}: {values}", "source": {"datasetId": dataset.id, "row": str(index)}})
+        evidence.append({"id": f"sample:{index}", "kind": "sample", "detail": f"row {index}: {values}", "source": {**source, "row": str(index)}})
     for insight_index, insight in enumerate(generate_insights(df)[:3]):
-        evidence.append({"id": f"insight:{insight_index}", "kind": "insight", "detail": str(insight["text"]), "source": {"datasetId": dataset.id}})
+        evidence.append({"id": f"insight:{insight_index}", "kind": "insight", "detail": str(insight["text"]), "source": source})
     return evidence[:12]
+
+
+def _ask_dataframe(dataset: Any, request: NLAskRequest) -> Any:
+    df = dataset.df
+    if request.snapshot_id:
+        try:
+            snapshot = session.get_snapshot(request.snapshot_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if snapshot["dataset_id"] != dataset.id:
+            raise HTTPException(status_code=400, detail="Snapshot does not belong to the requested dataset")
+        try:
+            df = session.snapshot_df(request.snapshot_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _filter_by_filters(df, request.filters) if request.filters else df
 
 
 @router.post("/ask")
 async def nl_ask(request: NLAskRequest):
-    dataset = session.get(request.dataset_id)
-    context = _build_data_context(dataset)
+    try:
+        dataset = session.get(request.dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    df = _ask_dataframe(dataset, request)
+    context = _build_data_context(dataset, df)
     history = request.history[-8:]
     conversation = "\n".join(
         f"User: {turn.question}\nAssistant: {turn.answer}" for turn in history
@@ -221,7 +250,7 @@ async def nl_ask(request: NLAskRequest):
     config = load_config()
     return {
         "answer": answer,
-        "evidence": _build_data_evidence(dataset),
+        "evidence": _build_data_evidence(dataset, df, request.snapshot_id),
         "model": config.get("model", "unknown"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -280,7 +309,7 @@ async def explain_chart(request: ExplainChartRequest):
         dataset = session.get(request.dataset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    context = _build_data_context(dataset)
+    context = _build_data_context(dataset, dataset.df)
     chart_desc = _describe_encoding(request.encoding)
     prompt = (
         "用户在一个数据分析工具中创建了一张图表。请基于下面的数据上下文与图表配置，"
