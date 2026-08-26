@@ -15,6 +15,7 @@ def test_quality_endpoint(dirty_dataset, client):
         "fillna-median-numeric",
         "clip-outliers",
         "coerce-numeric",
+        "trim-whitespace",
     }
 
 
@@ -147,3 +148,55 @@ def test_recipe_matches_rule_detection(dirty_dataset, client):
     # numeric-string coercion is idempotent; duplicates/missing/outliers should clear
     assert "duplicates" not in remaining
     assert "missing" not in remaining
+
+
+def test_quality_report_exposes_column_stats_and_samples(dirty_dataset, client):
+    dsid = dirty_dataset["id"]
+    report = client.get(f"/api/v1/data/{dsid}/quality").json()
+    stats = {entry["column"]: entry for entry in report["column_stats"]}
+    assert set(stats) == {"id", "value", "score", "category", "num_str", "note"}
+    assert stats["score"]["missing"] == 3
+    assert "mean" in stats["value"]
+    assert stats["note"]["top"]
+
+    duplicates_issue = next(issue for issue in report["issues"] if issue["id"] == "duplicates")
+    assert len(duplicates_issue["samples"]) == 2
+    first = duplicates_issue["samples"][0]["values"]
+    assert first["id"] == 1 and first["note"] == "hello"
+
+    outliers = next(issue for issue in report["issues"] if issue["id"] == "outliers")
+    assert outliers["samples"], "outlier rows should carry samples"
+
+
+def test_format_whitespace_detection_and_trim_recipe(client):
+    csv = 'name,city\n" alice","New York"\n"bob","San  Francisco"\ncarol," LA "\n'
+    dataset_id = client.post(
+        "/api/v1/data/import",
+        files={"file": ("ws.csv", csv.encode(), "text/csv")},
+    ).json()[0]["id"]
+
+    report = client.get(f"/api/v1/data/{dataset_id}/quality").json()
+    format_issues = [issue for issue in report["issues"] if issue["id"] == "format"]
+    assert {issue["columns"][0] for issue in format_issues} == {"name", "city"}
+    name_issue = next(issue for issue in format_issues if issue["columns"] == ["name"])
+    assert name_issue["samples"][0]["values"]["name"] == " alice"
+    assert any(recipe["id"] == "trim-whitespace" for recipe in report["recipes"])
+
+    applied = client.post(f"/api/v1/transform/{dataset_id}/recipe/trim-whitespace")
+    assert applied.status_code == 200, applied.text
+    after = client.get(f"/api/v1/data/{dataset_id}/quality").json()
+    assert not [issue for issue in after["issues"] if issue["id"] == "format"]
+    preview_rows = applied.json()["rows"]
+    names = [row[applied.json()["columns"].index("name")] for row in preview_rows]
+    assert "alice" in names and not any(value.startswith(" ") for value in names)
+
+
+def test_quality_fix_plan_includes_format_steps(client):
+    csv = 'name\n" a "\n" b  c"\n'
+    dataset_id = client.post(
+        "/api/v1/data/import",
+        files={"file": ("plan.csv", csv.encode(), "text/csv")},
+    ).json()[0]["id"]
+    plan = client.post(f"/api/v1/transform/{dataset_id}/quality-fix/preview", json={}).json()
+    str_clean = [op for op in plan["operations"] if op["type"] == "str_clean"]
+    assert {"column": "name", "action": "trim"} in [op["params"] for op in str_clean]

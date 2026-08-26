@@ -485,6 +485,13 @@ export default {
   'clean.fixPreviewFailed': 'Failed to generate fix preview',
   'clean.fixApplyFailed': 'Failed to apply quality fixes',
   'clean.fixesApplied': 'Quality fixes applied; global undo can restore the data',
+  'clean.statMissing': '{{count}} missing cells',
+  'clean.statDuplicates': '{{count}} duplicate rows',
+  'clean.statMissingShort': 'Missing',
+  'clean.statUnique': 'Unique',
+  'clean.statRange': 'Range / Top',
+  'clean.showSamples': 'View samples ({{count}})',
+  'clean.columnStats': 'Column stats',
   // Insights
   'insight.narrateFailed': 'Narrative failed; check LLM config',
   'insight.refresh': 'Refresh insights',

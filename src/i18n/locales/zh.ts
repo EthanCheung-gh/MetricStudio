@@ -485,6 +485,13 @@ export default {
   'clean.fixPreviewFailed': '生成修复预览失败',
   'clean.fixApplyFailed': '应用质量修复失败',
   'clean.fixesApplied': '数据质量修复已应用，可通过全局撤销恢复',
+  'clean.statMissing': '缺失单元格 {{count}}',
+  'clean.statDuplicates': '重复行 {{count}}',
+  'clean.statMissingShort': '缺失',
+  'clean.statUnique': '唯一值',
+  'clean.statRange': '范围 / 最常见',
+  'clean.showSamples': '查看样本（{{count}}）',
+  'clean.columnStats': '列统计摘要',
   // 洞察
   'insight.narrateFailed': '生成叙述失败，请检查 LLM 配置',
   'insight.refresh': '刷新洞察',

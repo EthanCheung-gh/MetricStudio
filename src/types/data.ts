@@ -134,6 +134,11 @@ export interface CleaningRecipe {
   dynamic: boolean;
 }
 
+export interface QualitySample {
+  row: string;
+  values: Record<string, string | number | boolean | null>;
+}
+
 export interface QualityIssue {
   id: string;
   severity: 'info' | 'warning';
@@ -141,6 +146,20 @@ export interface QualityIssue {
   detail: string;
   columns: string[];
   suggestions: string[];
+  samples?: QualitySample[];
+}
+
+export interface QualityColumnStat {
+  column: string;
+  dtype: string;
+  missing: number;
+  missing_ratio: number;
+  unique: number;
+  min?: number | null;
+  max?: number | null;
+  mean?: number | null;
+  outliers?: number;
+  top?: string | null;
 }
 
 export interface ReportTemplate {
@@ -162,6 +181,7 @@ export interface UserRecipe {
 export interface QualityReport {
   issues: QualityIssue[];
   summary: { missing_cells: number; duplicate_rows: number; columns: number; rows: number };
+  column_stats?: QualityColumnStat[];
   recipes: CleaningRecipe[];
 }
 

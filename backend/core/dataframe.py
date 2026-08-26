@@ -302,6 +302,8 @@ def apply_str_clean(df: pd.DataFrame, params: dict[str, Any]) -> pd.DataFrame:
     series = df[col].astype(str)
     if action == "trim":
         result = series.str.strip()
+        # Collapse internal runs of whitespace too; strip() only trims edges.
+        result = result.str.replace(r"\s{2,}", " ", regex=True)
     elif action == "lower":
         result = series.str.lower()
     elif action == "upper":

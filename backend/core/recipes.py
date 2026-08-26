@@ -42,6 +42,12 @@ RECIPE_META: list[dict[str, Any]] = [
         "description": "将看起来是数值的字符串列（>80% 可解析）转为 float。",
         "dynamic": True,
     },
+    {
+        "id": "trim-whitespace",
+        "name": "清理字符串空格",
+        "description": "去除文本列的首尾与连续空格。",
+        "dynamic": True,
+    },
 ]
 
 RECIPE_IDS = {r["id"] for r in RECIPE_META}
@@ -89,6 +95,20 @@ def build_steps(recipe_id: str, df: pd.DataFrame) -> list[dict[str, Any]]:
                 if numeric.notna().sum() >= 1 and numeric.notna().mean() >= 0.8:
                     steps.append({"type": "parse_numeric", "params": {"column": col}})
         return steps
+    if recipe_id == "trim-whitespace":
+        steps = []
+        for col in df.columns:
+            series = df[col]
+            if not (
+                pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series)
+            ) or isinstance(series.dtype, pd.CategoricalDtype):
+                continue
+            text = series.dropna().astype(str)
+            if text.empty:
+                continue
+            if (text != text.str.strip()).any() or text.str.contains(r"\s{2,}", na=False, regex=True).any():
+                steps.append({"type": "str_clean", "params": {"column": str(col), "action": "trim"}})
+        return steps
     return []
 
 
@@ -97,6 +117,7 @@ SAFE_QUALITY_RECIPES = {
     "missing": "fillna-median-numeric",
     "outliers": "clip-outliers",
     "type": "coerce-numeric",
+    "format": "trim-whitespace",
 }
 
 
@@ -134,10 +155,25 @@ def build_quality_fix_plan(
                 if parsed.notna().sum() >= 1 and parsed.notna().mean() >= 0.8:
                     count += int(df[col].notna().sum())
         affected["type"] = count
+    if "format" in selected:
+        count = 0
+        for col in df.columns:
+            series = df[col]
+            if not (
+                pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series)
+            ) or isinstance(series.dtype, pd.CategoricalDtype):
+                continue
+            text = series.dropna().astype(str)
+            if text.empty:
+                continue
+            dirty = series.notna() & series.astype(str).str.match(r"^\s|\s$")
+            dirty |= series.notna() & series.astype(str).str.contains(r"\s{2,}", na=False, regex=True)
+            count += int(dirty.sum())
+        affected["format"] = count
 
     scratch = Dataset(df.copy(), name="quality-preview")
     operations: list[dict[str, Any]] = []
-    for issue_id in ("duplicates", "missing", "outliers", "type"):
+    for issue_id in ("duplicates", "missing", "outliers", "type", "format"):
         if issue_id not in selected:
             continue
         steps = build_steps(SAFE_QUALITY_RECIPES[issue_id], scratch.df)

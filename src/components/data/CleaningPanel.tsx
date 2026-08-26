@@ -177,6 +177,13 @@ export function CleaningPanel() {
         </div>
       )}
 
+      {report && (report.summary.missing_cells > 0 || report.summary.duplicate_rows > 0) && (
+        <div className="flex gap-3 rounded border border-border/60 bg-surface-elevated/40 px-2 py-1 text-[10px] text-muted">
+          <span>{t('clean.statMissing', { count: report.summary.missing_cells })}</span>
+          <span>{t('clean.statDuplicates', { count: report.summary.duplicate_rows })}</span>
+        </div>
+      )}
+
       {report &&
         report.issues.map((issue) => (
           <div
@@ -215,8 +222,53 @@ export function CleaningPanel() {
                 })}
               </div>
             )}
+            {issue.samples && issue.samples.length > 0 && (
+              <details className="ml-5">
+                <summary className="cursor-pointer text-[10px] text-muted">{t('clean.showSamples', { count: issue.samples.length })}</summary>
+                <div className="mt-1 space-y-0.5 font-mono text-[10px] text-muted">
+                  {issue.samples.map((sample) => (
+                    <div key={sample.row} className="truncate" title={JSON.stringify(sample.values)}>
+                      #{sample.row}: {Object.entries(sample.values).slice(0, 4).map(([key, value]) => `${key}=${String(value)}`).join(', ')}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         ))}
+
+      {/* Column-level quality stats */}
+      {report && report.column_stats && report.column_stats.length > 0 && (
+        <details className="rounded border border-border/60 bg-surface-elevated/40 p-2">
+          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-muted">{t('clean.columnStats')}</summary>
+          <div className="mt-2 max-h-48 overflow-auto">
+            <table className="w-full text-[10px]">
+              <thead className="text-left text-muted">
+                <tr>
+                  <th className="py-1 pr-2">{t('table.columns')}</th>
+                  <th className="py-1 pr-2">{t('clean.statMissingShort')}</th>
+                  <th className="py-1 pr-2">{t('clean.statUnique')}</th>
+                  <th className="py-1">{t('clean.statRange')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.column_stats.map((stat) => (
+                  <tr key={stat.column} className="border-t border-border/50">
+                    <td className="max-w-[80px] truncate py-1 pr-2 font-medium" title={stat.column}>{stat.column}</td>
+                    <td className="py-1 pr-2">{stat.missing_ratio}%</td>
+                    <td className="py-1 pr-2">{stat.unique}</td>
+                    <td className="py-1">
+                      {stat.mean !== undefined && stat.mean !== null
+                        ? `${stat.min} – ${stat.max}`
+                        : stat.top ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       {/* User-defined recipes */}
       <div className="mt-1 flex flex-col gap-1 border-t border-border pt-2">

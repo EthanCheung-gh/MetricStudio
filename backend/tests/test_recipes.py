@@ -13,6 +13,7 @@ def test_list_recipes_has_all_presets():
         "fillna-median-numeric",
         "clip-outliers",
         "coerce-numeric",
+        "trim-whitespace",
     }
 
 
@@ -46,6 +47,18 @@ def test_clip_outliers_generates_bounds_from_iqr(dirty_df):
 def test_coerce_numeric_uses_parse_numeric_operator(dirty_df):
     steps = build_steps("coerce-numeric", dirty_df)
     assert steps == [{"type": "parse_numeric", "params": {"column": "num_str"}}]
+
+
+def test_trim_whitespace_targets_dirty_text_columns_only():
+    import pandas as pd
+
+    df = pd.DataFrame({"dirty": ["  a", "b  ", "c  d"], "clean_text": ["x", "y", "z"], "value": [1, 2, 3]})
+    steps = build_steps("trim-whitespace", df)
+    assert steps == [{"type": "str_clean", "params": {"column": "dirty", "action": "trim"}}]
+
+
+def test_trim_whitespace_noop_on_clean_frames(clean_df):
+    assert build_steps("trim-whitespace", clean_df) == []
 
 
 def test_unknown_recipe_raises(dirty_df):
