@@ -306,6 +306,31 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ disabled }),
     }),
+
+  // SQL workbench
+  sqlSchema: () =>
+    fetchJson<{ tables: { table: string; dataset: string; rows: number; columns: string[] }[] }>(
+      '/api/v1/sql/workbench/schema',
+    ),
+  runSqlQuery: (sqlText: string) =>
+    fetchJson<{
+      columns: string[];
+      rows: (string | number | boolean | null)[][];
+      rowCount: number;
+      truncated: boolean;
+      elapsedMs: number;
+      plan: string[];
+    }>('/api/v1/sql/workbench/query', { method: 'POST', body: JSON.stringify({ sql: sqlText }) }),
+  sqlHistory: () =>
+    fetchJson<{ history: { sql: string; elapsedMs: number; rowCount: number; at: string }[] }>(
+      '/api/v1/sql/workbench/history',
+    ),
+  clearSqlHistory: () => fetchJson<{ cleared: boolean }>('/api/v1/sql/workbench/history', { method: 'DELETE' }),
+  importSqlResult: (name?: string) =>
+    fetchJson<DataFrameMeta>('/api/v1/sql/workbench/import-result', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
   undo: (id: string, toIndex?: number) =>
     fetchJson<DataPreview>(`/api/v1/transform/${id}/undo`, {
       method: 'POST',

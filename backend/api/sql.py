@@ -1,4 +1,4 @@
-"""SQL import endpoints."""
+"""SQL import endpoints + interactive query workbench."""
 
 from __future__ import annotations
 
@@ -120,3 +120,80 @@ async def import_table(request: ImportRequest):
         return dataset.to_meta()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class QueryRequest(BaseModel):
+    sql: str
+
+
+class SnapshotRequest(BaseModel):
+    name: str | None = None
+
+
+@router.get("/workbench/schema")
+async def workbench_schema():
+    """Datasets (mirrored table names) available to the SQL workbench."""
+    from backend.core.query_engine import safe_table_name
+
+    return {
+        "tables": [
+            {"table": safe_table_name(ds.id, ds.name), "dataset": ds.name, "rows": ds.meta.rows,
+             "columns": [c["name"] for c in ds.to_meta().model_dump(by_alias=True)["columns"]]}
+            for ds in session.list_datasets()
+        ]
+    }
+
+
+@router.post("/workbench/query")
+async def workbench_query(request: QueryRequest):
+    """Execute a validated read-only SELECT against the session datasets mirror."""
+    from backend.core.query_engine import execute_query, query_history
+
+    try:
+        result = execute_query(session, request.sql)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=408, detail=str(exc)) from exc
+    query_history.add(request.sql.strip(), result)
+    _latest_result["columns"] = result["columns"]
+    _latest_result["rows"] = result["rows"]
+    return result
+
+
+@router.get("/workbench/history")
+async def workbench_history():
+    from backend.core.query_engine import query_history
+
+    return {"history": query_history.list()}
+
+
+@router.delete("/workbench/history")
+async def clear_workbench_history():
+    from backend.core.query_engine import query_history
+
+    query_history.clear()
+    return {"cleared": True}
+
+
+# Latest successful workbench result kept in-process for snapshotting.
+_latest_result: dict[str, list | None] = {"columns": None, "rows": None}
+
+
+@router.post("/workbench/import-result", response_model=None)
+async def import_workbench_result(request: SnapshotRequest):
+    """Import the latest workbench result as a new dataset."""
+    columns = _latest_result.get("columns")
+    rows = _latest_result.get("rows")
+    if not columns or rows is None:
+        raise HTTPException(status_code=409, detail="尚无可用的查询结果，请先执行一次查询")
+    df = pd.DataFrame(rows, columns=[str(c) for c in columns])
+    if df.empty:
+        raise HTTPException(status_code=400, detail="查询结果为空，无法保存为数据集")
+    actual_engine = session.engine.auto_engine(df)
+    dataset = Dataset(df, name=request.name or "SQL Result", engine=actual_engine)
+    session.datasets[dataset.id] = dataset
+    session._persist(dataset)
+    _latest_result["columns"] = None
+    _latest_result["rows"] = None
+    return dataset.to_meta()

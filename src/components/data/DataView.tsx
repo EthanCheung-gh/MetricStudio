@@ -11,9 +11,10 @@ import { SnapshotView } from './SnapshotView'
 import { CleaningPanel } from './CleaningPanel'
 import { InsightsPanel } from './InsightsPanel'
 import { StatsPanel } from './StatsPanel'
+import { SqlWorkbench } from './SqlWorkbench'
 import { useDataStore } from '@/stores/dataStore'
 
-type DataViewMode = 'table' | 'lineage' | 'snapshots'
+type DataViewMode = 'table' | 'lineage' | 'snapshots' | 'sql'
 type DataPanel = 'cleaning' | 'insights' | 'stats' | 'transform' | 'columns'
 
 export function DataView() {
@@ -30,7 +31,7 @@ export function DataView() {
     <div className="flex h-full min-h-0 flex-col gap-2 lg:flex-row">
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded border border-border bg-surface">
         <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
-          {(['table', 'lineage', 'snapshots'] as const).map((v) => (
+          {(['table', 'lineage', 'snapshots', 'sql'] as const).map((v) => (
             <button
               key={v}
               className={`rounded px-2.5 py-1 text-xs capitalize transition-colors ${
@@ -38,12 +39,15 @@ export function DataView() {
               }`}
               onClick={() => setView(v)}
             >
-              {v === 'lineage' ? t('common.lineage') : v === 'snapshots' ? t('snapshot.title') : t('common.table')}
+              {v === 'lineage' ? t('common.lineage') : v === 'snapshots' ? t('snapshot.title') : v === 'sql' ? t('sql.title') : t('common.table')}
             </button>
           ))}
         </div>
         <div className="min-h-0 flex-1">
-          {view === 'table' ? <DataTable /> : view === 'lineage' ? <LineageView datasetId={activeDataFrameId} /> : <SnapshotView datasetId={activeDataFrameId} />}
+          {view === 'table' && <DataTable />}
+          {view === 'lineage' && <LineageView datasetId={activeDataFrameId} />}
+          {view === 'snapshots' && <SnapshotView datasetId={activeDataFrameId} />}
+          {view === 'sql' && <SqlWorkbench />}
         </div>
       </div>
       <div className="flex h-full min-h-0 shrink-0 border border-border bg-surface">

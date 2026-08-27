@@ -46,7 +46,7 @@ async def save_project(payload: dict):
         with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
             manifest = {
                 "name": name,
-                "version": "0.8.2",
+                "version": "0.9.0",
                 "created_at": datetime.utcnow().isoformat(),
                 "saved_at": datetime.utcnow().isoformat(),
                 "engine": "pandas",
