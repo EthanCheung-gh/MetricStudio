@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import {
   BarChart3,
+  BookOpen,
   Database,
   FolderOpen,
   FileText,
@@ -91,6 +92,13 @@ export function getCommands(): Command[] {
       category: 'Actions',
       icon: <FileText size={14} />,
       run: () => ui.setReportDialogOpen(true),
+    },
+    {
+      id: 'generate-story',
+      title: i18n.t('cmd.generateStory'),
+      category: 'Actions',
+      icon: <BookOpen size={14} />,
+      run: () => ui.setStoryDialogOpen(true),
     },
     {
       id: 'insights',

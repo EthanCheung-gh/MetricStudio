@@ -61,6 +61,8 @@ interface UIState {
   setSaveProjectModalOpen: (open: boolean) => void;
   setLoadProjectModalOpen: (open: boolean) => void;
   setReportDialogOpen: (open: boolean) => void;
+  storyDialogOpen: boolean;
+  setStoryDialogOpen: (open: boolean) => void;
   setReportNotesDraft: (notes: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
@@ -85,6 +87,7 @@ export const useUIStore = create<UIState>()(
   saveProjectModalOpen: false,
   loadProjectModalOpen: false,
   reportDialogOpen: false,
+  storyDialogOpen: false,
   reportNotesDraft: '',
   settingsOpen: false,
   shortcutsOpen: false,
@@ -126,6 +129,7 @@ export const useUIStore = create<UIState>()(
   setSaveProjectModalOpen: (open) => set({ saveProjectModalOpen: open }),
   setLoadProjectModalOpen: (open) => set({ loadProjectModalOpen: open }),
   setReportDialogOpen: (open) => set({ reportDialogOpen: open }),
+  setStoryDialogOpen: (storyDialogOpen) => set({ storyDialogOpen }),
   setReportNotesDraft: (reportNotesDraft) => set({ reportNotesDraft }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),

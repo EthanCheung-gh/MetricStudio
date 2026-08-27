@@ -589,6 +589,21 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  generateStory: (payload: {
+    title?: string;
+    dataset_name?: string;
+    dataset_meta?: { rows?: number; cols?: number };
+    source_path?: string;
+    cleaning_steps?: string[];
+    charts: { name: string; figure: PlotlyFigure }[];
+    insights?: string[];
+    conclusions?: string;
+    locale?: 'zh' | 'en';
+  }) =>
+    fetchJson<{ html: string }>('/api/v1/report/story', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 // Re-export types used by client consumers

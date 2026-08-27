@@ -6,6 +6,7 @@ import { ImportModal } from '@/components/data/ImportModal'
 import { ChartConfigDialog } from '@/components/chart/ChartConfigDialog'
 import { CommandPalette } from '@/components/common/CommandPalette'
 import { ReportDialog } from '@/components/common/ReportDialog'
+import { StoryDialog } from '@/components/common/StoryDialog'
 import { AICommandBar } from '@/components/ai/AICommandBar'
 import { ShortcutsPanel } from '@/components/common/ShortcutsPanel'
 import { DiffModal } from '@/components/data/DiffModal'
@@ -24,6 +25,7 @@ export function AppShell() {
       <ChartConfigDialog />
       <CommandPalette />
       <ReportDialog />
+      <StoryDialog />
       <AICommandBar />
       <ShortcutsPanel />
       <SettingsDialog />
