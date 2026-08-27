@@ -1,4 +1,5 @@
 import { AggregateType, ChartConfig, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
+import { DashboardItem, DashboardItemKind, DashboardState } from './DashboardState';
 import { Theme } from '../common/Theme';
 
 export enum Language {
@@ -59,6 +60,7 @@ export class WorkspaceState {
   chartConfigOpen: boolean = false;
   theme: AppTheme = AppTheme.System;
   llmConfig: LlmConfig = new LlmConfig();
+  dashboard: DashboardState = new DashboardState();
 
   setSettingsOpen(open: boolean): void {
     this.settingsOpen = open;
@@ -230,11 +232,25 @@ export class WorkspaceState {
       };
       items.push(item);
     }
+    const dashItems: DashboardItemJson[] = [];
+    for (let i = 0; i < this.dashboard.items.length; i++) {
+      const it = this.dashboard.items[i];
+      const dj: DashboardItemJson = {
+        kind: it.kind,
+        chartId: it.chartId,
+        label: it.label,
+        column: it.column,
+        agg: it.agg,
+        text: it.text,
+      };
+      dashItems.push(dj);
+    }
     const payload: ProjectPayload = {
       charts: items,
       language: this.language,
       theme: this.theme,
       activeChartId: this.activeChartId,
+      dashboardItems: dashItems,
     };
     return JSON.stringify(payload);
   }
@@ -275,6 +291,19 @@ export class WorkspaceState {
       if (data.activeChartId !== undefined) {
         this.activeChartId = data.activeChartId;
       }
+      this.dashboard.items = [];
+      if (data.dashboardItems !== undefined) {
+        const restored: DashboardItem[] = [];
+        for (let i = 0; i < data.dashboardItems.length; i++) {
+          const d = data.dashboardItems[i];
+          const kind = (d.kind as number) === DashboardItemKind.Kpi ? DashboardItemKind.Kpi
+            : ((d.kind as number) === DashboardItemKind.Text ? DashboardItemKind.Text
+              : DashboardItemKind.Chart);
+          restored.push(new DashboardItem(kind, d.chartId, d.label, d.column, d.agg, d.text));
+        }
+        this.dashboard.items = restored;
+      }
+      this.dashboard.bump();
       if (data.language !== undefined) {
         this.language = data.language === 1 ? Language.En : Language.Zh;
       }
@@ -301,6 +330,7 @@ interface ProjectPayload {
   language?: number;
   theme?: number;
   activeChartId?: string;
+  dashboardItems?: DashboardItemJson[];
 }
 interface ProjectChart {
   id?: string;
@@ -324,4 +354,12 @@ interface EncYJson {
   aggregate: string | null;
   axis: string;
   normalize: string;
+}
+interface DashboardItemJson {
+  kind: number;
+  chartId: string;
+  label: string;
+  column: string;
+  agg: string;
+  text: string;
 }

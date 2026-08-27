@@ -6,7 +6,7 @@ MetricStudio 的个人数据分析工具的鸿蒙原生移植版（`harmonyos-po
 
 - **框架**: HarmonyOS Stage 模型 + ArkTS / ArkUI 声明式开发
 - **API Level**: 22 (HarmonyOS 6.0.2)
-- **图表**: @ohos/charts
+- **图表**: WebView + Plotly（`entry/src/main/resources/rawfile/plotly.html`，本地注入 figure JSON）
 - **测试**: @ohos/hypium
 
 ## 开发
@@ -30,12 +30,31 @@ devecocli run --skip-build
 
 ## 移植进度
 
-- [x] 工程骨架（Stage 模型，可编译）
-- [x] 应用外壳：标题栏 / 侧边栏 / 状态栏 / 主区域布局
-- [ ] 数据视图（表格 / CSV 导入 / 数据集列表）
-- [ ] 图表构建器
-- [ ] Dashboard
-- [ ] AI 面板（NL 查询 / 洞察）
+以 `main`（Web 版）功能为基线的对照状态（2026-08-27）：
+
+已完成：
+
+- [x] 工程骨架（Stage 模型，可编译，`devecocli build` 通过）
+- [x] 应用外壳：标题栏 / 活动栏 / 侧边栏 / 状态栏 / 主区域布局 / 可折叠与拖拽浮层
+- [x] 数据视图：表格（排序 / 分页）/ CSV 文件导入 / 粘贴文本导入 / 示例数据 / 数据集列表
+- [x] 变换引擎（本地）：筛选 / 排序 / 去缺失 / 重命名 / 计算列 / 透视 / 宽转长 / 删列 / 字符串清洗 / 分组聚合 / 抽样 / 撤销
+- [x] 图表构建器：33 种类型选择、multi-Y 字段列表、聚合、颜色 / Z 通道；Plotly 渲染核心类型（line / bar / area / step / scatter / dot / waterfall / pie / funnel / histogram / box / violin / ecdf / heatmap / contour / radar），其余类型显示引导提示
+- [x] 多 Y 轴：每系列 左/右 轴 + 归一化（无 / 按序列 / 全局）配置与渲染
+- [x] Dashboard 卡片化：图表 / KPI（可配置数值列与聚合）/ 文本卡片，全局筛选作用于图表与 KPI，随项目持久化
+- [x] AI 命令栏：LLM 优先（OpenAI 兼容接口）+ 本地确定性引擎兜底（中英文 NL→清洗操作、数据问答）
+- [x] QA 会话：按数据集分会话记录问答，Markdown 导出
+- [x] 洞察 / 列统计 / 快照（创建 / 恢复 / 摘要级 diff）
+- [x] 设置：主题（深 / 浅 / 跟随系统）/ 语言 / LLM 连接配置（持久化）
+- [x] 项目保存 / 加载（Preferences 内嵌 JSON：图表 + Dashboard + 偏好）
+
+未移植（按批次推进，见 `docs/superpowers/plans/2026-08-27-harmonyos-port-roadmap.md`）：
+
+- [ ] 图表注解与参考线（web: PropertyEditor 子集，Batch 3）
+- [ ] 命令面板与快捷键（web: CommandPalette + shortcuts，Batch 3）
+- [ ] 故事模式 / 报告导出（web: StoryDialog / ReportDialog，本地生成 HTML，Batch 4）
+- [ ] 数据血缘（web: LineageView，暂缓）
+- [ ] SQL 工作台 / SQLite 导入（需本地 SQL 引擎，暂缓）
+- [ ] Excel / Parquet 导入（需格式解析库，暂缓）
 
 ## 相关文档
 

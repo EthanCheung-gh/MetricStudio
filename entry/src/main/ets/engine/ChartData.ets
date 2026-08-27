@@ -7,11 +7,17 @@ export class SeriesData {
   x: string[];
   y: number[];
   name: string;
+  axis: string; // 'left' | 'right' (web multi-Y)
+  norm: string; // 'none' | 'perSeries' | 'global'
+  normalized: boolean;
 
-  constructor(x: string[], y: number[], name: string) {
+  constructor(x: string[], y: number[], name: string, axis: string = 'left', norm: string = 'none') {
     this.x = x;
     this.y = y;
     this.name = name;
+    this.axis = axis;
+    this.norm = norm;
+    this.normalized = false;
   }
 }
 
@@ -278,7 +284,8 @@ export function buildChartData(df: DataFrame, encoding: ChartEncoding): ChartDat
                 ys.push(aggregateNumbers(values, yAgg));
               });
             }
-            result.series.push(new SeriesData(xs, ys, yList.length > 1 ? yf.field + ' · ' + ck : ck));
+            const name = yList.length > 1 ? yf.field + ' · ' + ck : ck;
+            result.series.push(new SeriesData(xs, ys, name, yf.axis, yf.normalize));
           }
         }
       } else {
@@ -289,7 +296,7 @@ export function buildChartData(df: DataFrame, encoding: ChartEncoding): ChartDat
           xs.push(key);
           ys.push(aggregateNumbers(values, yAgg));
         });
-        result.series.push(new SeriesData(xs, ys, yList.length > 1 ? yf.field : yf.field));
+        result.series.push(new SeriesData(xs, ys, yf.field, yf.axis, yf.normalize));
       }
     }
   } else if (y !== null) {
@@ -303,8 +310,65 @@ export function buildChartData(df: DataFrame, encoding: ChartEncoding): ChartDat
           all.push(n);
         }
       }
-      result.series.push(new SeriesData([], [aggregateNumbers(all, agg)], y.field));
+      result.series.push(new SeriesData([], [aggregateNumbers(all, agg)], y.field, y.axis, y.normalize));
     }
   }
+  applyNormalization(result.series);
   return result;
+}
+
+/** Max of absolute values (0 for empty). */
+function maxAbs(values: number[]): number {
+  let m = 0;
+  for (let i = 0; i < values.length; i++) {
+    const a = values[i] < 0 ? -values[i] : values[i];
+    if (a > m) {
+      m = a;
+    }
+  }
+  return m;
+}
+
+/**
+ * Normalization (web: encodingToPlotly) — perSeries divides by the series' own
+ * max |v|; global divides by the max |v| across all global-mode series. Normalized
+ * series get a " (normalized)" name suffix and the normalized flag for axis titles.
+ */
+function applyNormalization(series: SeriesData[]): void {
+  let any = false;
+  for (let i = 0; i < series.length; i++) {
+    if (series[i].norm === 'perSeries' || series[i].norm === 'global') {
+      any = true;
+      break;
+    }
+  }
+  if (!any) {
+    return;
+  }
+  let globalMax = 0;
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i];
+    if (s.norm !== 'global') {
+      continue;
+    }
+    const m = maxAbs(s.y);
+    if (m > globalMax) {
+      globalMax = m;
+    }
+  }
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i];
+    if (s.norm !== 'perSeries' && s.norm !== 'global') {
+      continue;
+    }
+    const denom = s.norm === 'global' ? globalMax : maxAbs(s.y);
+    if (denom <= 0) {
+      continue;
+    }
+    for (let k = 0; k < s.y.length; k++) {
+      s.y[k] = s.y[k] / denom;
+    }
+    s.name = s.name + ' (normalized)';
+    s.normalized = true;
+  }
 }

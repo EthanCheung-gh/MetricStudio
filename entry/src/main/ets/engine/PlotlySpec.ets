@@ -16,6 +16,9 @@ export interface PlotlyFont {
 export interface PlotlyAxis {
   title?: string | null;
   gridcolor?: string;
+  side?: string;
+  overlaying?: string;
+  anchor?: string;
 }
 export interface PlotlyMarker {
   colors?: string[];
@@ -51,6 +54,7 @@ export interface PlotlyTrace {
   z?: (number | null)[][];
   name?: string;
   mode?: string;
+  yaxis?: string;
   marker?: PlotlyMarker;
   line?: PlotlyLine;
   orientation?: string;
@@ -77,6 +81,7 @@ export interface PlotlyLayout {
   font: PlotlyFont;
   xaxis: PlotlyAxis;
   yaxis: PlotlyAxis;
+  yaxis2?: PlotlyAxis;
   showlegend: boolean;
   barmode?: string;
   bargap?: number;
@@ -135,6 +140,32 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
   const type = encoding.chartType;
   let showLegend = false;
 
+  // Multi-Y axis titles + right axis (web: encodingToPlotly).
+  const yFields = encoding.yFields;
+  const leftLabels: string[] = [];
+  const rightLabels: string[] = [];
+  for (let i = 0; i < yFields.length; i++) {
+    if (yFields[i].axis === 'right') {
+      rightLabels.push(yFields[i].field);
+    } else {
+      leftLabels.push(yFields[i].field);
+    }
+  }
+  const hasRight = rightLabels.length > 0;
+  if (leftLabels.length > 0) {
+    layout.yaxis.title = leftLabels.join(' / ');
+  }
+  if (hasRight) {
+    const y2: PlotlyAxis = {
+      title: rightLabels.join(' / '),
+      side: 'right',
+      overlaying: 'y',
+      anchor: 'x',
+      gridcolor: '#333333',
+    };
+    layout.yaxis2 = y2;
+  }
+
   switch (type) {
     case 'line':
     case 'step':
@@ -143,7 +174,7 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
     case 'scatter':
       for (let i = 0; i < data.series.length; i++) {
         const s = data.series[i];
-        traces.push({
+        const tr: PlotlyTrace = {
           type: 'scatter',
           mode: type === 'dot' ? 'markers' : 'lines',
           x: s.x,
@@ -151,7 +182,11 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
           name: s.name,
           marker: markerFor(i),
           line: lineFor(i),
-        });
+        };
+        if (s.axis === 'right') {
+          tr.yaxis = 'y2';
+        }
+        traces.push(tr);
       }
       showLegend = data.series.length > 1;
       break;
@@ -159,27 +194,35 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
     case 'barh':
       for (let i = 0; i < data.series.length; i++) {
         const s = data.series[i];
-        traces.push({
+        const tr: PlotlyTrace = {
           type: 'bar',
           x: s.x,
           y: s.y,
           name: s.name,
           orientation: type === 'barh' ? 'h' : undefined,
           marker: markerFor(i),
-        });
+        };
+        if (s.axis === 'right') {
+          tr.yaxis = 'y2';
+        }
+        traces.push(tr);
       }
       showLegend = data.series.length > 1;
       break;
     case 'waterfall':
       for (let i = 0; i < data.series.length; i++) {
         const s = data.series[i];
-        traces.push({
+        const tr: PlotlyTrace = {
           type: 'waterfall',
           x: s.x,
           y: s.y,
           name: s.name,
           marker: markerFor(i),
-        });
+        };
+        if (s.axis === 'right') {
+          tr.yaxis = 'y2';
+        }
+        traces.push(tr);
       }
       break;
     case 'pie':
@@ -321,6 +364,29 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
   }
 
   layout.showlegend = showLegend;
+
+  // Axis titles carrying normalized series get the web "(normalized)" suffix.
+  let leftNorm = false;
+  let rightNorm = false;
+  for (let i = 0; i < data.series.length; i++) {
+    const s = data.series[i];
+    if (!s.normalized) {
+      continue;
+    }
+    if (s.axis === 'right') {
+      rightNorm = true;
+    } else {
+      leftNorm = true;
+    }
+  }
+  if (leftNorm && layout.yaxis.title !== null && layout.yaxis.title !== undefined) {
+    layout.yaxis.title = layout.yaxis.title + ' (normalized)';
+  }
+  if (rightNorm && layout.yaxis2 !== undefined && layout.yaxis2.title !== null
+    && layout.yaxis2.title !== undefined) {
+    layout.yaxis2.title = layout.yaxis2.title + ' (normalized)';
+  }
+
   const fig: PlotlyFigure = {
     data: traces,
     layout: layout,

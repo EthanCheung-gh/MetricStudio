@@ -18,6 +18,7 @@ export struct EncodingPanel {
   @State selZ: string = '';
   @State selColor: string = '';
   @State selAgg: string = 'sum';
+  @State yMetaTick: number = 0; // bump to refresh axis/normalize selects
 
   aboutToAppear(): void {
     this.syncFromChart();
@@ -137,6 +138,80 @@ export struct EncodingPanel {
     this.workspaceState.refreshChart();
   }
 
+  private setYRowAxis(index: number, label: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || index < 0 || index >= c.encoding.yFields.length) {
+      return;
+    }
+    c.encoding.yFields[index].axis =
+      label === t(this.workspaceState.language, 'chart.axis.right') ? 'right' : 'left';
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private setYRowNormalize(index: number, label: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || index < 0 || index >= c.encoding.yFields.length) {
+      return;
+    }
+    let norm = 'none';
+    if (label === t(this.workspaceState.language, 'chart.norm.perSeries')) {
+      norm = 'perSeries';
+    } else if (label === t(this.workspaceState.language, 'chart.norm.global')) {
+      norm = 'global';
+    }
+    c.encoding.yFields[index].normalize = norm;
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private axisOptions(): SelectOption[] {
+    const labels: string[] = [t(this.workspaceState.language, 'chart.axis.left'),
+      t(this.workspaceState.language, 'chart.axis.right')];
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < labels.length; i++) {
+      opts.push({ value: labels[i] });
+    }
+    return opts;
+  }
+
+  private normOptions(): SelectOption[] {
+    const labels: string[] = [t(this.workspaceState.language, 'chart.norm.none'),
+      t(this.workspaceState.language, 'chart.norm.perSeries'),
+      t(this.workspaceState.language, 'chart.norm.global')];
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < labels.length; i++) {
+      opts.push({ value: labels[i] });
+    }
+    return opts;
+  }
+
+  private axisLabel(axis: string): string {
+    return axis === 'right'
+      ? t(this.workspaceState.language, 'chart.axis.right')
+      : t(this.workspaceState.language, 'chart.axis.left');
+  }
+
+  private normLabel(norm: string): string {
+    if (norm === 'perSeries') {
+      return t(this.workspaceState.language, 'chart.norm.perSeries');
+    }
+    if (norm === 'global') {
+      return t(this.workspaceState.language, 'chart.norm.global');
+    }
+    return t(this.workspaceState.language, 'chart.norm.none');
+  }
+
+  /** Axis/normalize controls only apply to multi-Y chart types (web chartTypeSpecs). */
+  private isMultiY(): boolean {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return false;
+    }
+    const spec = chartTypeSpecs[c.encoding.chartType];
+    return spec !== undefined && spec.yFields === 'multi';
+  }
+
   private addY(): void {
     const c = this.workspaceState.activeChart();
     if (c === null || c.encoding.yFields.length === 0) {
@@ -190,7 +265,10 @@ export struct EncodingPanel {
         Column({ space: 6 }) {
           ForEach(this.yRows(), (row: YRowShim, idx: number) => {
             this.yRow(row, idx)
-          }, (row: YRowShim, idx: number) => idx.toString() + '_' + row.field + row.agg)
+          }, (row: YRowShim, idx: number) => {
+            return idx.toString() + '_' + row.field + row.agg + row.axis + row.normalize
+              + '_' + this.yMetaTick.toString();
+          })
         }
         .width('100%')
       }
@@ -242,6 +320,8 @@ export struct EncodingPanel {
       out.push({
         field: y.field,
         agg: y.aggregate !== null ? (y.aggregate as string) : 'sum',
+        axis: y.axis,
+        normalize: y.normalize,
       });
     }
     return out;
@@ -249,57 +329,99 @@ export struct EncodingPanel {
 
   @Builder
   yRow(row: YRowShim, idx: number) {
-    Row({ space: 6 }) {
-      // Field select
-      Select(this.columnOptions())
-        .selected(this.columnIndex(row.field))
-        .value(row.field)
-        .font({ size: 12 })
-        .height(28)
-        .layoutWeight(1)
-        .backgroundColor(Theme.colorSurface())
-        .borderRadius(6)
-        .onSelect((index: number, value: string) => {
-          const c = this.workspaceState.activeChart();
-          if (c !== null && idx < c.encoding.yFields.length) {
-            c.encoding.yFields[idx].field = value;
-            c.encoding.yFields[idx].type = this.fieldType(value);
-            this.syncFromChart();
-            this.workspaceState.refreshChart();
-          }
-        })
+    Column({ space: 6 }) {
+      Row({ space: 6 }) {
+        // Field select
+        Select(this.columnOptions())
+          .selected(this.columnIndex(row.field))
+          .value(row.field)
+          .font({ size: 12 })
+          .height(28)
+          .layoutWeight(1)
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .onSelect((index: number, value: string) => {
+            const c = this.workspaceState.activeChart();
+            if (c !== null && idx < c.encoding.yFields.length) {
+              c.encoding.yFields[idx].field = value;
+              c.encoding.yFields[idx].type = this.fieldType(value);
+              this.syncFromChart();
+              this.workspaceState.refreshChart();
+            }
+          })
 
-      // Aggregate select
-      Select(this.aggOptions())
-        .selected(this.aggIndex(row.agg))
-        .value(this.aggLabel(row.agg))
-        .font({ size: 12 })
-        .height(28)
-        .width(90)
-        .backgroundColor(Theme.colorSurface())
-        .borderRadius(6)
-        .onSelect((index: number, value: string) => {
-          const c = this.workspaceState.activeChart();
-          if (c !== null && idx < c.encoding.yFields.length) {
-            c.encoding.yFields[idx].aggregate = this.aggFromLabel(value);
-            this.syncFromChart();
-            this.workspaceState.refreshChart();
-          }
-        })
+        // Aggregate select
+        Select(this.aggOptions())
+          .selected(this.aggIndex(row.agg))
+          .value(this.aggLabel(row.agg))
+          .font({ size: 12 })
+          .height(28)
+          .width(90)
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .onSelect((index: number, value: string) => {
+            const c = this.workspaceState.activeChart();
+            if (c !== null && idx < c.encoding.yFields.length) {
+              c.encoding.yFields[idx].aggregate = this.aggFromLabel(value);
+              this.syncFromChart();
+              this.workspaceState.refreshChart();
+            }
+          })
 
-      SymbolGlyph($r('sys.symbol.xmark'))
-        .fontSize(14)
-        .fontColor([Theme.colorMuted()])
-        .padding(4)
-        .onClick(() => {
-          this.removeY(idx);
-        })
+        SymbolGlyph($r('sys.symbol.xmark'))
+          .fontSize(14)
+          .fontColor([Theme.colorMuted()])
+          .padding(4)
+          .onClick(() => {
+            this.removeY(idx);
+          })
+      }
+      .width('100%')
+
+      // Axis + normalize row (multi-Y chart types only, web EncodingPanel)
+      if (this.isMultiY()) {
+        Row({ space: 6 }) {
+          Select(this.axisOptions())
+            .selected(row.axis === 'right' ? 1 : 0)
+            .value(this.axisLabel(row.axis))
+            .font({ size: 12 })
+            .height(26)
+            .layoutWeight(1)
+            .backgroundColor(Theme.colorSurface())
+            .borderRadius(6)
+            .onSelect((index: number, value: string) => {
+              this.setYRowAxis(idx, value);
+            })
+          Select(this.normOptions())
+            .selected(this.normIndex(row.normalize))
+            .value(this.normLabel(row.normalize))
+            .font({ size: 12 })
+            .height(26)
+            .layoutWeight(1)
+            .backgroundColor(Theme.colorSurface())
+            .borderRadius(6)
+            .onSelect((index: number, value: string) => {
+              this.setYRowNormalize(idx, value);
+            })
+        }
+        .width('100%')
+      }
     }
     .width('100%')
     .padding(6)
     .borderRadius(6)
     .border({ width: 1, color: Theme.colorBorder() })
     .backgroundColor(Theme.colorSurface())
+  }
+
+  private normIndex(norm: string): number {
+    if (norm === 'perSeries') {
+      return 1;
+    }
+    if (norm === 'global') {
+      return 2;
+    }
+    return 0;
   }
 
   @Builder
@@ -393,4 +515,6 @@ export struct EncodingPanel {
 interface YRowShim {
   field: string;
   agg: string;
+  axis: string;
+  normalize: string;
 }

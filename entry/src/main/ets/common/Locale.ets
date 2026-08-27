@@ -124,6 +124,9 @@ const zh: Record<string, string> = {
   'transform.strClean': '字符串清洗',
   'transform.groupColumns': '分组列',
   'transform.valueColumn': '值列',
+  'transform.drop': '删除列',
+  'transform.groupby': '分组聚合',
+  'table.columns': '列',
   'transform.sample': '抽样',
   'transform.sampleN': '行数 N',
   'transform.nothingToUndo': '没有可撤销的操作',
@@ -151,6 +154,12 @@ const zh: Record<string, string> = {
   'chart.configTitle': '图表配置',
   'chart.done': '完成',
   'chart.renderError': '图表渲染失败',
+  'chart.normalize': '归一化',
+  'chart.axis.left': '左轴',
+  'chart.axis.right': '右轴',
+  'chart.norm.none': '无',
+  'chart.norm.perSeries': '按序列',
+  'chart.norm.global': '全局',
 
   // Dashboard
   'dashboard.title': 'Dashboard',
@@ -162,6 +171,19 @@ const zh: Record<string, string> = {
   'dashboard.kpiColumn': '数值列',
   'dashboard.kpiAggregate': '聚合',
   'dashboard.filters': '全局筛选',
+  'dashboard.selectChart': '选择要添加的图表',
+  'dashboard.noChartsToAdd': '暂无可添加的图表，请先新建图表',
+  'dashboard.textPlaceholder': '输入文本内容…',
+  'dashboard.textEmpty': '空文本卡，点击编辑',
+  'dashboard.addConfirm': '添加',
+
+  // AI command bar
+  'ai.exportMd': '导出 MD',
+  'ai.exported': '问答已导出',
+  'ai.exportFailed': '导出失败',
+  'ai.thinking': 'LLM 请求中…',
+  'ai.localEngine': '本地引擎',
+  'ai.llmFallback': 'LLM 不可用，已回退本地引擎',
 
   // Insights
   'insights.title': '洞察',
@@ -214,6 +236,7 @@ const zh: Record<string, string> = {
 
   // Common
   'common.delete': '删除',
+  'common.edit': '编辑',
   'common.confirm': '确认',
   'common.loading': '加载中…',
   'common.error': '错误',
@@ -333,6 +356,9 @@ const en: Record<string, string> = {
   'transform.strClean': 'String clean',
   'transform.groupColumns': 'Group columns',
   'transform.valueColumn': 'Value column',
+  'transform.drop': 'Drop column',
+  'transform.groupby': 'Group by',
+  'table.columns': 'Columns',
   'transform.sample': 'Sample',
   'transform.sampleN': 'Rows (N)',
   'transform.nothingToUndo': 'Nothing to undo',
@@ -359,6 +385,12 @@ const en: Record<string, string> = {
   'chart.configTitle': 'Chart config',
   'chart.done': 'Done',
   'chart.renderError': 'Chart render failed',
+  'chart.normalize': 'Normalize',
+  'chart.axis.left': 'Left axis',
+  'chart.axis.right': 'Right axis',
+  'chart.norm.none': 'None',
+  'chart.norm.perSeries': 'Per series',
+  'chart.norm.global': 'Global',
 
   'dashboard.title': 'Dashboard',
   'dashboard.addChart': 'Add chart',
@@ -369,6 +401,18 @@ const en: Record<string, string> = {
   'dashboard.kpiColumn': 'Value column',
   'dashboard.kpiAggregate': 'Aggregate',
   'dashboard.filters': 'Global filters',
+  'dashboard.selectChart': 'Select a chart to add',
+  'dashboard.noChartsToAdd': 'No charts to add — create one in the Chart tab',
+  'dashboard.textPlaceholder': 'Enter text…',
+  'dashboard.textEmpty': 'Empty text card, tap to edit',
+  'dashboard.addConfirm': 'Add',
+
+  'ai.exportMd': 'Export MD',
+  'ai.exported': 'Q&A exported',
+  'ai.exportFailed': 'Export failed',
+  'ai.thinking': 'Asking LLM…',
+  'ai.localEngine': 'Local engine',
+  'ai.llmFallback': 'LLM unavailable — fell back to local engine',
 
   'insights.title': 'Insights',
   'insights.missing': 'Missing values',
@@ -419,6 +463,7 @@ const en: Record<string, string> = {
   'chart.desc.timeline': 'Orders events or phases along time to show progress and milestones.',
 
   'common.delete': 'Delete',
+  'common.edit': 'Edit',
   'common.confirm': 'Confirm',
   'common.loading': 'Loading…',
   'common.error': 'Error',
