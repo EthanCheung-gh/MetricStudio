@@ -93,6 +93,13 @@ export default {
   'panel.columnStats': '列统计',
   'panel.nlQuery': '自然语言查询',
   'panel.askData': '数据问答',
+  'stats.title': '统计工具箱',
+  'stats.correlation': '相关性矩阵',
+  'stats.regression': '线性回归 y ~ x',
+  'stats.x': '自变量 X',
+  'stats.y': '因变量 Y',
+  'stats.run': '运行回归',
+  'stats.needsNumeric': '需要至少两个数值列才能进行统计分析。',
   'panel.myRecipes': '我的配方',
   'panel.suggestedCharts': '推荐图表',
   // AI 条

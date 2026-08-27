@@ -361,6 +361,26 @@ export const api = {
     fetchJson<{ ok: boolean; reason?: string; periods?: string[]; values?: number[]; pct_change?: (number | null)[] }>(
       `/api/v1/data/${id}/timeseries?column=${encodeURIComponent(column)}`
     ),
+  correlation: (id: string, minAbs = 0.5) =>
+    fetchJson<{
+      ok: boolean;
+      reason?: string;
+      columns?: string[];
+      matrix?: (number | null)[][];
+      pairs?: { x: string; y: string; r: number; text: string }[];
+    }>(`/api/v1/data/${id}/correlation?min_abs=${minAbs}`),
+  regression: (id: string, x: string, y: string) =>
+    fetchJson<{
+      ok: boolean;
+      detail?: string;
+      n?: number;
+      slope?: number;
+      intercept?: number;
+      r_squared?: number | null;
+      pearson_r?: number;
+      p_value?: number | null;
+      interpretation?: string;
+    }>(`/api/v1/data/${id}/regression?x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`),
   nlNarrate: (datasetId: string) =>
     fetchJson<{ narrative: string }>('/api/v1/nl/narrate', {
       method: 'POST',

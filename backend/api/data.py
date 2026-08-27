@@ -313,6 +313,32 @@ async def timeseries(dataset_id: str, column: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/{dataset_id}/correlation")
+async def correlation(dataset_id: str, min_abs: float = 0.5):
+    """Pearson correlation matrix + notable pairs for the numeric columns."""
+    from backend.core.stats import correlation_matrix
+
+    try:
+        dataset = session.get(dataset_id)
+        return correlation_matrix(dataset.df, min_abs=min_abs)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/regression")
+async def regression(dataset_id: str, x: str, y: str):
+    """OLS linear regression y ~ x with R², p-value and an interpretation."""
+    from backend.core.stats import linear_regression
+
+    try:
+        dataset = session.get(dataset_id)
+        return linear_regression(dataset.df, x, y)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{dataset_id}/chart-recommendations")
 async def chart_recommendations(dataset_id: str):
     """Rule-based chart type + encoding recommendations for a dataset."""

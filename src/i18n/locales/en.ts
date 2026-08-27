@@ -93,6 +93,13 @@ export default {
   'panel.columnStats': 'Column Stats',
   'panel.nlQuery': 'NL Query',
   'panel.askData': 'Ask Data',
+  'stats.title': 'Statistics toolbox',
+  'stats.correlation': 'Correlation matrix',
+  'stats.regression': 'Linear regression y ~ x',
+  'stats.x': 'Independent (X)',
+  'stats.y': 'Dependent (Y)',
+  'stats.run': 'Run regression',
+  'stats.needsNumeric': 'At least two numeric columns are required for statistical analysis.',
   'panel.myRecipes': 'My recipes',
   'panel.suggestedCharts': 'Suggested charts',
   // AI bar

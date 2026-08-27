@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@heroui/react'
-import { Columns3, Lightbulb, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { Columns3, Lightbulb, Sigma, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { CollapsedIconBarItem } from '@/components/layout/CollapsedIconBar'
 import { DataTable } from './DataTable'
 import { ColumnStats } from './ColumnStats'
@@ -10,10 +10,11 @@ import { LineageView } from './LineageView'
 import { SnapshotView } from './SnapshotView'
 import { CleaningPanel } from './CleaningPanel'
 import { InsightsPanel } from './InsightsPanel'
+import { StatsPanel } from './StatsPanel'
 import { useDataStore } from '@/stores/dataStore'
 
 type DataViewMode = 'table' | 'lineage' | 'snapshots'
-type DataPanel = 'cleaning' | 'insights' | 'transform' | 'columns'
+type DataPanel = 'cleaning' | 'insights' | 'stats' | 'transform' | 'columns'
 
 export function DataView() {
   const { t } = useTranslation()
@@ -62,6 +63,13 @@ export function DataView() {
             onClick={() => togglePanel('insights')}
           />
           <CollapsedIconBarItem
+            icon={Sigma}
+            label={t('stats.title')}
+            tooltip={t('stats.title')}
+            active={openPanel === 'stats'}
+            onClick={() => togglePanel('stats')}
+          />
+          <CollapsedIconBarItem
             icon={SlidersHorizontal}
             label={t('transform.title')}
             tooltip={t('transform.title')}
@@ -84,9 +92,11 @@ export function DataView() {
                   ? t('panel.cleaning')
                   : openPanel === 'insights'
                     ? t('panel.insights')
-                    : openPanel === 'transform'
-                      ? t('transform.title')
-                      : t('table.columns')}
+                    : openPanel === 'stats'
+                      ? t('stats.title')
+                      : openPanel === 'transform'
+                        ? t('transform.title')
+                        : t('table.columns')}
               </span>
               <Button isIconOnly size="sm" variant="light" onPress={() => setOpenPanel(null)} aria-label={t('common.close')}>
                 <X className="h-3.5 w-3.5" />
@@ -95,6 +105,7 @@ export function DataView() {
             <div className="min-h-0 flex-1 overflow-auto p-2">
               {openPanel === 'cleaning' && <CleaningPanel />}
               {openPanel === 'insights' && <InsightsPanel />}
+              {openPanel === 'stats' && <StatsPanel />}
               {openPanel === 'transform' && <TransformPanel />}
               {openPanel === 'columns' && <ColumnStats />}
             </div>
