@@ -1,5 +1,5 @@
 import { DataFrame } from '../model/DataFrame';
-import { ChartEncoding, defaultColors } from '../model/ChartConfig';
+import { ChartEncoding, ChartLayout, defaultColors } from '../model/ChartConfig';
 import { buildChartData } from './ChartData';
 
 /** Explicit interfaces for the Plotly JSON payload (arkts-no-untyped-obj-literals). */
@@ -72,6 +72,22 @@ export interface PlotlyTrace {
   fill?: string;
 }
 
+export interface PlotlyShapeLine {
+  color: string;
+  width: number;
+  dash: string;
+}
+export interface PlotlyShape {
+  type: string;
+  xref: string;
+  yref: string;
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  line: PlotlyShapeLine;
+}
+
 export interface PlotlyLayout {
   autosize: boolean;
   title: string;
@@ -86,6 +102,7 @@ export interface PlotlyLayout {
   barmode?: string;
   bargap?: number;
   annotations?: PlotlyAnnotation[];
+  shapes?: PlotlyShape[];
 }
 
 export interface PlotlyConfig {
@@ -133,7 +150,8 @@ function lineFor(i: number): PlotlyLine {
  * + plotlyLayout). Implements the core trace types; unsupported types degrade
  * to an informative note instead of an empty canvas.
  */
-export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: string): string {
+export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: string,
+  userLayout: ChartLayout | null = null): string {
   const layout = baseLayout(title);
   const data = buildChartData(df, encoding);
   const traces: PlotlyTrace[] = [];
@@ -364,6 +382,51 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
   }
 
   layout.showlegend = showLegend;
+
+  // User annotations + reference lines (web PropertyEditor / applyPlotlyUserStyle).
+  if (userLayout !== null) {
+    const userAnns: PlotlyAnnotation[] = [];
+    for (let i = 0; i < userLayout.annotations.length; i++) {
+      const ann: PlotlyAnnotation = {
+        text: userLayout.annotations[i].text,
+        xref: 'paper',
+        yref: 'paper',
+        x: 0.5,
+        y: 1.02,
+        showarrow: false,
+        font: { color: '#f5f5f5', size: 12 },
+      };
+      userAnns.push(ann);
+    }
+    if (userAnns.length > 0) {
+      if (layout.annotations === undefined || layout.annotations === null) {
+        layout.annotations = userAnns;
+      } else {
+        layout.annotations = layout.annotations.concat(userAnns);
+      }
+    }
+    const shapes: PlotlyShape[] = [];
+    for (let i = 0; i < userLayout.shapes.length; i++) {
+      const s = userLayout.shapes[i];
+      const shapeLine: PlotlyShapeLine = { color: s.color, width: 2, dash: 'dash' };
+      if (s.kind === 'vline') {
+        const sh: PlotlyShape = {
+          type: 'line', xref: 'x', yref: 'paper',
+          x0: s.value, x1: s.value, y0: 0, y1: 1, line: shapeLine
+        };
+        shapes.push(sh);
+      } else {
+        const sh: PlotlyShape = {
+          type: 'line', xref: 'paper', yref: 'y',
+          x0: 0, x1: 1, y0: s.value, y1: s.value, line: shapeLine
+        };
+        shapes.push(sh);
+      }
+    }
+    if (shapes.length > 0) {
+      layout.shapes = shapes;
+    }
+  }
 
   // Axis titles carrying normalized series get the web "(normalized)" suffix.
   let leftNorm = false;

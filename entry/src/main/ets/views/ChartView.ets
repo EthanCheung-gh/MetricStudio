@@ -55,7 +55,7 @@ export struct ChartView {
       return '';
     }
     try {
-      return buildFigureJson(df, chart.encoding, chart.title);
+      return buildFigureJson(df, chart.encoding, chart.title, chart.layout);
     } catch (e) {
       return '';
     }

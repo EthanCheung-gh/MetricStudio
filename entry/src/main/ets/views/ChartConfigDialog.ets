@@ -4,6 +4,7 @@ import { WorkspaceState } from '../model/WorkspaceState';
 import { chartTypeSpecs } from '../model/ChartConfig';
 import { ChartTypeSelector } from './ChartTypeSelector';
 import { EncodingPanel } from './EncodingPanel';
+import { AnnotationPanel } from './AnnotationPanel';
 
 const PANEL_W = 680;
 const PANEL_H = 560;
@@ -162,8 +163,10 @@ export struct ChartConfigDialog {
             .alignItems(HorizontalAlign.Start)
 
             Scroll() {
-              Column() {
+              Column({ space: 12 }) {
                 EncodingPanel()
+                  .width('100%')
+                AnnotationPanel()
                   .width('100%')
               }
               .width('100%')

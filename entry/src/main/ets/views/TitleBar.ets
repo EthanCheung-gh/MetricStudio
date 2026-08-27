@@ -62,6 +62,14 @@ export struct TitleBar {
             this.workspaceState.openLeftSection(PanelSection.None);
           }
         })
+        // Command palette entry (also Ctrl+K)
+        IconButton({
+          icon: $r('sys.symbol.wand_and_stars'),
+          iconSize: 16,
+          action: () => {
+            this.workspaceState.setPaletteOpen(true);
+          }
+        })
         IconButton({
           icon: $r('sys.symbol.line_3_horizontal'),
           iconSize: 16,

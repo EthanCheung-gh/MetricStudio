@@ -91,12 +91,55 @@ export class ChartEncoding {
   }
 }
 
+/** User text annotation placed at paper coords (web PropertyEditor addTextAnnotation). */
+@Observed
+export class ChartAnnotation {
+  text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
+/** User reference line (web PropertyEditor addShape: 'hline' | 'vline'). */
+@Observed
+export class ChartShape {
+  kind: string; // 'hline' | 'vline'
+  value: number;
+  color: string;
+
+  constructor(kind: string, value: number, color: string) {
+    this.kind = kind;
+    this.value = value;
+    this.color = color;
+  }
+}
+
+/** Per-chart user layout overlay (annotations + reference lines). */
+export class ChartLayout {
+  annotations: ChartAnnotation[] = [];
+  shapes: ChartShape[] = [];
+
+  clone(): ChartLayout {
+    const out = new ChartLayout();
+    for (let i = 0; i < this.annotations.length; i++) {
+      out.annotations.push(new ChartAnnotation(this.annotations[i].text));
+    }
+    for (let i = 0; i < this.shapes.length; i++) {
+      const s = this.shapes[i];
+      out.shapes.push(new ChartShape(s.kind, s.value, s.color));
+    }
+    return out;
+  }
+}
+
 @Observed
 export class ChartConfig {
   id: string;
   name: string;
   datasetId: string;
   encoding: ChartEncoding;
+  layout: ChartLayout = new ChartLayout();
   title: string;
 
   constructor(id: string, name: string, datasetId: string) {

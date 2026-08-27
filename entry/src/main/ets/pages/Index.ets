@@ -1,5 +1,7 @@
+import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { Settings } from '../common/Settings';
+import { t } from '../common/Locale';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
 import { DataState } from '../model/DataState';
 import { QaState } from '../model/QaState';
@@ -12,6 +14,7 @@ import { StatusBar } from '../views/StatusBar';
 import { SettingsDialog } from '../views/SettingsDialog';
 import { AICommandBar } from '../views/AICommandBar';
 import { ChartConfigDialog } from '../views/ChartConfigDialog';
+import { CommandPalette } from '../views/CommandPalette';
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
@@ -30,6 +33,24 @@ struct Index {
       this.workspaceState.language = lang;
     });
     Settings.applyTheme();
+  }
+
+  /** Global shortcut: Ctrl+K (web commandPalette). */
+  private togglePalette(): void {
+    this.workspaceState.setPaletteOpen(!this.workspaceState.paletteOpen);
+  }
+
+  /** Global shortcut: Ctrl+Z (web globalUndo). */
+  private undoLast(): void {
+    if (!this.dataState.undo()) {
+      promptAction.showToast({ message: t(this.workspaceState.language, 'transform.nothingToUndo') });
+    }
+  }
+
+  /** Global shortcut: Ctrl+S (web saveProject). */
+  private saveProjectNow(): void {
+    Settings.saveProject(this.workspaceState.exportJson());
+    promptAction.showToast({ message: 'Project saved' });
   }
 
   build() {
@@ -80,6 +101,36 @@ struct Index {
       if (this.workspaceState.chartConfigOpen) {
         ChartConfigDialog()
       }
+
+      if (this.workspaceState.paletteOpen) {
+        CommandPalette()
+      }
+
+      // Keyboard shortcut sinks (web App.tsx global shortcuts): Ctrl+K/Z/S.
+      Column()
+        .width(1)
+        .height(1)
+        .opacity(0)
+        .hitTestBehavior(HitTestMode.None)
+        .keyboardShortcut('K', [ModifierKey.CTRL], () => {
+          this.togglePalette();
+        })
+      Column()
+        .width(1)
+        .height(1)
+        .opacity(0)
+        .hitTestBehavior(HitTestMode.None)
+        .keyboardShortcut('Z', [ModifierKey.CTRL], () => {
+          this.undoLast();
+        })
+      Column()
+        .width(1)
+        .height(1)
+        .opacity(0)
+        .hitTestBehavior(HitTestMode.None)
+        .keyboardShortcut('S', [ModifierKey.CTRL], () => {
+          this.saveProjectNow();
+        })
     }
     .width('100%')
     .height('100%')

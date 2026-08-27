@@ -185,6 +185,28 @@ const zh: Record<string, string> = {
   'ai.localEngine': '本地引擎',
   'ai.llmFallback': 'LLM 不可用，已回退本地引擎',
 
+  // Command palette
+  'palette.placeholder': '搜索命令…',
+  'palette.empty': '没有匹配的命令',
+  'palette.groupNav': '导航',
+  'palette.groupAction': '操作',
+  'palette.groupSettings': '设置',
+  'palette.toggleLeft': '展开/收起左面板',
+  'palette.toggleRight': '展开/收起右面板',
+  'palette.toggleLanguage': '切换语言',
+  'palette.openSettings': '打开设置',
+  'theme.dark': '深色',
+  'theme.light': '浅色',
+  'theme.system': '跟随系统',
+
+  // Chart annotations & reference lines
+  'anno.title': '注解与参考线',
+  'anno.addText': '文本注解',
+  'anno.addHLine': '水平参考线',
+  'anno.addVLine': '垂直参考线',
+  'anno.lineValue': '参考值',
+  'anno.hint': '暂无注解或参考线，添加后显示在图表上',
+
   // Insights
   'insights.title': '洞察',
   'insights.missing': '缺失值',
@@ -413,6 +435,26 @@ const en: Record<string, string> = {
   'ai.thinking': 'Asking LLM…',
   'ai.localEngine': 'Local engine',
   'ai.llmFallback': 'LLM unavailable — fell back to local engine',
+
+  'palette.placeholder': 'Search commands…',
+  'palette.empty': 'No matching commands',
+  'palette.groupNav': 'Navigation',
+  'palette.groupAction': 'Actions',
+  'palette.groupSettings': 'Settings',
+  'palette.toggleLeft': 'Toggle left panel',
+  'palette.toggleRight': 'Toggle right panel',
+  'palette.toggleLanguage': 'Toggle language',
+  'palette.openSettings': 'Open settings',
+  'theme.dark': 'Dark',
+  'theme.light': 'Light',
+  'theme.system': 'System',
+
+  'anno.title': 'Annotations & reference lines',
+  'anno.addText': 'Text',
+  'anno.addHLine': 'H-line',
+  'anno.addVLine': 'V-line',
+  'anno.lineValue': 'Value',
+  'anno.hint': 'No annotations or reference lines yet',
 
   'insights.title': 'Insights',
   'insights.missing': 'Missing values',

@@ -54,9 +54,11 @@
 
 ### Batch 3：图表注解 + 命令面板 + 快捷键
 
-- [ ] ChartConfig 增 layout（annotations/shapes），PlotlySpec 注入；配置入口放 ChartConfigDialog
-- [ ] 命令面板（浮层 + 命令注册表：导航/主题/新建图表/撤销等，无后端命令）
-- [ ] 快捷键子集（onKeyPreIme / 按键事件：Ctrl+K 面板、Ctrl+Z 撤销）
+- [x] ChartConfig 增 `ChartLayout`（annotations/shapes，含 clone），PlotlySpec 注入 figure； AnnotationPanel 提供文本注解、水平/垂直参考线（值可编辑、六色色板、删除），挂载于 ChartConfigDialog
+- [x] 项目 JSON 携带 chart.layout（annotations + shapes）
+- [x] 命令面板 CommandPalette（搜索过滤 + 导航/操作/设置 13 个本地命令：tab 切换、新建图表、撤销、面板折叠、主题、语言、设置、保存项目）
+- [x] 快捷键：ArkUI `keyboardShortcut` 实现全局 Ctrl+K（命令面板）/ Ctrl+Z（撤销）/ Ctrl+S（保存项目）；TitleBar 增加面板入口按钮
+- [x] 备注：SDK 的 `window.on('keyEvent')` 不存在、`KeyEvent` 无 `pressedKeys`（有 `ctrlKey`）——按编译器与 SDK d.ts 校准后改用 keyboardShortcut 方案
 
 ### Batch 4：故事 / 报告本地导出
 

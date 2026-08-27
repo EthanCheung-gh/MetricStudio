@@ -1,4 +1,4 @@
-import { AggregateType, ChartConfig, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
+import { AggregateType, ChartAnnotation, ChartConfig, ChartLayout, ChartShape, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
 import { DashboardItem, DashboardItemKind, DashboardState } from './DashboardState';
 import { Theme } from '../common/Theme';
 
@@ -58,6 +58,7 @@ export class WorkspaceState {
   chartTick: number = 0;
   settingsOpen: boolean = false;
   chartConfigOpen: boolean = false;
+  paletteOpen: boolean = false;
   theme: AppTheme = AppTheme.System;
   llmConfig: LlmConfig = new LlmConfig();
   dashboard: DashboardState = new DashboardState();
@@ -68,6 +69,10 @@ export class WorkspaceState {
 
   setChartConfigOpen(open: boolean): void {
     this.chartConfigOpen = open;
+  }
+
+  setPaletteOpen(open: boolean): void {
+    this.paletteOpen = open;
   }
 
   setLanguage(lang: Language): void {
@@ -172,6 +177,7 @@ export class WorkspaceState {
     }
     const chart = new ChartConfig('chart_' + Date.now().toString(), src.name + ' copy', src.datasetId);
     chart.encoding = src.encoding.clone();
+    chart.layout = src.layout.clone();
     chart.title = chart.name;
     this.charts.push(chart);
     this.activeChartId = chart.id;
@@ -219,6 +225,18 @@ export class WorkspaceState {
       const zj: EncChannelJson | null = enc.z !== null
         ? { field: enc.z.field, type: enc.z.type, aggregate: enc.z.aggregate }
         : null;
+      const lay = c.layout;
+      const anns: string[] = [];
+      for (let k = 0; k < lay.annotations.length; k++) {
+        anns.push(lay.annotations[k].text);
+      }
+      const shps: ProjectShapeJson[] = [];
+      for (let k = 0; k < lay.shapes.length; k++) {
+        const s = lay.shapes[k];
+        shps.push({ kind: s.kind, value: s.value, color: s.color });
+      }
+      const layoutJson: ProjectLayoutJson | null =
+        anns.length > 0 || shps.length > 0 ? { annotations: anns, shapes: shps } : null;
       const item: ProjectChart = {
         id: c.id,
         name: c.name,
@@ -229,6 +247,7 @@ export class WorkspaceState {
         yFields: yf,
         color: cj,
         z: zj,
+        layout: layoutJson,
       };
       items.push(item);
     }
@@ -283,6 +302,17 @@ export class WorkspaceState {
           }
           if (c.z !== null && c.z !== undefined) {
             chart.encoding.z = new EncodingChannel(c.z.field, c.z.type as FieldType, c.z.aggregate as AggregateType);
+          }
+          if (c.layout !== null && c.layout !== undefined) {
+            const lay = new ChartLayout();
+            for (let k = 0; k < c.layout.annotations.length; k++) {
+              lay.annotations.push(new ChartAnnotation(c.layout.annotations[k]));
+            }
+            for (let k = 0; k < c.layout.shapes.length; k++) {
+              const s = c.layout.shapes[k];
+              lay.shapes.push(new ChartShape(s.kind, s.value, s.color));
+            }
+            chart.layout = lay;
           }
           list.push(chart);
         }
@@ -342,6 +372,16 @@ interface ProjectChart {
   yFields?: EncYJson[];
   color: EncChannelJson | null;
   z: EncChannelJson | null;
+  layout?: ProjectLayoutJson | null;
+}
+interface ProjectLayoutJson {
+  annotations: string[];
+  shapes: ProjectShapeJson[];
+}
+interface ProjectShapeJson {
+  kind: string;
+  value: number;
+  color: string;
 }
 interface EncChannelJson {
   field: string;
