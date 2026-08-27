@@ -15,6 +15,7 @@ import { SettingsDialog } from '../views/SettingsDialog';
 import { AICommandBar } from '../views/AICommandBar';
 import { ChartConfigDialog } from '../views/ChartConfigDialog';
 import { CommandPalette } from '../views/CommandPalette';
+import { ReportDialog } from '../views/ReportDialog';
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
@@ -104,6 +105,10 @@ struct Index {
 
       if (this.workspaceState.paletteOpen) {
         CommandPalette()
+      }
+
+      if (this.workspaceState.reportOpen) {
+        ReportDialog()
       }
 
       // Keyboard shortcut sinks (web App.tsx global shortcuts): Ctrl+K/Z/S.

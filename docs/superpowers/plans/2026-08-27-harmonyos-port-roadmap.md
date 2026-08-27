@@ -62,7 +62,10 @@
 
 ### Batch 4：故事 / 报告本地导出
 
-- [ ] 本地 HTML 模板（数据源信息 + 清洗步骤 + 洞察 + 选中图表的 Plotly figure 离线渲染）+ fileIo 保存
+- [x] `engine/ReportBuilder.ets`（新）：本地 HTML 生成（web backend report.py/story.py 的离线版）——数据源信息 + 清洗步骤（transformHistory）+ 洞察（computeInsights）+ 图表（buildFigureJson 同引擎）+ 结论；plotly.min.js（4.4MB）内联，导出文件完全离线可渲染；图表注入时强制浅色字体避免白底不可见；script 块对 JSON 做 `<` 转义
+- [x] `views/ReportDialog.ets`（新）：报告标题 / 图表多选（默认全选）/ 区块勾选 / 结论输入 / DocumentSavePicker 保存
+- [x] 入口：命令面板「导出报告」命令（workspaceState.reportOpen）
+- [x] 与 web 的差异：合并 Story/Report 为单对话框；不做报告模板持久化（web 仅存 localStorage）
 
 ### 暂缓 / 评估
 

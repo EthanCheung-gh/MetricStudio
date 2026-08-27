@@ -45,13 +45,13 @@ devecocli run --skip-build
 - [x] QA 会话：按数据集分会话记录问答，Markdown 导出
 - [x] 图表注解与参考线：文本注解（顶部居中）、水平/垂直虚线参考线（值/颜色可编辑），随项目持久化
 - [x] 命令面板与快捷键：Ctrl+K 命令面板（搜索过滤 13 个本地命令）、Ctrl+Z 撤销、Ctrl+S 保存项目
+- [x] 报告/故事导出：本地生成自包含 HTML（数据源 + 清洗步骤 + 洞察 + 图表离线渲染 + 结论），经文件选择器保存
 - [x] 洞察 / 列统计 / 快照（创建 / 恢复 / 摘要级 diff）
 - [x] 设置：主题（深 / 浅 / 跟随系统）/ 语言 / LLM 连接配置（持久化）
 - [x] 项目保存 / 加载（Preferences 内嵌 JSON：图表 + Dashboard + 偏好）
 
 未移植（按批次推进，见 `docs/superpowers/plans/2026-08-27-harmonyos-port-roadmap.md`）：
 
-- [ ] 故事模式 / 报告导出（web: StoryDialog / ReportDialog，本地生成 HTML，Batch 4）
 - [ ] 数据血缘（web: LineageView，暂缓）
 - [ ] SQL 工作台 / SQLite 导入（需本地 SQL 引擎，暂缓）
 - [ ] Excel / Parquet 导入（需格式解析库，暂缓）

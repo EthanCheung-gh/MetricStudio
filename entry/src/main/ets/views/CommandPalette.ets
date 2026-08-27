@@ -154,6 +154,15 @@ export struct CommandPalette {
       }
     };
     out.push(c13);
+    const c14: Command = {
+      id: 'generate-report',
+      title: t(lang, 'report.title'),
+      group: t(lang, 'palette.groupAction'),
+      action: () => {
+        this.workspaceState.setReportOpen(true);
+      }
+    };
+    out.push(c14);
     return out;
   }
 
