@@ -111,6 +111,116 @@ describe('dashboard lifecycle', () => {
   })
 })
 
+describe('dashboard undo/redo', () => {
+  function setupWithTextCard() {
+    const current = dashboard('dash')
+    current.items = [{ chartId: 'text-1', kind: 'text', text: 'v1', x: 0, y: 0, w: 4, h: 2 }]
+    useDashboardStore.setState({
+      dashboards: [current],
+      activeDashboardId: 'dash',
+      undoStack: [],
+      redoStack: [],
+    })
+  }
+
+  it('undoes and redoes a tracked mutation', () => {
+    setupWithTextCard()
+    useDashboardStore.getState().updateItemText('dash', 'text-1', 'v2')
+
+    expect(useDashboardStore.getState().undoStack).toHaveLength(1)
+    useDashboardStore.getState().undoDashboard('dash')
+    expect(useDashboardStore.getState().dashboards[0].items[0].text).toBe('v1')
+    expect(useDashboardStore.getState().redoStack).toHaveLength(1)
+
+    useDashboardStore.getState().redoDashboard('dash')
+    expect(useDashboardStore.getState().dashboards[0].items[0].text).toBe('v2')
+  })
+
+  it('clears the redo stack on a new tracked change', () => {
+    setupWithTextCard()
+    useDashboardStore.getState().updateItemText('dash', 'text-1', 'v2')
+    useDashboardStore.getState().undoDashboard('dash')
+    useDashboardStore.getState().addTextItem('dash', 'new card')
+
+    expect(useDashboardStore.getState().redoStack).toHaveLength(0)
+  })
+
+  it('ignores undo for a different dashboard than the snapshot', () => {
+    setupWithTextCard()
+    useDashboardStore.setState({ dashboards: [useDashboardStore.getState().dashboards[0], dashboard('other')], activeDashboardId: 'other' })
+
+    useDashboardStore.getState().undoDashboard('other')
+
+    expect(useDashboardStore.getState().undoStack).toHaveLength(0)
+  })
+
+  it('clears undo stacks when loading dashboards', () => {
+    setupWithTextCard()
+    useDashboardStore.getState().updateItemText('dash', 'text-1', 'v2')
+    useDashboardStore.getState().loadDashboards([dashboard('fresh')])
+
+    expect(useDashboardStore.getState().undoStack).toHaveLength(0)
+    expect(useDashboardStore.getState().redoStack).toHaveLength(0)
+  })
+})
+
+describe('batch layout', () => {
+  function item(chartId: string, x: number, y: number) {
+    return { chartId, kind: 'text' as const, text: '', x, y, w: 3, h: 2 }
+  }
+
+  function lockedItem(chartId: string, x: number, y: number) {
+    return { ...item(chartId, x, y), locked: true }
+  }
+
+  function setupItems(items: (ReturnType<typeof item> | ReturnType<typeof lockedItem>)[]) {
+    const current = dashboard('dash')
+    current.items = items
+    useDashboardStore.setState({ dashboards: [current], activeDashboardId: 'dash', undoStack: [], redoStack: [] })
+  }
+
+  it('aligns unlocked items left while keeping locked items in place', () => {
+    setupItems([item('a', 4, 0), item('b', 8, 6), lockedItem('locked', 8, 0)])
+
+    useDashboardStore.getState().alignItems('dash', 'left')
+
+    const items = useDashboardStore.getState().dashboards[0].items
+    expect(items.find((i) => i.chartId === 'a')!.x).toBe(4)
+    expect(items.find((i) => i.chartId === 'b')!.x).toBe(4)
+    expect(items.find((i) => i.chartId === 'locked')!.x).toBe(8)
+  })
+
+  it('aligns unlocked items to the top row', () => {
+    setupItems([item('a', 0, 3), item('b', 5, 7)])
+
+    useDashboardStore.getState().alignItems('dash', 'top')
+
+    const items = useDashboardStore.getState().dashboards[0].items
+    expect(items.every((i) => i.y === 3)).toBe(true)
+  })
+
+  it('distributes unlocked items evenly along an axis', () => {
+    setupItems([item('a', 0, 0), item('b', 5, 0), item('c', 10, 0)])
+
+    useDashboardStore.getState().spaceItemsEvenly('dash', 'x')
+
+    const xs = useDashboardStore
+      .getState()
+      .dashboards[0].items.map((i) => i.x)
+      .sort((left, right) => left - right)
+    expect(xs).toEqual([0, 5, 10])
+  })
+
+  it('leaves fewer-than-three items untouched by even spacing', () => {
+    setupItems([item('a', 0, 0), item('b', 9, 9)])
+
+    useDashboardStore.getState().spaceItemsEvenly('dash', 'y')
+
+    const ys = useDashboardStore.getState().dashboards[0].items.map((i) => i.y)
+    expect(ys).toEqual([0, 9])
+  })
+})
+
 describe('layout templates', () => {
   it('updates matching geometry without dropping unmatched cards', () => {
     const current = dashboard('dash')

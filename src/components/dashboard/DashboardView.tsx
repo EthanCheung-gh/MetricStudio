@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from '@heroui/react'
-import { Check, Copy, Download, Eye, EyeOff, Pencil, Plus, Presentation, Save, Trash2, X } from 'lucide-react'
+import { AlignHorizontalJustifyCenter, AlignVerticalJustifyCenter, Check, Copy, Download, Eye, EyeOff, Pencil, Plus, Presentation, Redo2, Save, Trash2, Undo2, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -39,6 +39,12 @@ export function DashboardView() {
   const removeItem = useDashboardStore((s) => s.removeItem)
   const moveItem = useDashboardStore((s) => s.moveItem)
   const resizeItem = useDashboardStore((s) => s.resizeItem)
+  const undoStack = useDashboardStore((s) => s.undoStack)
+  const redoStack = useDashboardStore((s) => s.redoStack)
+  const undoDashboard = useDashboardStore((s) => s.undoDashboard)
+  const redoDashboard = useDashboardStore((s) => s.redoDashboard)
+  const alignItems = useDashboardStore((s) => s.alignItems)
+  const spaceItemsEvenly = useDashboardStore((s) => s.spaceItemsEvenly)
   const brushSelections = useDashboardStore((s) => s.brushSelections)
   const setBrushSelection = useDashboardStore((s) => s.setBrushSelection)
   const clearBrushSelection = useDashboardStore((s) => s.clearBrushSelection)
@@ -140,6 +146,7 @@ export function DashboardView() {
     .filter((f): f is DashboardDataFilter => f !== null)
 
   const availableCharts = charts.filter((c) => !dashboard.items.some((i) => i.chartId === c.id))
+  const unlockedCount = dashboard.items.filter((i) => !i.locked).length
 
   const commitDashboardName = () => {
     const name = dashboardName.trim()
@@ -371,6 +378,58 @@ export function DashboardView() {
         <div className="flex items-center gap-1">
           {editMode && (
             <>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                isDisabled={undoStack.length === 0}
+                onPress={() => undoDashboard(dashboard.id)}
+                aria-label={t('dashboard.undo')}
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                isDisabled={redoStack.length === 0}
+                onPress={() => redoDashboard(dashboard.id)}
+                aria-label={t('dashboard.redo')}
+              >
+                <Redo2 className="h-3.5 w-3.5" />
+              </Button>
+              {unlockedCount >= 2 && (
+                <>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    onPress={() => alignItems(dashboard.id, 'left')}
+                    aria-label={t('dashboard.alignLeft')}
+                  >
+                    <AlignVerticalJustifyCenter className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    onPress={() => alignItems(dashboard.id, 'top')}
+                    aria-label={t('dashboard.alignTop')}
+                  >
+                    <AlignHorizontalJustifyCenter className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+              {unlockedCount >= 3 && (
+                <>
+                  <Button size="sm" variant="light" onPress={() => spaceItemsEvenly(dashboard.id, 'x')}>
+                    {t('dashboard.spaceX')}
+                  </Button>
+                  <Button size="sm" variant="light" onPress={() => spaceItemsEvenly(dashboard.id, 'y')}>
+                    {t('dashboard.spaceY')}
+                  </Button>
+                </>
+              )}
               <Button
                 size="sm"
                 variant="light"
