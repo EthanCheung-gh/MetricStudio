@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
@@ -22,11 +23,14 @@ async def generate_report(payload: dict):
     kpis = payload.get("kpis", [])  # [{label, value, detail}]
     text_cards = payload.get("text_cards", [])  # [{text}]
     notes = payload.get("notes", "")
+    filter_descriptions = [str(f) for f in payload.get("filter_descriptions", []) if str(f).strip()]
     include_insights = bool(payload.get("include_insights", True))
     locale = "en" if payload.get("locale") == "en" else "zh"
     labels = {
-        "zh": {"insights": "洞察", "kpis": "关键指标", "notes": "注释", "rows": "行", "cols": "列", "engine": "引擎", "chart": "图表"},
-        "en": {"insights": "Insights", "kpis": "Key metrics", "notes": "Notes", "rows": "rows", "cols": "cols", "engine": "engine", "chart": "Chart"},
+        "zh": {"insights": "洞察", "kpis": "关键指标", "notes": "注释", "rows": "行", "cols": "列", "engine": "引擎",
+               "chart": "图表", "filters": "筛选条件", "generatedAt": "生成时间"},
+        "en": {"insights": "Insights", "kpis": "Key metrics", "notes": "Notes", "rows": "rows", "cols": "cols",
+               "engine": "engine", "chart": "Chart", "filters": "Filters", "generatedAt": "Generated at"},
     }[locale]
 
     dataset_meta = None
@@ -100,6 +104,12 @@ async def generate_report(payload: dict):
         f"<section><h2>{labels['notes']}</h2><p>{html.escape(notes)}</p></section>" if notes else ""
     )
 
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    filters_html = ""
+    if filter_descriptions:
+        items = "".join(f"<li>{html.escape(f)}</li>" for f in filter_descriptions)
+        filters_html = f'<section><h2>{labels["filters"]}</h2><ul class="filters">{items}</ul></section>'
+
     document = f"""<!DOCTYPE html>
 <html lang="{locale}">
 <head>
@@ -122,11 +132,14 @@ async def generate_report(payload: dict):
   .kpi-label {{ margin-top: 5px; font-size: 12px; color: #9ca3af; }}
   .kpi-detail {{ margin-top: 3px; font-size: 11px; color: #6b7280; }}
   .text-card {{ border: 1px solid #26292f; border-radius: 8px; padding: 4px 16px; margin-top: 12px; }}
+  ul.filters {{ font-size: 12px; color: #9ca3af; }}
 </style>
 </head>
 <body>
 <h1>{html.escape(title)}</h1>
+<p class="meta">{labels['generatedAt']}: {generated_at}</p>
 {meta_html}
+{filters_html}
 {insights_html}
 {kpi_html}
 {chart_divs}

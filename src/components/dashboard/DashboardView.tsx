@@ -161,6 +161,18 @@ export function DashboardView() {
       const figures = []
       const kpis = []
       const textCards = []
+      // Record active filter values so the exported HTML is self-describing.
+      const exportFilterDescriptions = dashboard.filters
+        .filter((f) => f.value !== null && f.value !== undefined)
+        .map((f) => {
+          if (Array.isArray(f.value)) {
+            return f.value.length ? `${f.label}: ${f.value.join(', ')}` : ''
+          }
+          const range = f.value as [string, string]
+          if (!range || (range[0] === '' && range[1] === '')) return ''
+          return `${f.label}: ${range[0]} ~ ${range[1]}`
+        })
+        .filter((description) => description.length > 0)
       for (const item of dashboard.items) {
         if (item.kind === 'kpi' && item.kpi?.field) {
           const relevantFilters = filters.filter((filter) => filter.datasetId === item.kpi?.datasetId)
@@ -203,6 +215,7 @@ export function DashboardView() {
         kpis,
         text_cards: textCards,
         notes: '',
+        filter_descriptions: exportFilterDescriptions,
         include_insights: false,
         locale: useUIStore.getState().language,
       })

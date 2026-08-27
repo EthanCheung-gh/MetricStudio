@@ -1,6 +1,6 @@
 [package]
 name = "metricstudio"
-version = "0.6.2"
+version = "0.6.3"
 description = "Personal data analysis desktop tool based on Plotly"
 authors = ["MetricStudio Team"]
 edition = "2021"

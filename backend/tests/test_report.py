@@ -161,3 +161,42 @@ def test_generate_report_unknown_dataset_404(client):
         json={"title": "X", "dataset_id": "nope", "charts": [], "notes": ""},
     )
     assert resp.status_code == 404
+
+
+def test_generate_report_records_filters_and_generated_at(client, dirty_dataset):
+    resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "Filtered export",
+            "charts": [],
+            "filter_descriptions": ["region: North, South", "value: 10 ~ 100"],
+            "notes": "",
+            "include_insights": False,
+            "locale": "en",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    doc = resp.json()["html"]
+    assert "Filters" in doc
+    assert "region: North, South" in doc
+    assert "value: 10 ~ 100" in doc
+    assert "Generated at:" in doc
+    # Malicious filter text is escaped like every other user content.
+    attack_resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "Escape filters",
+            "charts": [],
+            "filter_descriptions": ["<script>alert(1)</script>"],
+            "notes": "",
+            "include_insights": False,
+        },
+    )
+    assert attack_resp.status_code == 200
+    assert "<script>alert(1)</script>" not in attack_resp.json()["html"]
+
+    omitted = client.post(
+        "/api/v1/report/generate",
+        json={"title": "No filters", "charts": [], "notes": "", "include_insights": False},
+    )
+    assert "Filters" not in omitted.json()["html"]

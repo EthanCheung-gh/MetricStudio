@@ -496,6 +496,7 @@ export const api = {
     kpis?: { label: string; value: string; detail: string }[];
     text_cards?: { text: string }[];
     notes: string;
+    filter_descriptions?: string[];
     include_insights: boolean;
     locale?: 'zh' | 'en';
   }) =>
