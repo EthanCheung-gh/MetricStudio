@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <script src="./xlsx.full.min.js" charset="utf-8"></script>
+</head>
+<body>
+<script>
+  /**
+   * Excel parsing bridge (SheetJS, Apache-2.0). ArkTS passes a base64 workbook
+   * via runJavaScript('parseXlsxBase64(...)'); the JSON string result comes
+   * back through the runJavaScript promise. Dates are normalized to
+   * YYYY-MM-DD strings so the ArkTS type inference sees them as temporal.
+   */
+  function parseXlsxBase64(b64, sheetName) {
+    try {
+      var wb = XLSX.read(b64, { type: 'base64', cellDates: true });
+      var name = sheetName && wb.Sheets[sheetName] ? sheetName : wb.SheetNames[0];
+      var ws = wb.Sheets[name];
+      var rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+      for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        for (var c = 0; c < row.length; c++) {
+          if (row[c] instanceof Date) {
+            row[c] = row[c].toISOString().substring(0, 10);
+          }
+        }
+      }
+      return JSON.stringify({ ok: true, sheetNames: wb.SheetNames, sheet: name, rows: rows });
+    } catch (e) {
+      return JSON.stringify({ ok: false, error: String(e), sheetNames: [], sheet: '', rows: [] });
+    }
+  }
+  window.parseXlsxBase64 = parseXlsxBase64;
+</script>
+</body>
+</html>

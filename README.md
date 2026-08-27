@@ -54,7 +54,7 @@ devecocli run --skip-build
 
 - [x] SQL 工作台（relationalStore 内存 SQLite，与 web 同方言；SQLite 文件导入为二期可选）
 - [x] 数据血缘：变换链步骤列表/禁用重放/时点预览与当前对比；undo 修复为从原始快照正确重放
-- [ ] Excel 导入（建议做：SheetJS + WebView 桥）；Parquet（拒绝/远期）
+- [x] Excel 导入（.xlsx/.xls，SheetJS + 离线 WebView 桥，多 sheet 选择）；Parquet 维持拒绝/远期
 
 ## 相关文档
 

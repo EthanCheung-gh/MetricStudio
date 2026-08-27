@@ -82,6 +82,7 @@ const zh: Record<string, string> = {
   'data.parseError': 'CSV 解析失败',
   'data.noColumns': '未解析到任何列',
   'data.preview': '预览',
+  'data.sheet': '工作表',
 
   // Transform
   'transform.title': '变换',
@@ -378,6 +379,7 @@ const en: Record<string, string> = {
   'data.parseError': 'CSV parse failed',
   'data.noColumns': 'No columns parsed',
   'data.preview': 'Preview',
+  'data.sheet': 'Sheet',
 
   'transform.title': 'Transform',
   'transform.dedupe': 'Deduplicate',

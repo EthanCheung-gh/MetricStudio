@@ -88,6 +88,15 @@
 - [x] 限制（与评估一致）：血缘仅跟踪当前数据集会话（切换数据集清空，与既有 undo 行为一致）；无跨数据集 DAG/SVG 图；大数据集 diff 为 O(n) 全量行键
 - [x] 验证：`devecocli build` 通过；SDK 校准——ArkUI `ClickEvent` 无 `stopPropagation`，行选中区与启停按钮改为兄弟节点隔离
 
+#### Batch 7：Excel 导入（评估结论 #3，已实现）
+
+- [x] vendored `xlsx.full.min.js`（SheetJS 社区版 0.20.3，Apache-2.0，~950KB）进 rawfile；`xlsx_bridge.html` 暴露 `parseXlsxBase64(b64, sheet)`（cellDates + 日期归一化为 YYYY-MM-DD）
+- [x] `engine/ExcelBridge.ets`（新）：桥回执解码（防御双重 JSON 编码）+ `matrixToDataFrame`（表头去重补名、剔除全空行、复用 InferType 类型推断——与 CSV 解析同引擎）
+- [x] DataExplorer：picker 接受 `.xlsx/.xls`（按扩展名路由到桥）；1×1 隐藏 WebView（onPageEnd ready 门控）；文件字节 → Base64Helper → runJavaScript；多工作簿 sheet Select 切换重解析
+- [x] 已知限制：超大表（数万行）经 runJavaScript 回传大 JSON 待真机压测；桥回复的双层编码行为需真机确认（已做双向解码防御）
+- [x] Parquet 维持拒绝/远期（评估不变）
+- [x] 验证：`devecocli build` 通过；真机冒烟（多 sheet xlsx、日期列、大文件）待做
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite
