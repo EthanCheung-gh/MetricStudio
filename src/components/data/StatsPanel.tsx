@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sigma, Table2, TrendingUp } from 'lucide-react'
+import { GitCompareArrows, Sigma, Table2, Target, TrendingUp } from 'lucide-react'
 import { Button, Select, SelectItem } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
@@ -24,6 +24,28 @@ interface RegressionResult {
   interpretation?: string
 }
 
+interface DifferenceResult {
+  ok: boolean
+  detail?: string
+  method?: string
+  groups?: string[]
+  statistic?: number
+  p_value?: number | null
+  significant?: boolean
+  interpretation?: string
+}
+
+interface CiResult {
+  ok: boolean
+  detail?: string
+  column?: string
+  n?: number
+  mean?: number
+  level?: number
+  ci_low?: number
+  ci_high?: number
+}
+
 function corrColor(r: number | null): string {
   if (r === null) return ''
   const alpha = Math.min(Math.abs(r), 1)
@@ -41,6 +63,15 @@ export function StatsPanel() {
   const [yCol, setYCol] = useState('')
   const [loadingCorr, setLoadingCorr] = useState(false)
   const [loadingReg, setLoadingReg] = useState(false)
+  const [groupColumn, setGroupColumn] = useState('')
+  const [measureCol, setMeasureCol] = useState('')
+  const [groupA, setGroupA] = useState('')
+  const [groupB, setGroupB] = useState('')
+  const [difference, setDifference] = useState<DifferenceResult | null>(null)
+  const [loadingDiff, setLoadingDiff] = useState(false)
+  const [ciColumn, setCiColumn] = useState('')
+  const [ciResult, setCiResult] = useState<CiResult | null>(null)
+  const [loadingCi, setLoadingCi] = useState(false)
 
   const loadCorrelation = useCallback(async () => {
     if (!activeDataFrameId) return
@@ -72,6 +103,51 @@ export function StatsPanel() {
       setRegression({ ok: false, detail: err instanceof Error ? err.message : '' })
     } finally {
       setLoadingReg(false)
+    }
+  }
+
+  const [groupOptions, setGroupOptions] = useState<string[]>([])
+  useEffect(() => {
+    setGroupA('')
+    setGroupB('')
+    if (!activeDataFrameId || !groupColumn) {
+      setGroupOptions([])
+      return
+    }
+    api
+      .distinctValues(activeDataFrameId, groupColumn, { limit: 100 })
+      .then((r) => setGroupOptions(r.values))
+      .catch(() => setGroupOptions([]))
+  }, [activeDataFrameId, groupColumn])
+
+  const runDifferenceTest = async () => {
+    if (!activeDataFrameId || !measureCol || !groupColumn || !groupA || !groupB || groupA === groupB) return
+    setLoadingDiff(true)
+    try {
+      setDifference(
+        await api.differenceTest(activeDataFrameId, {
+          columnA: measureCol,
+          groupColumn,
+          groupA,
+          groupB,
+        }),
+      )
+    } catch (err) {
+      setDifference({ ok: false, detail: err instanceof Error ? err.message : '' })
+    } finally {
+      setLoadingDiff(false)
+    }
+  }
+
+  const runCi = async () => {
+    if (!activeDataFrameId || !ciColumn) return
+    setLoadingCi(true)
+    try {
+      setCiResult(await api.ciMean(activeDataFrameId, ciColumn))
+    } catch (err) {
+      setCiResult({ ok: false, detail: err instanceof Error ? err.message : '' })
+    } finally {
+      setLoadingCi(false)
     }
   }
 
@@ -167,6 +243,79 @@ export function StatsPanel() {
           </div>
         ) : regression ? (
           <div className="mt-2 text-[11px] text-danger">{regression.detail}</div>
+        ) : null}
+      </div>
+
+      {/* Difference test between two groups */}
+      <div className="rounded border border-border/60 bg-surface-elevated/40 p-2">
+        <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase text-muted">
+          <GitCompareArrows className="h-3 w-3" /> {t('stats.differenceTest')}
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1">
+            <Select size="sm" aria-label={t('stats.groupColumn')} selectedKeys={groupColumn ? [groupColumn] : []} onSelectionChange={(keys) => { const v = [...keys][0]; if (v) setGroupColumn(String(v)) }}>
+              {columns.map((c) => (
+                <SelectItem key={c.name}>{c.name}</SelectItem>
+              ))}
+            </Select>
+            <span className="shrink-0 text-muted">·</span>
+            <Select size="sm" aria-label={t('stats.measure')} selectedKeys={measureCol ? [measureCol] : []} onSelectionChange={(keys) => { const v = [...keys][0]; if (v) setMeasureCol(String(v)) }}>
+              {numericColumns.map((c) => (
+                <SelectItem key={c.name}>{c.name}</SelectItem>
+              ))}
+            </Select>
+          </div>
+          <div className="flex items-center gap-1">
+            <Select size="sm" aria-label={t('stats.groupA')} selectedKeys={groupA ? [groupA] : []} onSelectionChange={(keys) => { const v = [...keys][0]; if (v) setGroupA(String(v)) }}>
+              {groupOptions.map((v) => (
+                <SelectItem key={v}>{v}</SelectItem>
+              ))}
+            </Select>
+            <span className="shrink-0 text-muted">{t('stats.vs')}</span>
+            <Select size="sm" aria-label={t('stats.groupB')} selectedKeys={groupB ? [groupB] : []} onSelectionChange={(keys) => { const v = [...keys][0]; if (v) setGroupB(String(v)) }}>
+              {groupOptions.map((v) => (
+                <SelectItem key={v}>{v}</SelectItem>
+              ))}
+            </Select>
+            <Button isIconOnly size="sm" color="primary" variant="flat" isLoading={loadingDiff} onPress={runDifferenceTest} aria-label={t('stats.run')}>
+              <Sigma className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        {difference?.ok ? (
+          <div className={`mt-2 space-y-1 rounded px-2 py-1 text-[11px] ${difference.significant ? 'bg-primary/10' : 'bg-surface'}`}>
+            <p className="leading-snug">{difference.interpretation}</p>
+            <div className="font-mono text-[10px] text-muted">
+              {difference.method} · t={difference.statistic} · p={difference.p_value}
+            </div>
+          </div>
+        ) : difference ? (
+          <div className="mt-2 text-[11px] text-danger">{difference.detail}</div>
+        ) : null}
+      </div>
+
+      {/* Confidence interval for a mean */}
+      <div className="rounded border border-border/60 bg-surface-elevated/40 p-2">
+        <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase text-muted">
+          <Target className="h-3 w-3" /> {t('stats.ci')}
+        </div>
+        <div className="flex items-center gap-1">
+          <Select size="sm" aria-label={t('stats.ciColumn')} selectedKeys={ciColumn ? [ciColumn] : []} onSelectionChange={(keys) => { const v = [...keys][0]; if (v) setCiColumn(String(v)) }}>
+            {numericColumns.map((c) => (
+              <SelectItem key={c.name}>{c.name}</SelectItem>
+            ))}
+          </Select>
+          <Button size="sm" color="primary" variant="flat" isLoading={loadingCi} onPress={runCi}>
+            95%
+          </Button>
+        </div>
+        {ciResult?.ok ? (
+          <div className="mt-2 space-y-1 text-[11px]">
+            <p>{t('stats.ciResult', { column: ciResult.column, mean: ciResult.mean, low: ciResult.ci_low, high: ciResult.ci_high })}</p>
+            <div className="font-mono text-[10px] text-muted">n={ciResult.n} · level={ciResult.level}</div>
+          </div>
+        ) : ciResult ? (
+          <div className="mt-2 text-[11px] text-danger">{ciResult.detail}</div>
         ) : null}
       </div>
 

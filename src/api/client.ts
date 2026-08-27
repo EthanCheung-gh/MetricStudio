@@ -381,6 +381,41 @@ export const api = {
       p_value?: number | null;
       interpretation?: string;
     }>(`/api/v1/data/${id}/regression?x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`),
+  differenceTest: (
+    id: string,
+    params: { columnA: string; columnB?: string; groupColumn?: string; groupA?: string; groupB?: string; paired?: boolean },
+  ) => {
+    const query = new URLSearchParams({ column_a: params.columnA })
+    if (params.columnB) query.set('column_b', params.columnB)
+    if (params.groupColumn) query.set('group_column', params.groupColumn)
+    if (params.groupA) query.set('group_a', params.groupA)
+    if (params.groupB) query.set('group_b', params.groupB)
+    if (params.paired) query.set('paired', 'true')
+    return fetchJson<{
+      ok: boolean;
+      detail?: string;
+      method?: string;
+      groups?: string[];
+      statistic?: number;
+      p_value?: number | null;
+      significant?: boolean;
+      interpretation?: string;
+      ci?: { low: number; high: number };
+      sizes?: number[];
+    }>(`/api/v1/data/${id}/difference-test?${query}`)
+  },
+  ciMean: (id: string, column: string, level = 0.95) =>
+    fetchJson<{
+      ok: boolean;
+      detail?: string;
+      column?: string;
+      n?: number;
+      mean?: number;
+      level?: number;
+      ci_low?: number;
+      ci_high?: number;
+      interpretation?: string;
+    }>(`/api/v1/data/${id}/ci-mean?column=${encodeURIComponent(column)}&level=${level}`),
   nlNarrate: (datasetId: string) =>
     fetchJson<{ narrative: string }>('/api/v1/nl/narrate', {
       method: 'POST',

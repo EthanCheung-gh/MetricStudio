@@ -339,6 +339,50 @@ async def regression(dataset_id: str, x: str, y: str):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/{dataset_id}/difference-test")
+async def difference_test_endpoint(
+    dataset_id: str,
+    column_a: str,
+    column_b: str | None = None,
+    group_column: str | None = None,
+    group_a: str | None = None,
+    group_b: str | None = None,
+    paired: bool = False,
+):
+    """Welch t / paired t / Mann-Whitney comparison between two samples."""
+    from backend.core.stats import difference_test
+
+    try:
+        dataset = session.get(dataset_id)
+        return difference_test(
+            dataset.df,
+            column_a,
+            column_b=column_b,
+            group_column=group_column,
+            group_a=group_a,
+            group_b=group_b,
+            paired=paired,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/ci-mean")
+async def ci_mean(dataset_id: str, column: str, level: float = 0.95):
+    """Two-sided confidence interval for a column mean."""
+    from backend.core.stats import confidence_interval_mean
+
+    try:
+        dataset = session.get(dataset_id)
+        return confidence_interval_mean(dataset.df, column, level=level)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{dataset_id}/chart-recommendations")
 async def chart_recommendations(dataset_id: str):
     """Rule-based chart type + encoding recommendations for a dataset."""
