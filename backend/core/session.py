@@ -428,10 +428,42 @@ class SessionManager:
 
     def _replay(self, dataset: Dataset, operations: list[dict[str, Any]]) -> None:
         for op in operations:
+            if op.get("disabled"):
+                continue  # transform-chain steps can be toggled off without deletion
             try:
                 self._apply_one(dataset, op)
             except Exception as exc:
                 logger.warning("replay of op %s failed for dataset %s: %s", op.get("type"), dataset.id, exc)
+
+    def set_step_disabled(self, dataset_id: str, step: int, disabled: bool) -> Dataset:
+        """Toggle a history step without deleting it and rebuild the derived state.
+
+        The full chain (including disabled steps) is preserved in
+        ``dataset.history``; only the effective replay skips disabled entries.
+        """
+        dataset = self.get(dataset_id)
+        if not 0 <= step < len(dataset.history):
+            raise ValueError(f"Step out of range: {step}")
+        full_chain = list(dataset.history)
+        full_chain[step] = {**full_chain[step], "disabled": bool(disabled)}
+        dataset.reset()
+        dataset.history = full_chain  # keep every entry, disabled included
+        effective = [op for op in full_chain if not op.get("disabled")]
+        rebuild = Dataset(dataset.raw_df.copy(), name=dataset.name, engine=dataset.engine)
+        for op in effective:
+            self._apply_one(rebuild, op)
+        dataset._df = rebuild.df
+        dataset._build_meta()
+        self.global_history.append({
+            "dataset_id": dataset.id,
+            "dataset_name": dataset.name,
+            "before_index": 0,
+            "ops": [],
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        self.global_redo.clear()
+        self._persist(dataset)
+        return dataset
 
     def _apply_operations(self, dataset: Dataset, operations: list[dict[str, Any]]) -> Dataset:
         """Apply a user-facing batch of ops and record one global undo entry."""
@@ -559,8 +591,9 @@ class SessionManager:
         tmp = Dataset(dataset.raw_df, name=dataset.name, engine=dataset.engine)
         if step >= 0:
             operations = dataset.history[: step + 1]
+            effective_count = sum(1 for op in operations if not op.get("disabled"))
             self._replay(tmp, operations)
-            if len(tmp.history) != len(operations):
+            if len(tmp.history) != effective_count:
                 raise ValueError(f"could not rebuild dataset at step: {step}")
         return tmp.df
 

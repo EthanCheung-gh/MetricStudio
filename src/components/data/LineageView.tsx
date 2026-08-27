@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Select, SelectItem } from '@heroui/react'
-import { GitBranch } from 'lucide-react'
+import { GitBranch, Power, RotateCcw } from 'lucide-react'
 import { api } from '@/api/client'
 import type { DataDiffResult, DataPreview, LineageEdge, LineageNode, LineageResponse } from '@/types/data'
 
@@ -48,6 +48,7 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
   const [diffResult, setDiffResult] = useState<DataDiffResult | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [loadingDiff, setLoadingDiff] = useState(false)
+  const [disabledSteps, setDisabledSteps] = useState<Record<number, boolean>>({})
 
   useEffect(() => {
     setLineage(null)
@@ -55,12 +56,36 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
     setBaselineStep(-1)
     setPreview(null)
     setDiffResult(null)
+    setDisabledSteps({})
     if (!datasetId) return
     api
       .lineage()
       .then(setLineage)
       .catch(() => {})
+    api
+      .history(datasetId)
+      .then((items) =>
+        setDisabledSteps(Object.fromEntries(items.map((item, index) => [index, Boolean(item.disabled)]))),
+      )
+      .catch(() => {})
   }, [datasetId])
+
+  const toggleStep = async (step: number) => {
+    if (!datasetId || step < 0) return
+    const next = !disabledSteps[step]
+    try {
+      await api.setStepDisabled(datasetId, step, next)
+      setDisabledSteps((current) => ({ ...current, [step]: next }))
+      const items = await api.history(datasetId).catch(() => [])
+      setDisabledSteps(Object.fromEntries(items.map((item, index) => [index, Boolean(item.disabled)])))
+      api
+        .lineage()
+        .then(setLineage)
+        .catch(() => {})
+    } catch {
+      /* keep previous state on failure */
+    }
+  }
 
   const chain: ChainItem[] = useMemo(() => {
     if (!lineage || !datasetId) return []
@@ -179,6 +204,7 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
             const active = selected === item.node.step
             const isImport = item.node.step === -1
             const isJoin = item.node.op === 'join'
+            const isDisabled = !isImport && disabledSteps[item.node.step]
             return (
               <g key={item.node.id} className="cursor-pointer" onClick={() => selectNode(item)}>
                 <rect
@@ -188,13 +214,17 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
                   height={NODE_H}
                   rx={6}
                   className={
-                    isImport
-                      ? 'fill-primary/20 stroke-primary'
-                      : isJoin
-                        ? 'fill-accent/20 stroke-accent'
-                        : active
-                          ? 'fill-primary/15 stroke-primary'
-                          : 'fill-surface stroke-border'
+                    isDisabled
+                      ? active
+                        ? 'fill-warning/15 stroke-warning'
+                        : 'fill-surface stroke-border opacity-50'
+                      : isImport
+                        ? 'fill-primary/20 stroke-primary'
+                        : isJoin
+                          ? 'fill-accent/20 stroke-accent'
+                          : active
+                            ? 'fill-primary/15 stroke-primary'
+                            : 'fill-surface stroke-border'
                   }
                   strokeWidth={active ? 2 : 1}
                 />
@@ -202,8 +232,8 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
                   x={x + NODE_W / 2}
                   y={MAIN_Y + NODE_H / 2 + 4}
                   textAnchor="middle"
-                  className="text-foreground"
-                  style={{ fill: 'currentColor' }}
+                  className={isDisabled ? 'text-muted' : 'text-foreground'}
+                  style={{ fill: 'currentColor', textDecoration: isDisabled ? 'line-through' : undefined }}
                   fontSize={11}
                   fontWeight={active ? 600 : 400}
                 >
@@ -254,6 +284,26 @@ export function LineageView({ datasetId }: { datasetId: string | null }) {
                 {selectedNode.step === -1 ? 'import' : selectedNode.op}
               </span>
               <span className="text-muted">{summarizeParams(selectedNode.params)}</span>
+              {selectedNode.step >= 0 && (
+                <>
+                  {disabledSteps[selectedNode.step] && (
+                    <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] text-warning">{t('lineage.stepDisabled')}</span>
+                  )}
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="light"
+                    className="h-6 w-6 min-w-0"
+                    startContent={
+                      disabledSteps[selectedNode.step]
+                        ? <RotateCcw className="h-3.5 w-3.5 text-primary" />
+                        : <Power className="h-3.5 w-3.5 text-warning" />
+                    }
+                    onPress={() => toggleStep(selectedNode.step)}
+                    aria-label={disabledSteps[selectedNode.step] ? t('lineage.enableStep') : t('lineage.disableStep')}
+                  />
+                </>
+              )}
             </div>
             {selectedNode.rows !== null && (
               <div className="text-muted">

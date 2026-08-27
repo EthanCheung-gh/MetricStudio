@@ -81,6 +81,8 @@ export interface TransformHistoryItem {
   type: string;
   params: Record<string, unknown>;
   timestamp: string;
+  /** Disabled steps stay in the chain but are skipped during replay. */
+  disabled?: boolean;
 }
 
 export interface FilterParams {

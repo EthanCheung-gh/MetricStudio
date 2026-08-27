@@ -301,6 +301,11 @@ export const api = {
     }),
   history: (id: string) =>
     fetchJson<TransformHistoryItem[]>(`/api/v1/transform/${id}/history`),
+  setStepDisabled: (id: string, step: number, disabled: boolean) =>
+    fetchJson<DataPreview>(`/api/v1/transform/${id}/steps/${step}/disabled`, {
+      method: 'POST',
+      body: JSON.stringify({ disabled }),
+    }),
   undo: (id: string, toIndex?: number) =>
     fetchJson<DataPreview>(`/api/v1/transform/${id}/undo`, {
       method: 'POST',

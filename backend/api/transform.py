@@ -174,6 +174,18 @@ async def get_history(dataset_id: str):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{dataset_id}/steps/{step}/disabled", response_model=DataPreview, response_model_by_alias=True)
+async def set_step_disabled(dataset_id: str, step: int, payload: dict):
+    """Enable/disable one transform-chain step and rebuild the derived state."""
+    try:
+        dataset = session.set_step_disabled(dataset_id, step, bool(payload.get("disabled", False)))
+        return DataPreview(**dataset.preview(100))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/{dataset_id}/undo", response_model=DataPreview, response_model_by_alias=True)
 async def undo(dataset_id: str, request: UndoRequest):
     try:
