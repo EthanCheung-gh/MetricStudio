@@ -2,6 +2,7 @@ import { Theme } from '../common/Theme';
 import { Settings } from '../common/Settings';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
 import { DataState } from '../model/DataState';
+import { QaState } from '../model/QaState';
 import { TitleBar } from '../views/TitleBar';
 import { LeftActivityBar, RightActivityBar } from '../views/ActivityBar';
 import { LeftPanel } from '../views/LeftPanel';
@@ -22,6 +23,7 @@ import { ChartConfigDialog } from '../views/ChartConfigDialog';
 struct Index {
   @Provide('workspaceState') workspaceState: WorkspaceState = new WorkspaceState();
   @Provide('dataState') dataState: DataState = new DataState();
+  @Provide('qaState') qaState: QaState = new QaState();
 
   aboutToAppear(): void {
     Settings.load().then((lang: Language) => {

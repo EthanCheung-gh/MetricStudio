@@ -1,26 +1,39 @@
 import { promptAction } from '@kit.ArkUI';
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { Theme } from '../common/Theme';
 import { fmt } from '../common/Format';
+import { t } from '../common/Locale';
 import { DataFrame, TransformOp } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
+import { QaState, conversationToMarkdown } from '../model/QaState';
 import { computeQualityMetrics } from '../engine/ColumnStats';
 import { parseNlOps } from '../engine/NlParser';
+import {
+  ChatMessage, askSystemPrompt, buildDataContext, chatCompletion,
+  llmConfigured, opsSystemPrompt, parseOpsReply
+} from '../engine/LlmClient';
 
 /**
  * AI command bar (web: src/components/ai/AICommandBar.tsx). Bottom-centered
  * floating pill: 清洗 (transform) / 提问 (ask) modes. 清洗 parses the phrase
- * into local transform ops shown in a result card (apply/cancel); 提问 answers
- * from local dataframe statistics. Only visible when a dataset is loaded.
+ * into transform ops shown in a result card (apply/cancel); 提问 answers from
+ * the configured LLM (OpenAI-compatible, web /api/v1/nl) and falls back to
+ * local dataframe statistics when unconfigured or unreachable. Answers are
+ * kept as a per-dataset conversation (web qaStore) and exportable as Markdown.
  */
 @Component
 export struct AICommandBar {
   @Consume('workspaceState') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
+  @Consume('qaState') qaState: QaState;
   @State mode: string = 'query'; // 'query' | 'ask'
   @State input: string = '';
   @State operations: TransformOp[] = [];
+  @State opsModel: string = '';
   @State answer: string = '';
+  @State answerModel: string = '';
+  @State busy: boolean = false;
 
   private columns(): string[] {
     const df = this.dataState.activeDataFrame;
@@ -132,19 +145,118 @@ export struct AICommandBar {
     return text;
   }
 
-  private submit(): void {
-    if (this.input.trim().length === 0) {
+  private async submit(): Promise<void> {
+    if (this.busy || this.input.trim().length === 0) {
       return;
     }
+    const df = this.dataState.activeDataFrame;
+    if (df === null) {
+      return;
+    }
+    const question = this.input.trim();
     if (this.mode === 'query') {
-      this.operations = this.parseQueryOps();
-      this.answer = '';
-      if (this.operations.length === 0) {
-        promptAction.showToast({ message: '未识别出可执行的清洗操作' });
-      }
+      await this.submitQuery(df, question);
     } else {
-      this.answer = this.buildAnswer();
-      this.operations = [];
+      await this.submitAsk(df, question);
+    }
+  }
+
+  /** 清洗 mode: LLM-first NL→ops (web backend), falling back to the local engine. */
+  private async submitQuery(df: DataFrame, question: string): Promise<void> {
+    this.operations = [];
+    this.answer = '';
+    this.opsModel = '';
+    this.busy = true;
+    let ops: TransformOp[] = [];
+    if (llmConfigured(this.workspaceState.llmConfig)) {
+      try {
+        const messages: ChatMessage[] = [];
+        const sys: ChatMessage = { role: 'system', content: opsSystemPrompt() };
+        messages.push(sys);
+        const usr: ChatMessage = { role: 'user', content: buildDataContext(df) + '\n\n用户指令: ' + question };
+        messages.push(usr);
+        const reply = await chatCompletion(this.workspaceState.llmConfig, messages, 512);
+        ops = parseOpsReply(reply, df);
+        if (ops.length > 0) {
+          this.opsModel = this.workspaceState.llmConfig.model;
+        }
+      } catch (e) {
+        promptAction.showToast({ message: t(this.workspaceState.language, 'ai.llmFallback') });
+      }
+    }
+    if (ops.length === 0) {
+      ops = this.parseQueryOps();
+    }
+    this.busy = false;
+    this.operations = ops;
+    if (ops.length === 0) {
+      promptAction.showToast({ message: '未识别出可执行的清洗操作' });
+    }
+  }
+
+  /** 提问 mode: LLM answer with conversation history, local statistics fallback. */
+  private async submitAsk(df: DataFrame, question: string): Promise<void> {
+    this.busy = true;
+    this.answer = '';
+    this.answerModel = '';
+    this.operations = [];
+    let text = '';
+    let model = '';
+    if (llmConfigured(this.workspaceState.llmConfig)) {
+      try {
+        const messages: ChatMessage[] = [];
+        const sys: ChatMessage = { role: 'system', content: askSystemPrompt() };
+        messages.push(sys);
+        const conv = this.qaState.ensureForDataset(df.name, df.name);
+        const recent = conv.turns.length > 3 ? conv.turns.slice(conv.turns.length - 3) : conv.turns;
+        for (let i = 0; i < recent.length; i++) {
+          const qm: ChatMessage = { role: 'user', content: recent[i].question };
+          messages.push(qm);
+          const am: ChatMessage = { role: 'assistant', content: recent[i].answer };
+          messages.push(am);
+        }
+        const usr: ChatMessage = { role: 'user', content: buildDataContext(df) + '\n\n问题: ' + question };
+        messages.push(usr);
+        const reply = await chatCompletion(this.workspaceState.llmConfig, messages, 512);
+        if (reply.trim().length > 0) {
+          text = reply;
+          model = this.workspaceState.llmConfig.model;
+        }
+      } catch (e) {
+        promptAction.showToast({ message: t(this.workspaceState.language, 'ai.llmFallback') });
+      }
+    }
+    if (text.trim().length === 0) {
+      text = this.buildAnswer();
+      model = '';
+    }
+    this.qaState.ensureForDataset(df.name, df.name);
+    this.qaState.appendTurn(question, text, model);
+    this.busy = false;
+    this.answer = text;
+    this.answerModel = model;
+  }
+
+  /** Export the current conversation as Markdown via the save picker (web qaExport). */
+  private async exportMarkdown(): Promise<void> {
+    const conv = this.qaState.current();
+    if (conv === null || conv.turns.length === 0) {
+      return;
+    }
+    try {
+      const documentPicker = new picker.DocumentViewPicker(getContext(this));
+      const options = new picker.DocumentSaveOptions();
+      options.newFileNames = ['metricstudio-qa.md'];
+      const uris = await documentPicker.save(options);
+      if (uris.length === 0) {
+        return;
+      }
+      const file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      fs.writeSync(file.fd, conversationToMarkdown(conv));
+      fs.closeSync(file);
+      promptAction.showToast({ message: t(this.workspaceState.language, 'ai.exported') });
+    } catch (e) {
+      promptAction.showToast({ message: t(this.workspaceState.language, 'ai.exportFailed') });
     }
   }
 
@@ -168,11 +280,19 @@ export struct AICommandBar {
     Column() {
       if (this.operations.length > 0) {
         Column({ space: 6 }) {
-          Row() {
+          Row({ space: 6 }) {
             Text(`${this.operations.length} 个操作`)
               .fontSize(12)
               .fontWeight(600)
               .fontColor(Theme.colorMuted())
+            if (this.opsModel.length > 0) {
+              Text(this.opsModel)
+                .fontSize(10)
+                .fontColor(Theme.colorMuted())
+                .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+                .borderRadius(4)
+                .backgroundColor(Theme.colorSurface())
+            }
             Blank()
             Text('×')
               .fontSize(12)
@@ -180,6 +300,7 @@ export struct AICommandBar {
               .padding(4)
               .onClick(() => {
                 this.operations = [];
+                this.opsModel = '';
               })
           }
           .width('100%')
@@ -238,30 +359,83 @@ export struct AICommandBar {
         .margin({ bottom: 8 })
       }
 
-      if (this.answer.length > 0) {
-        Row({ space: 8 }) {
-          SymbolGlyph($r('sys.symbol.wand_and_stars'))
-            .fontSize(14)
-            .fontColor([Theme.primary])
-          Text(this.answer)
-            .fontSize(12)
-            .fontColor(Theme.colorForeground())
-            .lineHeight(18)
-            .layoutWeight(1)
-          Text('×')
-            .fontSize(12)
+      if (this.busy) {
+        Row({ space: 6 }) {
+          LoadingProgress()
+            .width(14)
+            .height(14)
+            .color(Theme.primary)
+          Text(t(this.workspaceState.language, 'ai.thinking'))
+            .fontSize(11)
             .fontColor(Theme.colorMuted())
-            .padding(4)
+        }
+        .width('100%')
+        .padding(10)
+        .borderRadius(12)
+        .border({ width: 1, color: Theme.colorBorder() })
+        .backgroundColor(Theme.colorSurfaceElevated())
+        .margin({ bottom: 8 })
+      }
+
+      if (this.answer.length > 0) {
+        Column({ space: 6 }) {
+          Row({ space: 8 }) {
+            SymbolGlyph($r('sys.symbol.wand_and_stars'))
+              .fontSize(14)
+              .fontColor([Theme.primary])
+            Text(this.answer)
+              .fontSize(12)
+              .fontColor(Theme.colorForeground())
+              .lineHeight(18)
+              .layoutWeight(1)
+            Text('×')
+              .fontSize(12)
+              .fontColor(Theme.colorMuted())
+              .padding(4)
+              .onClick(() => {
+                this.answer = '';
+                this.answerModel = '';
+              })
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Top)
+
+          Row({ space: 6 }) {
+            Text(this.answerModel.length > 0 ? this.answerModel : t(this.workspaceState.language, 'ai.localEngine'))
+              .fontSize(10)
+              .fontColor(Theme.colorMuted())
+              .padding({ left: 6, right: 6, top: 1, bottom: 1 })
+              .borderRadius(4)
+              .backgroundColor(Theme.colorSurface())
+            Blank()
+            Button() {
+              Row({ space: 4 }) {
+                SymbolGlyph($r('sys.symbol.doc_plaintext'))
+                  .fontSize(11)
+                  .fontColor([Theme.colorMuted()])
+                Text(t(this.workspaceState.language, 'ai.exportMd'))
+                  .fontSize(11)
+                  .fontColor(Theme.colorMuted())
+              }
+            }
+            .type(ButtonType.Normal)
+            .height(24)
+            .padding({ left: 10, right: 10 })
+            .backgroundColor(Color.Transparent)
+            .borderRadius(6)
+            .border({ width: 1, color: Theme.colorBorder() })
             .onClick(() => {
-              this.answer = '';
+              this.exportMarkdown();
             })
+          }
+          .width('100%')
         }
         .width('100%')
         .padding(12)
         .borderRadius(12)
         .border({ width: 1, color: Theme.colorBorder() })
         .backgroundColor(Theme.colorSurfaceElevated())
-        .alignItems(VerticalAlign.Top)
+        .alignItems(HorizontalAlign.Start)
         .margin({ bottom: 8 })
       }
 
