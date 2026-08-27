@@ -16,6 +16,7 @@ import { AICommandBar } from '../views/AICommandBar';
 import { ChartConfigDialog } from '../views/ChartConfigDialog';
 import { CommandPalette } from '../views/CommandPalette';
 import { ReportDialog } from '../views/ReportDialog';
+import { SqlWorkbench } from '../views/SqlWorkbench';
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
@@ -109,6 +110,10 @@ struct Index {
 
       if (this.workspaceState.reportOpen) {
         ReportDialog()
+      }
+
+      if (this.workspaceState.sqlOpen) {
+        SqlWorkbench()
       }
 
       // Keyboard shortcut sinks (web App.tsx global shortcuts): Ctrl+K/Z/S.

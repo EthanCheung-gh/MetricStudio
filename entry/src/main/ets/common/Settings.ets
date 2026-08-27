@@ -7,6 +7,7 @@ const STORE_NAME = 'ms_settings';
 const KEY_LANGUAGE = 'language';
 const KEY_THEME = 'theme';
 const KEY_PROJECT = 'project';
+const KEY_SQL_HISTORY = 'sql_history';
 
 /**
  * Persists language + theme via Preferences (web: localStorage). Loaded once at
@@ -108,5 +109,36 @@ export class Settings {
       // no project yet
     }
     return v;
+  }
+
+  /** Load SQL workbench history (web: 50-entry workbench history). */
+  static loadSqlHistory(): string[] {
+    let list: string[] = [];
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      const raw = store.getSync(KEY_SQL_HISTORY, '') as string;
+      if (raw.length > 0) {
+        list = JSON.parse(raw) as string[];
+      }
+    } catch (e) {
+      list = [];
+    }
+    return list;
+  }
+
+  /** Persist SQL workbench history as a JSON string array. */
+  static async saveSqlHistory(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_SQL_HISTORY, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
   }
 }

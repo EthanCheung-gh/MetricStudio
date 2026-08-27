@@ -67,6 +67,17 @@
 - [x] 入口：命令面板「导出报告」命令（workspaceState.reportOpen）
 - [x] 与 web 的差异：合并 Story/Report 为单对话框；不做报告模板持久化（web 仅存 localStorage）
 
+### 评估后新增批次
+
+#### Batch 5：SQL 工作台（评估结论 #1，已实现）
+
+- [x] `engine/SqlEngine.ets`（新）：`relationalStore`（系统 SQLite）镜像全部数据集（表名规则同 web `safe_table_name`，分批 400 行 `batchInsert`，每次镜像前清空旧表）；只读校验与 web 同款（禁写关键词 + 单语句 + `^select`），`querySql` 截断 1 万行，返回 columns/rows/elapsed/truncated
+- [x] `views/SqlWorkbench.ets`（新）：镜像表 chips（点击插入表名）、SQL 编辑器、运行/历史/清空历史、错误横幅、结果 meta（行列数/耗时/截断徽标）、200 行结果网格、「保存为数据集」（`resultToDataFrame` 类型推断复用 InferType）
+- [x] 历史：Settings/preferences 持久化 50 条（web parity）
+- [x] 入口：命令面板「SQL 工作台」命令（workspaceState.sqlOpen）
+- [ ] 二期可选：SQLite 文件导入（picker 拷入沙箱后 open，外来库兼容性待验证）
+- [x] 验证：`devecocli build` 通过；运行时需真机验证 RDB 镜像/查询链路
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite

@@ -60,6 +60,7 @@ export class WorkspaceState {
   chartConfigOpen: boolean = false;
   paletteOpen: boolean = false;
   reportOpen: boolean = false;
+  sqlOpen: boolean = false;
   theme: AppTheme = AppTheme.System;
   llmConfig: LlmConfig = new LlmConfig();
   dashboard: DashboardState = new DashboardState();
@@ -78,6 +79,10 @@ export class WorkspaceState {
 
   setReportOpen(open: boolean): void {
     this.reportOpen = open;
+  }
+
+  setSqlOpen(open: boolean): void {
+    this.sqlOpen = open;
   }
 
   setLanguage(lang: Language): void {

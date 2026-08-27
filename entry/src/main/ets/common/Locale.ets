@@ -224,6 +224,18 @@ const zh: Record<string, string> = {
   'report.dataset': '数据集',
   'report.columnType': '类型',
 
+  // SQL workbench
+  'sql.title': 'SQL 工作台',
+  'sql.placeholder': '输入只读 SELECT 语句，如 SELECT * FROM 表名 LIMIT 100',
+  'sql.run': '运行',
+  'sql.tables': '数据表',
+  'sql.empty': '暂无数据集可查询',
+  'sql.history': '历史',
+  'sql.clearHistory': '清空历史',
+  'sql.saveResult': '保存为数据集',
+  'sql.saved': '已保存为新数据集',
+  'sql.truncated': '结果已截断（最多 1 万行）',
+
   // Insights
   'insights.title': '洞察',
   'insights.missing': '缺失值',
@@ -488,6 +500,17 @@ const en: Record<string, string> = {
   'report.generatedAt': 'Generated at',
   'report.dataset': 'Dataset',
   'report.columnType': 'Type',
+
+  'sql.title': 'SQL workbench',
+  'sql.placeholder': 'Read-only SELECT, e.g. SELECT * FROM table LIMIT 100',
+  'sql.run': 'Run',
+  'sql.tables': 'Tables',
+  'sql.empty': 'No datasets to query',
+  'sql.history': 'History',
+  'sql.clearHistory': 'Clear history',
+  'sql.saveResult': 'Save as dataset',
+  'sql.saved': 'Saved as new dataset',
+  'sql.truncated': 'Truncated (max 10000 rows)',
 
   'insights.title': 'Insights',
   'insights.missing': 'Missing values',

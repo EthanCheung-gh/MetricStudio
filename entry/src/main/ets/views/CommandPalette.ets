@@ -163,6 +163,15 @@ export struct CommandPalette {
       }
     };
     out.push(c14);
+    const c15: Command = {
+      id: 'sql-workbench',
+      title: t(lang, 'sql.title'),
+      group: t(lang, 'palette.groupAction'),
+      action: () => {
+        this.workspaceState.setSqlOpen(true);
+      }
+    };
+    out.push(c15);
     return out;
   }
 
