@@ -67,11 +67,36 @@
 - [x] 入口：命令面板「导出报告」命令（workspaceState.reportOpen）
 - [x] 与 web 的差异：合并 Story/Report 为单对话框；不做报告模板持久化（web 仅存 localStorage）
 
-### 暂缓 / 评估
+### 暂缓项评估（2026-08-28）
 
-- SQL 工作台（评估轻量本地 SQL 或降级为筛选表达式）
-- 血缘视图（可基于 `transformHistory` 做线性链子集）
-- Excel / Parquet 导入、Dashboard 拖拽布局、跨图 brush
+#### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite
+
+- web 实现核查：后端 `query_engine.py` 就是**内存 SQLite**（`sqlite3.connect(':memory:')` + pandas `to_sql` 镜像全部数据集 → 只读 SELECT；禁写关键词正则 + 单语句校验 + 10s 超时 + 1 万行截断 + 50 条历史）。
+- 鸿蒙方案：`relationalStore`（系统内置 SQLite，API 已核对：`getRdbStore/querySql/batchInsert/execSQL`）+ cacheDir 临时库：
+  1. 镜像：`CREATE TABLE`（列名安全化规则同 web `safe_table_name`）+ 分批 `batchInsertSync`（500 行/批）
+  2. 执行：复刻同款只读校验（禁 attach/drop/insert 等 + 单 SELECT）后 `querySql`，结果截断 1 万行
+  3. UI：SqlWorkbench 面板（SQL 输入 + 结果表 + 「保存为数据集」→ DataFrame 化）+ preferences 历史 50 条
+- 价值：与 web **同方言**（都是 SQLite），查询经验互通，超出预期对齐。
+- 工作量：中（引擎 ~200 行 + UI ~250 行）。风险：低-中（临时库生命周期；大表分批插入）。
+- 可选延伸：SQLite 文件导入（用户 .db 拷入沙箱后 open）——可行但 RDB 对外来库有元数据写入风险，列为二期。
+
+#### 2. 数据血缘 —— **建议做线性链子集**，并先修 undo 正确性缺陷
+
+- 调查发现（重要）：`DataState.undo` 注释声称"TransformOps keeps an original snapshot"，**实际不存在**；undo 是在已变换帧上重放前 n-1 个算子——对 filter/dedupe/sort 等幂等算子碰巧正确，但 compute（重复加列）、rename（旧列缺失会 throw）、sample（重放丢数据）、pivot/melt 语义均错误。
+- 子集方案：移植侧变换是单数据集线性链（无 join），无需 SVG 图，列表即可覆盖全部实际场景：
+  1. 导入时深拷贝 base 快照
+  2. 步骤列表：序号/算子/参数/结果行列数（±delta）
+  3. 步骤预览：base 重放 0..N（行列数 + 与当前 diff，复用 diffWithCurrent 行键/列均值逻辑）
+  4. 步骤禁用/启用：重放时跳过
+  5. **顺带重写 undo 为「从 base 重放 n-1」**，一并修正正确性
+- 工作量：中；风险：低（重放基础设施现成）；依赖：无。
+
+#### 3. Excel / Parquet 导入 —— **Excel 做（SheetJS 桥），Parquet 拒绝/远期**
+
+- Excel (.xlsx)：
+  - 方案 A（推荐）：SheetJS 社区版（Apache-2.0）vendor `xlsx.full.min.js`（~1MB）进 rawfile + 隐藏 WebView 桥（项目已有 ChartView WebView 模式）：文件 → ArrayBuffer → WebView 内解析 → 行 JSON postMessage 回 ArkTS → DataFrame。解析器久经考验（日期/多 sheet），ArkTS 侧零解析代码，**不依赖 OHPM 生态**（本次生态检索因网络受限未核实，方案 A 规避该不确定性）。
+  - 方案 B（不推荐）：纯 ArkTS 解析 OOXML（zlib 解压 + 手写 sharedStrings/styles/日期推断）——工作量与坑位显著更高。
+- Parquet：纯 ArkTS 不现实（列式编码 + snappy/zstd）；C++ NAPI 引 parquet 工具链成本与个人工具场景失衡；JS 侧存在 hyparquet（MIT，纯 JS）可走同款 WebView 桥但编码覆盖待验证。**建议拒绝/远期**——CSV + SQLite + Excel 已覆盖绝大多数数据来源。
 
 ## 验证
 

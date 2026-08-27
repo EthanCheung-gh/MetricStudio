@@ -50,11 +50,11 @@ devecocli run --skip-build
 - [x] 设置：主题（深 / 浅 / 跟随系统）/ 语言 / LLM 连接配置（持久化）
 - [x] 项目保存 / 加载（Preferences 内嵌 JSON：图表 + Dashboard + 偏好）
 
-未移植（按批次推进，见 `docs/superpowers/plans/2026-08-27-harmonyos-port-roadmap.md`）：
+未移植（已评估，结论与方案见 `docs/superpowers/plans/2026-08-27-harmonyos-port-roadmap.md` 暂缓项评估）：
 
-- [ ] 数据血缘（web: LineageView，暂缓）
-- [ ] SQL 工作台 / SQLite 导入（需本地 SQL 引擎，暂缓）
-- [ ] Excel / Parquet 导入（需格式解析库，暂缓）
+- [ ] SQL 工作台（建议做：relationalStore 内存 SQLite，与 web 同方言）
+- [ ] 数据血缘（建议做线性链子集，顺带修复 undo 快照缺陷）
+- [ ] Excel 导入（建议做：SheetJS + WebView 桥）；Parquet（拒绝/远期）
 
 ## 相关文档
 
