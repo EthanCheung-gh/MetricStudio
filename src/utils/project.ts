@@ -31,5 +31,8 @@ export async function loadProjectByPath(path: string): Promise<LoadProjectResult
   useQAStore.getState().hydrate(result.qa_conversations ?? result.project.qa_conversations ?? []);
   const name = result.project.name || path;
   useUIStore.getState().addRecentProject({ path, name });
+  // Loading an explicit project also becomes the autosave target so further
+  // edits are preserved without a manual save.
+  useUIStore.getState().setAutoSaveTarget(path, name);
   return { restored: result.restored.length, name };
 }

@@ -34,6 +34,8 @@ export function TitleBar() {
       const dashboards = useDashboardStore.getState().dashboards
       const qaConversations = useQAStore.getState().conversations
       const result = await api.saveProject({ path: projectPath, name: projectName, charts, dashboards, qa_conversations: qaConversations })
+      useUIStore.getState().setAutoSaveTarget(result.path, projectName)
+      useUIStore.getState().setAutoSaveTime(new Date().toISOString())
       addNotification('success', `Project saved: ${result.datasets} dataset(s) to ${result.path}`)
       setSaveProjectModalOpen(false)
     } catch (err) {

@@ -21,6 +21,13 @@ export interface ShortcutKey {
   shift?: boolean;
 }
 
+/** Session-scoped autosave state for the current project (not persisted). */
+export interface AutoSaveState {
+  path: string | null;
+  name: string | null;
+  lastSavedAt: string | null;
+}
+
 interface UIState {
   notifications: Notification[];
   importModalOpen: boolean;
@@ -40,6 +47,10 @@ interface UIState {
   language: Language;
   shortcutOverrides: Record<string, ShortcutKey | null>;
   sampleWizardDismissed: boolean;
+  autoSave: AutoSaveState;
+
+  setAutoSaveTarget: (path: string, name: string) => void;
+  setAutoSaveTime: (savedAt: string) => void;
 
   addNotification: (type: Notification['type'], message: string) => void;
   setShortcutOverride: (actionId: string, key: ShortcutKey | null) => void;
@@ -86,6 +97,12 @@ export const useUIStore = create<UIState>()(
   language: 'zh',
   shortcutOverrides: {},
   sampleWizardDismissed: false,
+  autoSave: { path: null, name: null, lastSavedAt: null },
+
+  setAutoSaveTarget: (path, name) =>
+    set({ autoSave: { path, name, lastSavedAt: null } }),
+  setAutoSaveTime: (lastSavedAt) =>
+    set((state) => ({ autoSave: { ...state.autoSave, lastSavedAt } })),
 
   addNotification: (type, message) => {
     const id = `${++notificationId}`;
