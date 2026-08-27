@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy'
 import 'react-grid-layout/css/styles.css'
 import { Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from '@heroui/react'
-import { Check, Download, Pencil, Plus, Presentation, Save, Trash2, X } from 'lucide-react'
+import { Check, Copy, Download, Eye, EyeOff, Pencil, Plus, Presentation, Save, Trash2, X } from 'lucide-react'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -23,7 +23,10 @@ export function DashboardView() {
   const { t } = useTranslation()
   const dashboards = useDashboardStore((s) => s.dashboards)
   const activeDashboardId = useDashboardStore((s) => s.activeDashboardId)
+  const editMode = useDashboardStore((s) => s.editMode)
+  const setEditMode = useDashboardStore((s) => s.setEditMode)
   const createDashboard = useDashboardStore((s) => s.createDashboard)
+  const duplicateDashboard = useDashboardStore((s) => s.duplicateDashboard)
   const removeDashboard = useDashboardStore((s) => s.removeDashboard)
   const renameDashboard = useDashboardStore((s) => s.renameDashboard)
   const setActiveDashboard = useDashboardStore((s) => s.setActiveDashboard)
@@ -32,6 +35,7 @@ export function DashboardView() {
   const addTextItem = useDashboardStore((s) => s.addTextItem)
   const updateItemText = useDashboardStore((s) => s.updateItemText)
   const updateItemKpi = useDashboardStore((s) => s.updateItemKpi)
+  const toggleItemLock = useDashboardStore((s) => s.toggleItemLock)
   const removeItem = useDashboardStore((s) => s.removeItem)
   const moveItem = useDashboardStore((s) => s.moveItem)
   const resizeItem = useDashboardStore((s) => s.resizeItem)
@@ -119,6 +123,7 @@ export function DashboardView() {
     h: i.h,
     minW: 3,
     minH: 3,
+    static: Boolean(i.locked) || !editMode,
   }))
 
   const filters: DashboardDataFilter[] = dashboard.filters
@@ -259,11 +264,31 @@ export function DashboardView() {
               <Button isIconOnly size="sm" variant="light" onPress={() => setEditingName(true)} aria-label={t('dashboard.rename')}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => {
+                  const copy = duplicateDashboard(dashboard.id)
+                  if (copy) addNotification('success', t('dashboard.duplicated', { name: copy.name }))
+                }}
+                aria-label={t('dashboard.duplicate')}
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
               <Button isIconOnly size="sm" variant="light" onPress={() => setDeleteOpen(true)} aria-label={t('dashboard.delete')}>
                 <Trash2 className="h-3.5 w-3.5 text-danger" />
               </Button>
             </div>
           )}
+          <Button
+            size="sm"
+            variant="light"
+            startContent={editMode ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            onPress={() => setEditMode(!editMode)}
+          >
+            {editMode ? t('dashboard.viewMode') : t('dashboard.editMode')}
+          </Button>
           <Button size="sm" variant="light" startContent={<Plus className="h-3 w-3" />} onPress={() => createDashboard()}>
             {t('dashboard.new')}
           </Button>
@@ -344,21 +369,25 @@ export function DashboardView() {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="light"
-            isDisabled={!activeDataFrameId}
-            onPress={() =>
-              activeDataFrameId &&
-              addKpiItem(dashboard.id, { datasetId: activeDataFrameId, field: '', aggregate: 'sum' })
-            }
-          >
-            + KPI
-          </Button>
-          <Button size="sm" variant="light" onPress={() => addTextItem(dashboard.id)}>
-            + Text
-          </Button>
-          {availableCharts.length > 0 && (
+          {editMode && (
+            <>
+              <Button
+                size="sm"
+                variant="light"
+                isDisabled={!activeDataFrameId}
+                onPress={() =>
+                  activeDataFrameId &&
+                  addKpiItem(dashboard.id, { datasetId: activeDataFrameId, field: '', aggregate: 'sum' })
+                }
+              >
+                + KPI
+              </Button>
+              <Button size="sm" variant="light" onPress={() => addTextItem(dashboard.id)}>
+                + Text
+              </Button>
+            </>
+          )}
+          {editMode && availableCharts.length > 0 && (
             <select
               className="rounded border border-border bg-surface px-2 py-1 text-xs"
               value={selectedChart}
@@ -429,12 +458,15 @@ export function DashboardView() {
         >
           {dashboard.items.map((item) => {
             const kind = item.kind ?? 'chart'
+            const onToggleLock = () => toggleItemLock(dashboard.id, item.chartId)
             if (kind === 'kpi') {
               return (
                 <div key={item.chartId} className="h-full">
                   <KpiCard
                     item={item}
                     filters={filters}
+                    editing={editMode}
+                    onToggleLock={onToggleLock}
                     onRemove={() => removeItem(dashboard.id, item.chartId)}
                     onConfigure={(kpi) => updateItemKpi(dashboard.id, item.chartId, kpi)}
                   />
@@ -446,6 +478,8 @@ export function DashboardView() {
                 <div key={item.chartId} className="h-full">
                   <TextCard
                     item={item}
+                    editing={editMode}
+                    onToggleLock={onToggleLock}
                     onRemove={() => removeItem(dashboard.id, item.chartId)}
                     onChange={(text) => updateItemText(dashboard.id, item.chartId, text)}
                   />
@@ -463,6 +497,9 @@ export function DashboardView() {
                     .filter((i) => i.chartId !== item.chartId)
                     .map((i) => activeBrushes[i.chartId])
                     .filter((b): b is NonNullable<typeof b> => Boolean(b))}
+                  editing={editMode}
+                  locked={Boolean(item.locked)}
+                  onToggleLock={onToggleLock}
                   onRemove={() => removeItem(dashboard.id, item.chartId)}
                   onEdit={() => {
                     setActiveChart(chart.id)

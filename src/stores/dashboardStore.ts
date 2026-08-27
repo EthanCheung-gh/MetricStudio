@@ -7,8 +7,12 @@ import { generateId } from '@/utils/id'
 interface DashboardState {
   dashboards: DashboardConfig[]
   activeDashboardId: string | null
+  /** false = view mode: grid interactions and editing chrome are hidden. */
+  editMode: boolean
 
+  setEditMode: (open: boolean) => void
   createDashboard: () => DashboardConfig
+  duplicateDashboard: (id: string) => DashboardConfig | null
   removeDashboard: (id: string) => void
   renameDashboard: (id: string, name: string) => void
   setActiveDashboard: (id: string | null) => void
@@ -17,6 +21,7 @@ interface DashboardState {
   addTextItem: (dashboardId: string, text?: string) => void
   updateItemText: (dashboardId: string, itemId: string, text: string) => void
   updateItemKpi: (dashboardId: string, itemId: string, kpi: Partial<KpiItemConfig>) => void
+  toggleItemLock: (dashboardId: string, itemId: string) => void
   removeItem: (dashboardId: string, chartId: string) => void
   moveItem: (dashboardId: string, chartId: string, x: number, y: number) => void
   resizeItem: (dashboardId: string, chartId: string, w: number, h: number) => void
@@ -48,6 +53,9 @@ export const useDashboardStore = create<DashboardState>()(
     (set, get) => ({
       dashboards: [],
       activeDashboardId: null,
+      editMode: true,
+
+      setEditMode: (open) => set({ editMode: open }),
 
       createDashboard: () => {
         const now = new Date().toISOString()
@@ -58,6 +66,29 @@ export const useDashboardStore = create<DashboardState>()(
           filters: [],
           cols: 12,
           rowHeight: 80,
+          createdAt: now,
+          updatedAt: now,
+        }
+        set((s) => ({ dashboards: [...s.dashboards, dashboard], activeDashboardId: dashboard.id }))
+        return dashboard
+      },
+
+      duplicateDashboard: (id) => {
+        const source = get().dashboards.find((d) => d.id === id)
+        if (!source) return null
+        const now = new Date().toISOString()
+        // Text and KPI cards are deep-copied with new ids so both dashboards
+        // stay independent; chart items keep their chartId (charts are global).
+        const copySuffix = () => (item: DashboardItem): DashboardItem => {
+          if (item.kind === undefined) return { ...item }
+          return { ...item, chartId: generateId() }
+        }
+        const copiedName = `${source.name} ${get().dashboards.filter((d) => d.name.startsWith(source.name)).length + 1}`
+        const dashboard: DashboardConfig = {
+          ...source,
+          id: generateId(),
+          name: copiedName.slice(0, 120),
+          items: source.items.map((item) => copySuffix()(item)),
           createdAt: now,
           updatedAt: now,
         }
@@ -127,6 +158,15 @@ export const useDashboardStore = create<DashboardState>()(
             items: d.items.map((i) =>
               i.chartId === itemId && i.kpi ? { ...i, kpi: { ...i.kpi, ...kpi } } : i,
             ),
+            updatedAt: new Date().toISOString(),
+          })),
+        })),
+
+      toggleItemLock: (dashboardId, itemId) =>
+        set((s) => ({
+          dashboards: touch(s.dashboards, dashboardId, (d) => ({
+            ...d,
+            items: d.items.map((i) => (i.chartId === itemId ? { ...i, locked: !i.locked } : i)),
             updatedAt: new Date().toISOString(),
           })),
         })),

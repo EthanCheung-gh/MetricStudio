@@ -20,6 +20,8 @@ export interface DashboardItem {
   kind?: DashboardItemKind
   kpi?: KpiItemConfig
   text?: string
+  /** Locked cards cannot be moved or resized on the grid (edit mode still allows unlock). */
+  locked?: boolean
 }
 
 export type DashboardFilterKind = 'category' | 'range' | 'date'

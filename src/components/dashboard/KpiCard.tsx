@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardBody } from '@heroui/react'
-import { Settings2, X } from 'lucide-react'
+import { Lock, Settings2, Unlock, X } from 'lucide-react'
 import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
 import type { DashboardDataFilter, DashboardItem, KpiAggregate, KpiItemConfig } from '@/types/dashboard'
@@ -12,6 +12,9 @@ const AGGS: KpiAggregate[] = ['sum', 'mean', 'count', 'min', 'max', 'nunique']
 export interface KpiCardProps {
   item: DashboardItem
   filters: DashboardDataFilter[]
+  /** false in view mode: editing chrome is hidden. */
+  editing: boolean
+  onToggleLock: () => void
   onRemove: () => void
   onConfigure: (kpi: Partial<KpiItemConfig>) => void
 }
@@ -26,7 +29,7 @@ function formatValue(v: number | null): string {
 
 const selectCls = 'rounded border border-border bg-surface px-2 py-1 text-xs'
 
-export function KpiCard({ item, filters, onRemove, onConfigure }: KpiCardProps) {
+export function KpiCard({ item, filters, editing, onToggleLock, onRemove, onConfigure }: KpiCardProps) {
   const { t } = useTranslation()
   const kpi = item.kpi
   const dataFrames = useDataStore((s) => s.dataFrames)
@@ -72,20 +75,35 @@ export function KpiCard({ item, filters, onRemove, onConfigure }: KpiCardProps) 
           {kpi?.label || kpi?.field || 'KPI'}
         </span>
         <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            className="rounded p-0.5 hover:bg-surface-elevated"
-            onClick={() => setConfiguring((c) => !c)}
-            aria-label={t('dashboard.configureKpi')}
-          >
-            <Settings2 className="h-3.5 w-3.5 text-muted" />
-          </button>
-          <button
-            className="rounded p-0.5 hover:bg-danger/20 hover:text-danger"
-            onClick={onRemove}
-            aria-label={t('dashboard.removeCard')}
-          >
-            <X className="h-3.5 w-3.5 text-muted" />
-          </button>
+          {editing && (
+            <>
+              <button
+                className="rounded p-0.5 hover:bg-surface-elevated"
+                onClick={onToggleLock}
+                aria-label={item.locked ? t('dashboard.unlockCard') : t('dashboard.lockCard')}
+              >
+                {item.locked ? <Lock className="h-3.5 w-3.5 text-warning" /> : <Unlock className="h-3.5 w-3.5 text-muted" />}
+              </button>
+              {!item.locked && (
+                <>
+                  <button
+                    className="rounded p-0.5 hover:bg-surface-elevated"
+                    onClick={() => setConfiguring((c) => !c)}
+                    aria-label={t('dashboard.configureKpi')}
+                  >
+                    <Settings2 className="h-3.5 w-3.5 text-muted" />
+                  </button>
+                  <button
+                    className="rounded p-0.5 hover:bg-danger/20 hover:text-danger"
+                    onClick={onRemove}
+                    aria-label={t('dashboard.removeCard')}
+                  >
+                    <X className="h-3.5 w-3.5 text-muted" />
+                  </button>
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
       <CardBody className="min-h-0 flex-1 justify-center overflow-auto p-3">

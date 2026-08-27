@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Card, CardBody } from '@heroui/react'
-import { Settings2, X } from 'lucide-react'
+import { Lock, Settings2, Unlock, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { PlotlyRenderer, type PlotlySelection } from '@/components/chart/PlotlyRenderer'
 import type { ChartConfig, SelectionFilter } from '@/types/encoding'
 import type { DashboardDataFilter } from '@/types/dashboard'
@@ -13,6 +14,11 @@ export interface DashboardChartCardProps {
   filters: DashboardDataFilter[]
   /** Brushes from OTHER cards in the dashboard (applied as selections). */
   externalBrushes: SelectionFilter[]
+  /** false in view mode: editing chrome is hidden. */
+  editing: boolean
+  /** Mirrors the owning grid item's locked flag. */
+  locked?: boolean
+  onToggleLock: () => void
   onRemove: () => void
   onEdit: () => void
   onBrushChange: (sel: SelectionFilter | null) => void
@@ -22,10 +28,14 @@ export function DashboardChartCard({
   chart,
   filters,
   externalBrushes,
+  editing,
+  locked,
+  onToggleLock,
   onRemove,
   onEdit,
   onBrushChange,
 }: DashboardChartCardProps) {
+  const { t } = useTranslation()
   const [figure, setFigure] = useState<PlotlyFigure | null>(null)
   const dataVersion = useDataStore((state) => state.dataVersions[chart.datasetId] || 0)
   const [highlight, setHighlight] = useState(false)
@@ -78,12 +88,27 @@ export function DashboardChartCard({
       <div className="flex shrink-0 items-center justify-between border-b border-border px-2 py-1">
         <span className="drag-handle flex-1 cursor-grab truncate text-xs font-medium">{chart.name}</span>
         <div className="flex shrink-0 items-center gap-0.5">
-          <button className="rounded p-0.5 hover:bg-surface-elevated" onClick={onEdit} aria-label="Edit chart">
-            <Settings2 className="h-3.5 w-3.5 text-muted" />
-          </button>
-          <button className="rounded p-0.5 hover:bg-danger/20 hover:text-danger" onClick={onRemove} aria-label="Remove from dashboard">
-            <X className="h-3.5 w-3.5 text-muted" />
-          </button>
+          {editing && (
+            <>
+              <button
+                className="rounded p-0.5 hover:bg-surface-elevated"
+                onClick={onToggleLock}
+                aria-label={locked ? t('dashboard.unlockCard') : t('dashboard.lockCard')}
+              >
+                {locked ? <Lock className="h-3.5 w-3.5 text-warning" /> : <Unlock className="h-3.5 w-3.5 text-muted" />}
+              </button>
+              {!locked && (
+                <>
+                  <button className="rounded p-0.5 hover:bg-surface-elevated" onClick={onEdit} aria-label={t('dashboard.editChart')}>
+                    <Settings2 className="h-3.5 w-3.5 text-muted" />
+                  </button>
+                  <button className="rounded p-0.5 hover:bg-danger/20 hover:text-danger" onClick={onRemove} aria-label={t('dashboard.removeCard')}>
+                    <X className="h-3.5 w-3.5 text-muted" />
+                  </button>
+                </>
+              )}
+            </>
+          )}
         </div>
       </div>
       <CardBody className="min-h-0 flex-1 p-0">

@@ -21,6 +21,7 @@ beforeEach(() => {
     activeDashboardId: null,
     brushSelections: {},
     layoutTemplates: [],
+    editMode: true,
   })
 })
 
@@ -48,6 +49,52 @@ describe('dashboard lifecycle', () => {
     expect(useDashboardStore.getState().dashboards[0].items).toContainEqual(
       expect.objectContaining({ kind: 'text', text: 'Question\n\nAnswer' }),
     )
+  })
+
+  it('toggles the locked flag of a card', () => {
+    const current = dashboard('dash')
+    current.items = [{ chartId: 'text-1', kind: 'text', text: 'hi', x: 0, y: 0, w: 4, h: 2 }]
+    useDashboardStore.setState({ dashboards: [current], activeDashboardId: 'dash' })
+
+    useDashboardStore.getState().toggleItemLock('dash', 'text-1')
+    expect(useDashboardStore.getState().dashboards[0].items[0].locked).toBe(true)
+
+    useDashboardStore.getState().toggleItemLock('dash', 'text-1')
+    expect(useDashboardStore.getState().dashboards[0].items[0].locked).toBe(false)
+  })
+
+  it('duplicates a dashboard with independent kpi/text cards and shared chart ids', () => {
+    const source = dashboard('source', 'Sales')
+    source.items = [
+      { chartId: 'chart-1', x: 0, y: 0, w: 6, h: 4 },
+      { chartId: 'text-1', kind: 'text', text: 'note', x: 6, y: 0, w: 3, h: 2 },
+      { chartId: 'kpi-1', kind: 'kpi', kpi: { datasetId: 'ds', field: 'f', aggregate: 'sum' }, x: 9, y: 0, w: 3, h: 2 },
+    ]
+    useDashboardStore.setState({ dashboards: [source], activeDashboardId: 'source' })
+
+    const copy = useDashboardStore.getState().duplicateDashboard('source')
+
+    expect(copy).not.toBeNull()
+    const state = useDashboardStore.getState()
+    expect(state.dashboards).toHaveLength(2)
+    expect(state.activeDashboardId).toBe(copy!.id)
+    expect(state.dashboards[1].name).toContain('Sales')
+    expect(state.dashboards[1].items).toHaveLength(3)
+    // Chart items share the same global chart id…
+    expect(state.dashboards[1].items.find((i) => i.kind === undefined)?.chartId).toBe('chart-1')
+    // …while text/kpi cards get fresh ids but keep content.
+    const copiedText = state.dashboards[1].items.find((i) => i.kind === 'text')!
+    expect(copiedText.chartId).not.toBe('text-1')
+    expect(copiedText.text).toBe('note')
+    expect(state.dashboards[0].items.map((i) => i.chartId)).toEqual(['chart-1', 'text-1', 'kpi-1'])
+  })
+
+  it('toggles edit mode off and on', () => {
+    useDashboardStore.setState({ editMode: true })
+    useDashboardStore.getState().setEditMode(false)
+    expect(useDashboardStore.getState().editMode).toBe(false)
+    useDashboardStore.getState().setEditMode(true)
+    expect(useDashboardStore.getState().editMode).toBe(true)
   })
 
   it('resets the active dashboard and brushes when loading a project', () => {
