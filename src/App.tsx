@@ -10,6 +10,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useTranslation } from 'react-i18next'
 import { getEffectiveBindings, matchShortcut } from '@/utils/shortcuts'
+import { startAutoSave, stopAutoSave } from '@/utils/autoSave'
 import type { FieldType } from '@/types/encoding'
 
 function App() {
@@ -75,6 +76,7 @@ function App() {
 
   useEffect(() => {
     if (connected) {
+      startAutoSave()
       // (Re)load on startup AND on recovery after a disconnect (spec §3.3)
       loadDataFrames()
         .then(() => Promise.all([
@@ -84,22 +86,31 @@ function App() {
         .catch((err) => {
           addNotification('error', err.message)
         })
+    } else {
+      stopAutoSave()
     }
   }, [connected, loadDataFrames, addNotification])
 
   useEffect(() => {
     if (!connected) return
-    const checkSources = () => useDataStore.getState().loadSourceStatuses()
+    const checkSources = async () => {
+      await useDataStore.getState().loadSourceStatuses()
+      const refreshed = await useDataStore.getState().autoRefreshChangedSources()
+      if (refreshed.length > 0) {
+        addNotification('info', `Auto-refreshed ${refreshed.length} changed source(s): ${refreshed.join(', ')}`)
+      }
+    }
+    void checkSources()
     const interval = window.setInterval(checkSources, 30_000)
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') checkSources()
+      if (document.visibilityState === 'visible') void checkSources()
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [connected])
+  }, [connected, addNotification])
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event

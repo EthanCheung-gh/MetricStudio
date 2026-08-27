@@ -36,6 +36,8 @@ interface DataState {
   loadPreviewPage: (query: PreviewQuery) => Promise<void>;
   loadSourceStatuses: () => Promise<void>;
   refreshSource: (id: string) => Promise<void>;
+  /** Auto-refresh every changed source; returns refreshed dataset names. */
+  autoRefreshChangedSources: () => Promise<string[]>;
   removeDataFrame: (id: string) => Promise<void>;
   setNarrative: (id: string, text: string) => void;
   setTsResult: (id: string, result: TsResult) => void;
@@ -191,6 +193,27 @@ export const useDataStore = create<DataState>((set, get) => ({
     set((state) => ({ dataVersions: { ...state.dataVersions, [id]: (state.dataVersions[id] || 0) + 1 } }));
     await Promise.all([get().loadDataFrames(), get().loadSourceStatuses()]);
     if (get().activeDataFrameId === id) await get().refreshActiveDataFrame();
+  },
+
+  autoRefreshChangedSources: async () => {
+    const refreshable = Object.values(get().sourceStatuses).filter(
+      (status) => status.changed && status.refreshable && status.original_exists !== false,
+    );
+    const refreshed: string[] = [];
+    for (const status of refreshable) {
+      try {
+        await get().refreshSource(status.dataset_id);
+        const name = get().dataFrames.find((df) => df.id === status.dataset_id)?.name;
+        if (name) refreshed.push(name);
+      } catch {
+        // Keep other sources refreshing; surface the failure per dataset below.
+        useUIStore.getState().addNotification(
+          'error',
+          `Auto-refresh failed: ${status.dataset_name}. Data kept at last good version.`,
+        );
+      }
+    }
+    return refreshed;
   },
 
   removeDataFrame: async (id) => {

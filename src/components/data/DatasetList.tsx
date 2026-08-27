@@ -14,6 +14,7 @@ export const DatasetList = memo(function DatasetList() {
   const remove = useDataStore((s) => s.removeDataFrame)
   const sourceStatuses = useDataStore((s) => s.sourceStatuses)
   const refreshSource = useDataStore((s) => s.refreshSource)
+  const dataVersions = useDataStore((s) => s.dataVersions)
   const addNotification = useUIStore((s) => s.addNotification)
 
   const refreshDataset = async (id: string, name: string) => {
@@ -67,6 +68,11 @@ export const DatasetList = memo(function DatasetList() {
                 <Chip size="sm" variant="flat" className="text-[10px] h-4">
                   {df.rows}
                 </Chip>
+                {(dataVersions[df.id] || 0) > 0 && (
+                  <span className="text-[9px] text-muted" title={t('dataset.versionBadge')}>
+                    v{dataVersions[df.id]}
+                  </span>
+                )}
                 <Button
                   isIconOnly
                   size="sm"
