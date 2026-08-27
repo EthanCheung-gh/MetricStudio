@@ -89,3 +89,17 @@ export class TransformOp {
     this.timestamp = new Date().toISOString();
   }
 }
+
+/** One lineage step: an applied op plus replay metadata (web LineageView subset). */
+@Observed
+export class TransformStep {
+  op: TransformOp;
+  enabled: boolean = true;
+  error: string = '';      // replay failure note (step auto-disabled)
+  rowsAfter: number = -1;  // -1 = not replayed yet / disabled
+  colsAfter: number = -1;
+
+  constructor(op: TransformOp) {
+    this.op = op;
+  }
+}

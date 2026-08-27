@@ -236,6 +236,18 @@ const zh: Record<string, string> = {
   'sql.saved': '已保存为新数据集',
   'sql.truncated': '结果已截断（最多 1 万行）',
 
+  // Lineage
+  'lineage.base': '原始数据',
+  'lineage.empty': '暂无变换历史（导入数据或恢复快照后可追溯）',
+  'lineage.hint': '点击步骤预览该时点数据并与当前对比；禁用步骤后从原始数据重放',
+  'lineage.step': '步骤',
+  'lineage.disable': '禁用',
+  'lineage.enable': '启用',
+  'lineage.diffTitle': '与当前对比:',
+  'lineage.onlyLeft': '仅此步骤',
+  'lineage.onlyRight': '仅当前',
+  'lineage.numericDiff': '均值差异',
+
   // Insights
   'insights.title': '洞察',
   'insights.missing': '缺失值',
@@ -511,6 +523,17 @@ const en: Record<string, string> = {
   'sql.saveResult': 'Save as dataset',
   'sql.saved': 'Saved as new dataset',
   'sql.truncated': 'Truncated (max 10000 rows)',
+
+  'lineage.base': 'Base data',
+  'lineage.empty': 'No transform history yet (import data or restore a snapshot)',
+  'lineage.hint': 'Tap a step to preview data at that point and diff vs current; disabled steps are skipped on replay',
+  'lineage.step': 'Step',
+  'lineage.disable': 'Disable',
+  'lineage.enable': 'Enable',
+  'lineage.diffTitle': 'Diff vs current:',
+  'lineage.onlyLeft': 'only this step',
+  'lineage.onlyRight': 'only current',
+  'lineage.numericDiff': 'mean diffs',
 
   'insights.title': 'Insights',
   'insights.missing': 'Missing values',

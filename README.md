@@ -53,7 +53,7 @@ devecocli run --skip-build
 未移植（已评估，结论与方案见 `docs/superpowers/plans/2026-08-27-harmonyos-port-roadmap.md` 暂缓项评估）：
 
 - [x] SQL 工作台（relationalStore 内存 SQLite，与 web 同方言；SQLite 文件导入为二期可选）
-- [ ] 数据血缘（建议做线性链子集，顺带修复 undo 快照缺陷）
+- [x] 数据血缘：变换链步骤列表/禁用重放/时点预览与当前对比；undo 修复为从原始快照正确重放
 - [ ] Excel 导入（建议做：SheetJS + WebView 桥）；Parquet（拒绝/远期）
 
 ## 相关文档

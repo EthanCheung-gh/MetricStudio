@@ -6,6 +6,7 @@ import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { Theme } from '../common/Theme';
 import { l10n, t } from '../common/Locale';
 import { ChartConfig } from '../model/ChartConfig';
+import { TransformOp } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { ReportOptions, buildReportHtml } from '../engine/ReportBuilder';
@@ -131,7 +132,12 @@ export struct ReportDialog {
       options.includeConclusion = this.includeConclusion;
       options.conclusion = this.conclusion;
       options.chartIds = this.selectedChartIds;
-      const html = buildReportHtml(df, charts, this.dataState.transformHistory, options, plotlyJs,
+      const historyOps: TransformOp[] = [];
+      const steps = this.dataState.transformHistory;
+      for (let i = 0; i < steps.length; i++) {
+        historyOps.push(steps[i].op);
+      }
+      const html = buildReportHtml(df, charts, historyOps, options, plotlyJs,
         this.workspaceState.language);
 
       const documentPicker = new picker.DocumentViewPicker(getContext(this));

@@ -78,6 +78,16 @@
 - [ ] 二期可选：SQLite 文件导入（picker 拷入沙箱后 open，外来库兼容性待验证）
 - [x] 验证：`devecocli build` 通过；运行时需真机验证 RDB 镜像/查询链路
 
+#### Batch 6：数据血缘子集 + undo 修复（评估结论 #2，已实现）
+
+- [x] **undo 正确性修复**：旧实现在已变换帧上重放算子（对 filter/sort 等幂等算子碰巧正确，compute/rename/sample/pivot 错误或抛异常）；现从 base 快照重放剩余启用步骤，语义正确
+- [x] `TransformStep`（op + enabled + error + rows/colsAfter）替换裸 `TransformOp[]` 历史链；导入/恢复快照时记录 base 深拷贝
+- [x] 步骤禁用/启用：重放时跳过；重放抛错的步骤自动禁用并记录错误（链保持一致）
+- [x] `LineageView`（新）：DataView 第三切换（表格/快照/血缘）；步骤列表（序号/算子/参数/行列数±delta）；点击步骤预览该时点数据（base 重放 0..N）并与当前 diff（行键 onlyLeft/onlyRight + 数值列均值差异，复用抽取后的 `diffFrames`）
+- [x] `DiffResult` diff 逻辑抽取为 `diffFrames(left, right)`，快照 diff 与血缘 diff 共用
+- [x] 限制（与评估一致）：血缘仅跟踪当前数据集会话（切换数据集清空，与既有 undo 行为一致）；无跨数据集 DAG/SVG 图；大数据集 diff 为 O(n) 全量行键
+- [x] 验证：`devecocli build` 通过；SDK 校准——ArkUI `ClickEvent` 无 `stopPropagation`，行选中区与启停按钮改为兄弟节点隔离
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite

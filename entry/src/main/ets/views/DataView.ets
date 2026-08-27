@@ -6,6 +6,7 @@ import { DataState } from '../model/DataState';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
 import { toNumber } from '../engine/Numeric';
 import { SnapshotView } from './SnapshotView';
+import { LineageView } from './LineageView';
 
 const PAGE_SIZE: number = 100;
 
@@ -21,7 +22,7 @@ export struct DataView {
   @State page: number = 0;
   @State sortCol: string = '';
   @State sortAsc: boolean = true;
-  @State viewMode: string = 'table'; // 'table' | 'snapshots'
+  @State viewMode: string = 'table'; // 'table' | 'snapshots' | 'lineage'
 
   private sortedRows(): CellValue[][] {
     const df = this.dataState.activeDataFrame;
@@ -101,6 +102,15 @@ export struct DataView {
             .onClick(() => {
               this.viewMode = 'snapshots';
             })
+          Text('血缘')
+            .fontSize(11)
+            .fontColor(this.viewMode === 'lineage' ? Theme.primary : Theme.colorMuted())
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .borderRadius(4)
+            .backgroundColor(this.viewMode === 'lineage' ? Theme.primaryDim : Color.Transparent)
+            .onClick(() => {
+              this.viewMode = 'lineage';
+            })
         }
         .margin({ left: 12 })
         Blank()
@@ -117,6 +127,14 @@ export struct DataView {
       if (this.viewMode === 'snapshots') {
         Scroll() {
           SnapshotView()
+            .width('100%')
+        }
+        .layoutWeight(1)
+        .scrollBar(BarState.Auto)
+        .align(Alignment.TopStart)
+      } else if (this.viewMode === 'lineage') {
+        Scroll() {
+          LineageView()
             .width('100%')
         }
         .layoutWeight(1)

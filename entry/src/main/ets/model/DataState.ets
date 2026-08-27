@@ -1,10 +1,11 @@
-import { CellValue, DataFrame, TransformOp } from './DataFrame';
+import { CellValue, DataFrame, TransformOp, TransformStep } from './DataFrame';
 import { applyTransformOp } from '../engine/TransformOps';
 
 /**
  * Data-layer state (web: stores/dataStore.ts, local-engine variant).
- * Owns the dataset list, the active dataset, the undo stack and the preview
- * page. All consumers observe via @Consume('dataState').
+ * Owns the dataset list, the active dataset, the lineage chain (base snapshot
+ * + applied steps), snapshots and the preview page. All consumers observe via
+ * @Consume('dataState').
  */
 /** Immutable snapshot of a DataFrame at a point in time (web DataSnapshot). */
 @Observed
@@ -41,11 +42,57 @@ export class DiffColumn {
   rightMean: number | null = null;
 }
 
+/** Row-key diff between any two frames (web diff-steps / snapshot diff). */
+export function diffFrames(left: DataFrame, right: DataFrame): DiffResult {
+  const result = new DiffResult();
+  result.leftRows = left.rowCount;
+  result.leftCols = left.colCount;
+  result.rightRows = right.rowCount;
+  result.rightCols = right.colCount;
+  const leftKeys = new Set<string>();
+  for (let r = 0; r < left.rows.length; r++) {
+    leftKeys.add(rowKey(left, r));
+  }
+  const rightKeys = new Set<string>();
+  for (let r = 0; r < right.rows.length; r++) {
+    rightKeys.add(rowKey(right, r));
+  }
+  rightKeys.forEach((k: string) => {
+    if (!leftKeys.has(k)) {
+      result.onlyRight.push(k);
+    }
+  });
+  leftKeys.forEach((k: string) => {
+    if (!rightKeys.has(k)) {
+      result.onlyLeft.push(k);
+    }
+  });
+  // numeric column mean comparison
+  const nCols = Math.min(left.colCount, right.colCount);
+  for (let c = 0; c < nCols; c++) {
+    const col = left.columns[c];
+    if (col.dtype !== 'number') {
+      continue;
+    }
+    const d = new DiffColumn();
+    d.column = col.name;
+    d.leftMean = columnMean(left, c);
+    d.rightMean = columnMean(right, c);
+    if (d.leftMean !== d.rightMean) {
+      result.numericDiff.push(d);
+    }
+  }
+  return result;
+}
+
 @Observed
 export class DataState {
   dataFrames: DataFrame[] = [];
   activeIndex: number = -1;
-  transformHistory: TransformOp[] = [];
+  // Lineage chain of the active dataset: base snapshot + applied steps.
+  baseFrame: DataFrame | null = null;
+  transformHistory: TransformStep[] = [];
+  lineageTick: number = 0;
   lastError: string = '';
   snapshots: DataSnapshot[] = [];
 
@@ -73,8 +120,10 @@ export class DataState {
   importDataFrame(df: DataFrame): void {
     this.dataFrames.push(df);
     this.activeIndex = this.dataFrames.length - 1;
+    this.baseFrame = df.clone();
     this.transformHistory = [];
     this.lastError = '';
+    this.bumpLineage();
   }
 
   removeDataFrame(index: number): void {
@@ -87,29 +136,42 @@ export class DataState {
     } else if (this.activeIndex >= this.dataFrames.length) {
       this.activeIndex = this.dataFrames.length - 1;
     }
+    this.baseFrame = null;
     this.transformHistory = [];
+    this.bumpLineage();
   }
 
   setActive(index: number): void {
     if (index >= 0 && index < this.dataFrames.length) {
       this.activeIndex = index;
+      this.baseFrame = null;
       this.transformHistory = [];
       this.lastError = '';
+      this.bumpLineage();
     }
   }
 
-  /** Apply a transform to the active dataframe (mutates + pushes history). */
+  /** Apply a transform to the active dataframe (mutates + appends a step). */
   applyTransform(op: TransformOp): boolean {
     const df = this.activeDataFrame;
     if (df === null) {
       this.lastError = 'No active dataset';
       return false;
     }
+    // A chain already exists only when a base snapshot is tracked; without it
+    // (e.g. dataset chosen before this feature) start tracking from here.
+    if (this.baseFrame === null) {
+      this.baseFrame = df.clone();
+    }
     try {
       const result = applyTransformOp(df, op);
       this.dataFrames[this.activeIndex] = result;
-      this.transformHistory.push(op);
+      const step = new TransformStep(op);
+      step.rowsAfter = result.rowCount;
+      step.colsAfter = result.colCount;
+      this.transformHistory.push(step);
       this.lastError = '';
+      this.bumpLineage();
       return true;
     } catch (e) {
       this.lastError = e instanceof Error ? e.message : String(e);
@@ -117,27 +179,85 @@ export class DataState {
     }
   }
 
-  /** Undo the last transform by replaying history from the original frame. */
+  /**
+   * Undo the last step: drop it from the chain and replay the remaining
+   * enabled steps from the base snapshot (web globalUndo semantics — fixes
+   * the old replay-on-current-frame bug for non-idempotent ops).
+   */
   undo(): boolean {
-    if (this.transformHistory.length === 0) {
+    if (this.transformHistory.length === 0 || this.baseFrame === null) {
       return false;
     }
-    const df = this.activeDataFrame;
-    if (df === null) {
-      return false;
+    this.transformHistory = this.transformHistory.slice(0, this.transformHistory.length - 1);
+    const frame = this.replayTo(-1);
+    if (frame !== null) {
+      this.dataFrames[this.activeIndex] = frame;
     }
-    // Replay all ops except the last one on a clone of the current frame's
-    // pristine base. TransformOps keeps an original snapshot per frame.
-    const ops = this.transformHistory.slice(0, this.transformHistory.length - 1);
-    let base: DataFrame | null = df.clone();
-    for (let i = 0; i < ops.length; i++) {
-      base = applyTransformOp(base, ops[i]);
-    }
-    if (base !== null) {
-      this.dataFrames[this.activeIndex] = base;
-    }
-    this.transformHistory = ops;
+    this.lastError = '';
+    this.bumpLineage();
     return true;
+  }
+
+  /** Enable/disable a step and rebuild the active frame from base. */
+  toggleStep(index: number): boolean {
+    if (index < 0 || index >= this.transformHistory.length || this.baseFrame === null) {
+      return false;
+    }
+    const step = this.transformHistory[index];
+    step.enabled = !step.enabled;
+    const frame = this.replayTo(-1);
+    if (frame !== null) {
+      this.dataFrames[this.activeIndex] = frame;
+    }
+    this.bumpLineage();
+    return true;
+  }
+
+  /**
+   * Frame state after replaying enabled steps 0..index from base (web
+   * preview?at=step). Does not touch the active frame.
+   */
+  previewAtStep(index: number): DataFrame | null {
+    if (this.baseFrame === null || index < 0 || index >= this.transformHistory.length) {
+      return null;
+    }
+    return this.replayTo(index);
+  }
+
+  /**
+   * Replay the chain from the base snapshot. upTo = -1 replays every enabled
+   * step; otherwise replay stops after step `upTo` (inclusive). Steps that
+   * throw (e.g. renamed-away columns) are auto-disabled and skipped. Also
+   * refreshes each applied step's rows/cols metadata.
+   */
+  private replayTo(upTo: number): DataFrame | null {
+    const base = this.baseFrame;
+    if (base === null || this.activeIndex < 0) {
+      return null;
+    }
+    let cur = base.clone();
+    for (let i = 0; i < this.transformHistory.length; i++) {
+      const step = this.transformHistory[i];
+      const within = upTo < 0 || i <= upTo;
+      if (!step.enabled || !within) {
+        continue;
+      }
+      try {
+        cur = applyTransformOp(cur, step.op);
+        step.error = '';
+      } catch (e) {
+        step.enabled = false;
+        step.error = e instanceof Error ? e.message : String(e);
+      }
+      step.rowsAfter = cur.rowCount;
+      step.colsAfter = cur.colCount;
+    }
+    return cur;
+  }
+
+  private bumpLineage(): void {
+    this.lineageTick++;
+    AppStorage.setOrCreate('lineageTick', this.lineageTick);
   }
 
   previewPage(page: number, pageSize: number): CellValue[][] {
@@ -181,8 +301,11 @@ export class DataState {
     if (snap === null || this.activeIndex < 0) {
       return false;
     }
-    this.dataFrames[this.activeIndex] = snap.frame.clone();
+    const restored = snap.frame.clone();
+    this.dataFrames[this.activeIndex] = restored;
+    this.baseFrame = restored.clone();
     this.transformHistory = [];
+    this.bumpLineage();
     return true;
   }
 
@@ -197,52 +320,11 @@ export class DataState {
 
   /** Row-key diff between a snapshot and the current active dataframe. */
   diffWithCurrent(snapshot: DataSnapshot): DiffResult {
-    const result = new DiffResult();
     const cur = this.activeDataFrame;
-    result.leftRows = snapshot.frame.rowCount;
-    result.leftCols = snapshot.frame.colCount;
-    if (cur !== null) {
-      result.rightRows = cur.rowCount;
-      result.rightCols = cur.colCount;
+    if (cur === null) {
+      return diffFrames(snapshot.frame, snapshot.frame);
     }
-    const leftKeys = new Set<string>();
-    for (let r = 0; r < snapshot.frame.rows.length; r++) {
-      leftKeys.add(rowKey(snapshot.frame, r));
-    }
-    const rightKeys = new Set<string>();
-    if (cur !== null) {
-      for (let r = 0; r < cur.rows.length; r++) {
-        rightKeys.add(rowKey(cur, r));
-      }
-    }
-    rightKeys.forEach((k: string) => {
-      if (!leftKeys.has(k)) {
-        result.onlyRight.push(k);
-      }
-    });
-    leftKeys.forEach((k: string) => {
-      if (!rightKeys.has(k)) {
-        result.onlyLeft.push(k);
-      }
-    });
-    // numeric column mean comparison
-    if (cur !== null) {
-      const nCols = Math.min(snapshot.frame.colCount, cur.colCount);
-      for (let c = 0; c < nCols; c++) {
-        const col = snapshot.frame.columns[c];
-        if (col.dtype !== 'number') {
-          continue;
-        }
-        const d = new DiffColumn();
-        d.column = col.name;
-        d.leftMean = columnMean(snapshot.frame, c);
-        d.rightMean = columnMean(cur, c);
-        if (d.leftMean !== d.rightMean) {
-          result.numericDiff.push(d);
-        }
-      }
-    }
-    return result;
+    return diffFrames(snapshot.frame, cur);
   }
 }
 
