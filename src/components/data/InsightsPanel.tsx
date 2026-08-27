@@ -113,16 +113,50 @@ export function InsightsPanel() {
 
       {tsResult && tsResult.ok && tsResult.periods && (
         <div className="rounded border border-border/60 bg-surface-elevated/40 p-2">
-          <div className="mb-1 text-[10px] font-semibold uppercase text-muted">{t('insight.monthlyMom')}</div>
-          {tsResult.periods.map((p, i) => (
-            <div key={p} className="flex items-center justify-between text-[11px]">
-              <span className="text-muted">{p}</span>
-              <span>{tsResult.values?.[i]}</span>
-              <span className={tsResult.pct_change?.[i] !== null && tsResult.pct_change?.[i] !== undefined && (tsResult.pct_change?.[i] ?? 0) >= 0 ? 'text-success' : 'text-danger'}>
-                {tsResult.pct_change?.[i] !== null && tsResult.pct_change?.[i] !== undefined ? tsResult.pct_change?.[i] + '%' : '—'}
-              </span>
-            </div>
-          ))}
+          <div className="mb-1 text-[10px] font-semibold uppercase text-muted">
+            {t('insight.tsWorkbench', { column: tsResult.column ? ` · ${tsResult.column}` : '' })}
+          </div>
+          <table className="w-full text-[11px]">
+            <thead>
+              <tr className="text-left text-muted">
+                <th className="py-0.5">{t('insight.month')}</th>
+                <th className="py-0.5 text-right">{tsResult.column ?? t('insight.value')}</th>
+                <th className="py-0.5 text-right">{t('ai.mom')}</th>
+                <th className="py-0.5 text-right">{t('insight.yoy')}</th>
+                <th className="py-0.5 text-right">{t('insight.movingAvg', { window: tsResult.moving_window ?? 3 })}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tsResult.periods.map((p, i) => {
+                const isAnomaly = tsResult.anomaly_indexes?.includes(i)
+                const mom = tsResult.pct_change?.[i]
+                const yoy = tsResult.yoy_change?.[i]
+                const ma = tsResult.moving_average?.[i]
+                return (
+                  <tr key={p} className={isAnomaly ? 'bg-warning/10' : undefined}>
+                    <td className={`py-0.5 ${isAnomaly ? 'text-warning font-semibold' : 'text-muted'}`}>
+                      {p}{isAnomaly ? ' ⚠' : ''}
+                    </td>
+                    <td className="py-0.5 text-right">{tsResult.values?.[i]}</td>
+                    <td className={`py-0.5 text-right ${(mom ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {mom !== null && mom !== undefined ? `${mom}%` : '—'}
+                    </td>
+                    <td className={`py-0.5 text-right ${(yoy ?? 0) >= 0 ? 'text-success' : 'text-danger'}`}>
+                      {yoy !== null && yoy !== undefined ? `${yoy}%` : '—'}
+                    </td>
+                    <td className="py-0.5 text-right text-muted">{ma !== null && ma !== undefined ? ma : '—'}</td>
+                  </tr>
+                )
+              })}
+              {(tsResult.forecast_periods ?? []).map((p, i) => (
+                <tr key={p} className="border-t border-border/40">
+                  <td className="py-0.5 text-primary">{p} ↑</td>
+                  <td className="py-0.5 text-right text-primary">{tsResult.forecast_values?.[i]}</td>
+                  <td colSpan={3} className="py-0.5 text-right text-[10px] text-muted">{t('insight.forecastNote')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

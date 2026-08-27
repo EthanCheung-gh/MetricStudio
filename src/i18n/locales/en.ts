@@ -499,6 +499,10 @@ export default {
   'insight.narrateFailed': 'Narrative failed; check LLM config',
   'insight.refresh': 'Refresh insights',
   'insight.monthlyMom': 'Monthly MoM',
+  'insight.tsWorkbench': 'Time-series workbench{{column}}',
+  'insight.yoy': 'YoY',
+  'insight.movingAvg': '{{window}}-period avg',
+  'insight.forecastNote': 'Trend extrapolation forecast',
   'insight.analyzing': 'Analyzing…',
   'insight.empty': 'No insights yet',
   // Table

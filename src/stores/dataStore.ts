@@ -6,9 +6,17 @@ import { useUIStore } from './uiStore';
 let previewRequestId = 0;
 
 export interface TsResult {
+  column?: string;
+  temporal_column?: string;
   periods?: string[];
   values?: number[];
   pct_change?: (number | null)[];
+  yoy_change?: (number | null)[];
+  moving_average?: (number | null)[];
+  moving_window?: number;
+  anomaly_indexes?: number[];
+  forecast_periods?: string[];
+  forecast_values?: number[];
   ok?: boolean;
 }
 

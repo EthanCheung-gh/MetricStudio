@@ -499,6 +499,10 @@ export default {
   'insight.narrateFailed': '生成叙述失败，请检查 LLM 配置',
   'insight.refresh': '刷新洞察',
   'insight.monthlyMom': '月度环比',
+  'insight.tsWorkbench': '时间序列工作台{{column}}',
+  'insight.yoy': '同比',
+  'insight.movingAvg': '{{window}}期均值',
+  'insight.forecastNote': '趋势外推预测',
   'insight.analyzing': '分析中…',
   'insight.empty': '暂无洞察',
   // 表格
