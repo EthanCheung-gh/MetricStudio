@@ -151,6 +151,43 @@ main 的 DataView 结构：左侧视图 tab（table/lineage/snapshots/sql）+ �
 - [x] 不适用/拒绝项维持：服务器路径导入（设备无此概念）、拖拽（触屏价值低，保留点选）、Parquet
 - [x] 验证：`devecocli build` 通过；真机安装待设备重连（外部 SQLite 文件兼容性为首要冒烟项）
 
+#### 默认主题改浅色 + 主题链路修复（2026-08-28）
+
+- [x] **EntryAbility 老 bug**：读偏好用的库名（`metricstudio_settings`）与 Settings 写入的（`ms_settings`）不一致，保存的主题从未在重启时生效；且 Dark/Light 映射颠倒。已统一为 `ms_settings` + 修正映射（0=Dark,1=Light,2=System）
+- [x] 默认主题改为浅色：Theme.lightMode、Settings.applyTheme 默认、WorkspaceState.theme 默认、SettingsDialog 加载默认、EntryAbility 默认值五处对齐
+
+### 剩余差距盘点（2026-08-28，非 100% 项全量清单）
+
+**A. 功能性缺口（真实功能未移植/降级）**
+
+1. Parquet 导入——拒绝/远期（三条技术路径成本失衡，评估见上）
+2. 服务器路径导入——设备无此概念，不适用
+3. 拖拽导入——触屏点选已覆盖，保留
+4. LLM 叙述/洞察生成——本地统计摘要替代；`LlmClient` 已就绪，接真实端点后可在 InsightsPanel.narrate 与 ask 模式接入（需用户提供 OpenAI 兼容端点验证）
+5. QA 会话持久化——会话仅内存，未入项目 JSON（web 经项目保存持久化）
+6. 项目保存不含数据集原始数据——重启后需重新导入文件（web 后端持有数据）；列为最值得做的后续项
+7. 自动保存（web 120s idle autoSave）未移植
+8. 快捷键管理面板（ShortcutsPanel 自定义绑定）未移植，仅固定 Ctrl+K/Z/S
+9. Dashboard：无拖拽布局、无跨图 brush 联动、KPI 无同比环比
+10. 清洗配方预设与 web 后端 recipes 不同（本地 2 预设 + 用户自定义）；质量修复不含离群值处理；列级质量表无 samples 展开
+11. 血缘为线性链子集：无跨数据集 DAG/SVG 图，仅跟踪当前会话；快照 diff 为摘要级
+12. 命令面板为静态命令（无最近项目/数据集/图表动态命令）
+13. Story/Report 合并为单对话框（web 为二）；报告模板持久化未移植
+
+**B. 修饰项/降级替代（不影响主流程）**
+
+- 图表修饰：facet 子图网格、scatter marginal、heatmap corr/annotated、barmode 栈叠 UI
+- InsightsPanel 时序表无 YoY/预测行（本地无季节性模型）
+- 深色系统组件跟随：依赖 EntryAbility setColorMode（已修复读写库名）
+- DataView 列宽拖拽为手柄拖动（web 为 onChange 连续）；表格无虚拟滚动（分页替代）
+
+**C. 待真机/真实数据验证**
+
+- SQLite 外部库经 relationalStore 打开的兼容性
+- xlsx 大文件（数万行）经 runJavaScript 回传
+- LLM 端到端（需真实端点）
+- 触屏长按提示、深色↔浅色反复切换的稳定性
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite

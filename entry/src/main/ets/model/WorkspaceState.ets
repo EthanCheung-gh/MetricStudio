@@ -61,7 +61,7 @@ export class WorkspaceState {
   paletteOpen: boolean = false;
   reportOpen: boolean = false;
   sqlOpen: boolean = false;
-  theme: AppTheme = AppTheme.System;
+  theme: AppTheme = AppTheme.Light;
   llmConfig: LlmConfig = new LlmConfig();
   dashboard: DashboardState = new DashboardState();
 

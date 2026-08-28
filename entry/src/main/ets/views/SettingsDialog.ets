@@ -82,7 +82,7 @@ export struct SettingsDialog {
     }
     try {
       const store = preferences.getPreferencesSync(ctx, { name: SETTINGS_STORE });
-      const theme = store.getSync(KEY_THEME, AppTheme.Dark) as number;
+      const theme = store.getSync(KEY_THEME, AppTheme.Light) as number;
       const language = store.getSync(KEY_LANGUAGE, Language.Zh) as number;
       this.workspaceState.setTheme(theme as AppTheme);
       this.workspaceState.setLanguage(language as Language);

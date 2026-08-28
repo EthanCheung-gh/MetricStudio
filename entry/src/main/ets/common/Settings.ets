@@ -70,17 +70,17 @@ export class Settings {
     }
   }
 
-  /** Apply persisted theme at startup. */
+  /** Apply persisted theme at startup (default Light). */
   static async applyTheme(): Promise<void> {
     const store = await Settings.getStore();
     if (store === null) {
       return;
     }
     try {
-      const v = store.getSync(KEY_THEME, 0) as number;
+      const v = store.getSync(KEY_THEME, 1) as number;
       Theme.setMode(v === 1);
     } catch (e) {
-      // keep default dark
+      // keep default light
     }
   }
 

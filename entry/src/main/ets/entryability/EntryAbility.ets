@@ -19,7 +19,9 @@ import { window } from '@kit.ArkUI';
 import { preferences } from '@kit.ArkData';
 
 const DOMAIN = 0x0000;
-const SETTINGS_STORE = 'metricstudio_settings';
+// Must match Settings.STORE_NAME ('ms_settings') — the old name was never
+// written to, so the saved theme was silently ignored on every launch.
+const SETTINGS_STORE = 'ms_settings';
 const KEY_THEME = 'theme';
 
 export default class EntryAbility extends UIAbility {
@@ -27,11 +29,12 @@ export default class EntryAbility extends UIAbility {
     try {
       const appCtx = this.context.getApplicationContext();
       const store = preferences.getPreferencesSync(this.context, { name: SETTINGS_STORE });
+      // AppTheme: Dark=0, Light=1 (default), System=2
       const theme = store.getSync(KEY_THEME, 1) as number;
       if (theme === 0) {
-        appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
-      } else if (theme === 1) {
         appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+      } else if (theme === 2) {
+        appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
       } else {
         appCtx.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
       }

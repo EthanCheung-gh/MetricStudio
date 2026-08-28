@@ -23,8 +23,8 @@ export class Theme {
   private static readonly borderLight: string = '#c9c9ce';
   private static readonly mutedLight: string = '#6f6f78';
 
-  /** true = light mode, false = dark mode (default). */
-  static lightMode: boolean = false;
+  /** true = light mode (default), false = dark mode. */
+  static lightMode: boolean = true;
 
   static setMode(light: boolean): void {
     Theme.lightMode = light;
