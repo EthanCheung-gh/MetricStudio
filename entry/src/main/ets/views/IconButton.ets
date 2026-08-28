@@ -22,17 +22,28 @@ export struct IconButton {
   @State hovered: boolean = false;
 
   build() {
-    Button() {
-      SymbolGlyph(this.icon)
-        .fontSize(this.iconSize)
-        .fontColor([this.active ? this.activeColor : this.iconColor])
+    Stack({ alignContent: Alignment.Center }) {
+      Button() {
+        SymbolGlyph(this.icon)
+          .fontSize(this.iconSize)
+          .fontColor([this.active ? this.activeColor : this.iconColor])
+      }
+      .width(this.btnWidth)
+      .height(this.btnHeight)
+      .type(ButtonType.Normal)
+      .backgroundColor(this.active ? this.activeBg : (this.hovered ? Theme.surfaceElevated : Color.Transparent))
+      .borderRadius(this.radius)
+      if (this.hovered && this.tip.length > 0) {
+        // hover tooltip rendered as overlay (bindPopup flickers with hover)
+        Text(this.tip)
+          .fontSize(10)
+          .fontColor('#ffffff')
+          .backgroundColor('#262626F2')
+          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .borderRadius(4)
+          .position({ x: 0, y: -26 })
+      }
     }
-    .width(this.btnWidth)
-    .height(this.btnHeight)
-    .type(ButtonType.Normal)
-    .backgroundColor(this.active ? this.activeBg : (this.hovered ? Theme.surfaceElevated : Color.Transparent))
-    .borderRadius(this.radius)
-    .bindPopup(this.hovered && this.tip.length > 0, { message: this.tip } as PopupOptions)
     .onClick(() => {
       this.action();
     })

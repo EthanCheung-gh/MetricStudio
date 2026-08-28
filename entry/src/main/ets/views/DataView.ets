@@ -431,16 +431,26 @@ export struct DataView {
 
   @Builder
   railButton(symbol: string, panel: string, label: string) {
-    Column() {
-      SymbolGlyph($r('sys.symbol.' + symbol))
-        .fontSize(16)
-        .fontColor([this.openPanel === panel ? Theme.primary : Theme.colorMuted()])
+    Stack({ alignContent: Alignment.Center }) {
+      Column() {
+        SymbolGlyph($r('sys.symbol.' + symbol))
+          .fontSize(16)
+          .fontColor([this.openPanel === panel ? Theme.primary : Theme.colorMuted()])
+      }
+      .width(30)
+      .height(30)
+      .borderRadius(6)
+      .backgroundColor(this.openPanel === panel ? Theme.primaryDim : Color.Transparent)
+      if (this.hoveredPanel === panel) {
+        Text(label)
+          .fontSize(10)
+          .fontColor('#ffffff')
+          .backgroundColor('#262626F2')
+          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
+          .borderRadius(4)
+          .position({ x: 34, y: 3 })
+      }
     }
-    .width(30)
-    .height(30)
-    .borderRadius(6)
-    .backgroundColor(this.openPanel === panel ? Theme.primaryDim : Color.Transparent)
-    .bindPopup(this.hoveredPanel === panel, { message: label } as PopupOptions)
     .onHover((hover: boolean) => {
       this.hoveredPanel = hover ? panel : (this.hoveredPanel === panel ? '' : this.hoveredPanel);
     })
