@@ -221,6 +221,8 @@ main 的 DataView 结构：左侧视图 tab（table/lineage/snapshots/sql）+ �
 
 ## 100% 对齐收尾规划（2026-08-28，Batch 11-18）
 
+> **状态（2026-08-29）：Batch 11-18 全部完成并提交**——11 数据持久化 `feed165`、12 LLM 接入 `c01ede2`、13 快捷键+面板 `809797c`、14a 布局 `c6a509b`、14b brush `02c7870`、15 清洗质量 `70ef01c`、16 血缘 `8f56846`、17 图表修饰+时序 `466eac8`、18 Story/Report `8efaa45`。真机冒烟：安装启动无 JS 错误、打开项目数据/快照/问答恢复、快捷键面板渲染正确。剩余仅"待真实数据验证"项（LLM 真实端点、xlsx 大文件、SQLite 外部库）。
+
 基于 main 分支源码全量规格分析（project/qaStore/autoSave、shortcuts/registry/palette、dashboard 全家桶、quality/recipes/lineage/diff、plotlyLayout/timeseries/story+report）。**三处盘点修正**：
 - KPI 同比环比：main 分支没有（KPI 仅单值聚合 + `—`/`x.xM`/`x.xK` 格式）→ 鸿蒙现状已对齐，撤销该缺口
 - 逐单元格 diff：main 分支 diff 同为摘要级（rows/cols/only_left/only_right/numeric_diff）→ 已对齐，撤销该缺口
