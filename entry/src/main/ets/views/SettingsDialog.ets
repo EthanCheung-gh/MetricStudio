@@ -236,7 +236,7 @@ export struct SettingsDialog {
               }
               .width('100%')
 
-              // Shortcuts entry (web: opens ShortcutsPanel; not ported yet)
+              // Shortcuts entry (web: opens ShortcutsPanel)
               Button() {
                 Row({ space: 6 }) {
                   SymbolGlyph($r('sys.symbol.keyboard'))
@@ -253,6 +253,10 @@ export struct SettingsDialog {
               .type(ButtonType.Normal)
               .backgroundColor(Color.Transparent)
               .borderRadius(6)
+              .onClick(() => {
+                this.workspaceState.setSettingsOpen(false);
+                this.workspaceState.setShortcutsOpen(true);
+              })
             }
             .alignItems(HorizontalAlign.Start)
             .width('100%')

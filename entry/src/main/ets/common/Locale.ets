@@ -131,6 +131,11 @@ const zh: Record<string, string> = {
   'transform.sample': '抽样',
   'transform.sampleN': '行数 N',
   'transform.nothingToUndo': '没有可撤销的操作',
+  'transform.nothingToRedo': '没有可重做的操作',
+  'shortcut.title': '快捷键',
+  'shortcut.reset': '重置默认',
+  'shortcut.rebindHint': '点击右侧按键可重新绑定（Esc 取消）',
+  'shortcut.pressKeys': '按下按键…',
   'transform.requiresNumeric': '需要数值列',
 
   // Chart
@@ -427,6 +432,11 @@ const en: Record<string, string> = {
   'transform.sample': 'Sample',
   'transform.sampleN': 'Rows (N)',
   'transform.nothingToUndo': 'Nothing to undo',
+  'transform.nothingToRedo': 'Nothing to redo',
+  'shortcut.title': 'Shortcuts',
+  'shortcut.reset': 'Reset defaults',
+  'shortcut.rebindHint': 'Tap the key button to rebind (Esc to cancel)',
+  'shortcut.pressKeys': 'Press keys…',
   'transform.requiresNumeric': 'Requires numeric column',
 
   'chart.newChart': 'New chart',

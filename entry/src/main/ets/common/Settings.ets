@@ -11,6 +11,7 @@ const KEY_THEME = 'theme';
 const KEY_PROJECT = 'project';
 const KEY_SQL_HISTORY = 'sql_history';
 const KEY_RECIPES = 'recipes';
+const KEY_SHORTCUTS = 'shortcut_overrides';
 const PROJECT_FILE = 'project.json';
 
 /**
@@ -196,6 +197,34 @@ export class Settings {
     }
     try {
       store.putSync(KEY_RECIPES, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load shortcut overrides JSON (web: uiStore shortcutOverrides). */
+  static loadShortcutOverrides(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_SHORTCUTS, '') as string;
+    } catch (e) {
+      v = '';
+    }
+    return v;
+  }
+
+  /** Persist shortcut overrides as a JSON document. */
+  static async saveShortcutOverrides(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_SHORTCUTS, json);
       await store.flush();
     } catch (e) {
       // ignore persistence errors

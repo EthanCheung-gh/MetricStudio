@@ -92,6 +92,7 @@ export class DataState {
   // Lineage chain of the active dataset: base snapshot + applied steps.
   baseFrame: DataFrame | null = null;
   transformHistory: TransformStep[] = [];
+  redoStack: TransformStep[][] = [];
   lineageTick: number = 0;
   lastError: string = '';
   snapshots: DataSnapshot[] = [];
@@ -122,6 +123,7 @@ export class DataState {
     this.activeIndex = this.dataFrames.length - 1;
     this.baseFrame = df.clone();
     this.transformHistory = [];
+    this.redoStack = [];
     this.lastError = '';
     this.bumpLineage();
   }
@@ -137,6 +139,7 @@ export class DataState {
     }
     this.baseFrame = null;
     this.transformHistory = [];
+    this.redoStack = [];
     this.lastError = '';
     this.bumpLineage();
   }
@@ -161,6 +164,7 @@ export class DataState {
       this.activeIndex = index;
       this.baseFrame = null;
       this.transformHistory = [];
+      this.redoStack = [];
       this.lastError = '';
       this.bumpLineage();
     }
@@ -196,6 +200,7 @@ export class DataState {
       step.rowsAfter = result.rowCount;
       step.colsAfter = result.colCount;
       this.transformHistory.push(step);
+      this.redoStack = [];
       this.lastError = '';
       this.bumpLineage();
       return true;
@@ -214,7 +219,30 @@ export class DataState {
     if (this.transformHistory.length === 0 || this.baseFrame === null) {
       return false;
     }
+    const removed = this.transformHistory.slice(this.transformHistory.length - 1);
     this.transformHistory = this.transformHistory.slice(0, this.transformHistory.length - 1);
+    this.redoStack.push(removed);
+    const frame = this.replayTo(-1);
+    if (frame !== null) {
+      this.dataFrames[this.activeIndex] = frame;
+    }
+    this.lastError = '';
+    this.bumpLineage();
+    return true;
+  }
+
+  /** Re-apply the last undone step chain (web globalRedo). */
+  redo(): boolean {
+    if (this.redoStack.length === 0 || this.baseFrame === null) {
+      return false;
+    }
+    const steps = this.redoStack.pop();
+    if (steps === undefined || steps.length === 0) {
+      return false;
+    }
+    for (let i = 0; i < steps.length; i++) {
+      this.transformHistory.push(steps[i]);
+    }
     const frame = this.replayTo(-1);
     if (frame !== null) {
       this.dataFrames[this.activeIndex] = frame;
@@ -231,6 +259,7 @@ export class DataState {
     }
     const step = this.transformHistory[index];
     step.enabled = !step.enabled;
+    this.redoStack = [];
     const frame = this.replayTo(-1);
     if (frame !== null) {
       this.dataFrames[this.activeIndex] = frame;

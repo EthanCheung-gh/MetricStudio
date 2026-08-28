@@ -5,11 +5,12 @@ import { Settings } from '../common/Settings';
 import { AppTheme, CenterTab, WorkspaceState } from '../model/WorkspaceState';
 import { DataState } from '../model/DataState';
 
-/** Palette command (web: commands/registry.tsx subset — local actions only). */
+/** Palette command (web: commands/registry.tsx — static + dynamic sources). */
 interface Command {
   id: string;
   title: string;
   group: string;
+  keywords?: string;
   action: () => void;
 }
 
@@ -175,6 +176,34 @@ export struct CommandPalette {
       }
     };
     out.push(c15);
+    // Dynamic commands (web registry: datasets + charts sources).
+    const datasetGroup = l10n(lang, '数据集', 'Datasets');
+    for (let i = 0; i < this.dataState.dataFrames.length; i++) {
+      const df = this.dataState.dataFrames[i];
+      out.push({
+        id: 'dataset-' + i.toString(),
+        title: df.name,
+        group: datasetGroup,
+        keywords: 'dataset dataframe ' + df.name,
+        action: () => {
+          this.dataState.setActive(i);
+        }
+      });
+    }
+    const chartGroup = l10n(lang, '图表', 'Charts');
+    for (let i = 0; i < this.workspaceState.charts.length; i++) {
+      const c = this.workspaceState.charts[i];
+      out.push({
+        id: 'chart-' + c.id,
+        title: c.name,
+        group: chartGroup,
+        keywords: 'chart graph ' + c.name,
+        action: () => {
+          this.workspaceState.setActiveChart(c.id);
+          this.workspaceState.setActiveTab(CenterTab.Chart);
+        }
+      });
+    }
     return out;
   }
 
@@ -186,7 +215,9 @@ export struct CommandPalette {
     }
     const out: Command[] = [];
     for (let i = 0; i < all.length; i++) {
-      if (all[i].title.toLowerCase().indexOf(q) >= 0 || all[i].id.indexOf(q) >= 0) {
+      const kw = all[i].keywords !== undefined ? all[i].keywords as string : '';
+      if (all[i].title.toLowerCase().indexOf(q) >= 0 || all[i].id.indexOf(q) >= 0
+        || kw.toLowerCase().indexOf(q) >= 0) {
         out.push(all[i]);
       }
     }

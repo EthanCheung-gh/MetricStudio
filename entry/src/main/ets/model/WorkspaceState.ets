@@ -3,6 +3,8 @@ import { DashboardItem, DashboardItemKind, DashboardState } from './DashboardSta
 import { CellValue, ColumnMeta, DataFrame, DType } from './DataFrame';
 import { DataState, DataSnapshot } from './DataState';
 import { QaConvJson, QaState } from './QaState';
+import { ShortcutKey } from '../common/Shortcuts';
+import { Settings } from '../common/Settings';
 import { Theme } from '../common/Theme';
 
 export enum Language {
@@ -70,11 +72,45 @@ export class WorkspaceState {
   // Sibling states wired by Index so project save/load covers datasets + QA.
   private dataState: DataState | null = null;
   private qaState: QaState | null = null;
+  // Shortcuts (web: uiStore shortcutOverrides + ShortcutsPanel open flag).
+  shortcutsOpen: boolean = false;
+  shortcutOverrides: Record<string, ShortcutKey | null> = {};
+  shortcutTick: number = 0;
 
   /** Wire sibling states (web: project save reaches dataStore + qaStore). */
   attach(dataState: DataState, qaState: QaState): void {
     this.dataState = dataState;
     this.qaState = qaState;
+  }
+
+  setShortcutsOpen(open: boolean): void {
+    this.shortcutsOpen = open;
+    this.bumpTick();
+  }
+
+  /** Replace the override map (load-time). */
+  setShortcutOverrides(map: Record<string, ShortcutKey | null>): void {
+    this.shortcutOverrides = map;
+    this.bumpShortcutTick();
+  }
+
+  /** Write one override and persist (web setShortcutOverride). */
+  applyShortcutOverride(id: string, key: ShortcutKey | null): void {
+    this.shortcutOverrides[id] = key;
+    Settings.saveShortcutOverrides(JSON.stringify(this.shortcutOverrides));
+    this.bumpShortcutTick();
+  }
+
+  /** Clear all overrides back to defaults (web resetShortcuts). */
+  resetShortcuts(): void {
+    this.shortcutOverrides = {};
+    Settings.saveShortcutOverrides('{}');
+    this.bumpShortcutTick();
+  }
+
+  private bumpShortcutTick(): void {
+    this.shortcutTick++;
+    AppStorage.setOrCreate('shortcutTick', this.shortcutTick);
   }
 
   setSettingsOpen(open: boolean): void {

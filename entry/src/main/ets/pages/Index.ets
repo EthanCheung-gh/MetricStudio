@@ -2,6 +2,7 @@ import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { Settings } from '../common/Settings';
 import { t } from '../common/Locale';
+import { effectiveShortcut, ShortcutKey } from '../common/Shortcuts';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
 import { DataState } from '../model/DataState';
 import { QaState } from '../model/QaState';
@@ -12,11 +13,19 @@ import { RightPanel } from '../views/RightPanel';
 import { CenterArea } from '../views/CenterArea';
 import { StatusBar } from '../views/StatusBar';
 import { SettingsDialog } from '../views/SettingsDialog';
+import { ShortcutsPanel } from '../views/ShortcutsPanel';
 import { AICommandBar } from '../views/AICommandBar';
 import { ChartConfigDialog } from '../views/ChartConfigDialog';
 import { CommandPalette } from '../views/CommandPalette';
 import { ReportDialog } from '../views/ReportDialog';
 import { SqlWorkbench } from '../views/SqlWorkbench';
+
+/** One registered keyboard sink (web: App.tsx global shortcut handler). */
+interface SinkDef {
+  value: string;
+  mods: Array<ModifierKey>;
+  action: () => void;
+}
 
 /**
  * App shell (web: src/components/layout/AppShell.tsx + WorkspaceLayout.tsx).
@@ -31,6 +40,8 @@ struct Index {
   @Provide('qaState') qaState: QaState = new QaState();
   @StorageLink('themeFlag') @Watch('onThemeFlag') themeFlag: boolean = false;
   @State uiDark: boolean = true;
+  @StorageLink('shortcutTick') @Watch('onShortcutTick') shortcutTickLink: number = 0;
+  @State sinkEpoch: boolean = false;
   private autoSaveBusy: boolean = false;
   private autoSaveTimer: number = -1;
 
@@ -40,10 +51,23 @@ struct Index {
     });
     Settings.applyTheme();
     this.workspaceState.attach(this.dataState, this.qaState);
+    const rawOverrides = Settings.loadShortcutOverrides();
+    if (rawOverrides.length > 0) {
+      try {
+        this.workspaceState.setShortcutOverrides(JSON.parse(rawOverrides) as Record<string, ShortcutKey | null>);
+      } catch (e) {
+        // keep defaults on malformed overrides
+      }
+    }
     // Auto-save (web utils/autoSave.ts): 120s interval, saving mutex, silent.
     this.autoSaveTimer = setInterval(() => {
       this.runAutoSave();
     }, 120000);
+  }
+
+  /** Rebuild keyboard sinks so rebound keys take effect (theme-branch trick). */
+  onShortcutTick(): void {
+    this.sinkEpoch = !this.sinkEpoch;
   }
 
   aboutToDisappear(): void {
@@ -94,6 +118,53 @@ struct Index {
     }
   }
 
+  /** Global shortcut: Ctrl+Shift+Z / Ctrl+Y (web globalRedo). */
+  private redoLast(): void {
+    if (!this.dataState.redo()) {
+      promptAction.showToast({ message: t(this.workspaceState.language, 'transform.nothingToRedo') });
+    }
+  }
+
+  /** Sink definitions from the effective bindings (web matchShortcut table). */
+  private sinkList(): SinkDef[] {
+    const list: SinkDef[] = [];
+    const ids: string[] = ['commandPalette', 'saveProject', 'globalUndo', 'globalRedo', 'shortcutsPanel'];
+    for (let i = 0; i < ids.length; i++) {
+      const k = effectiveShortcut(this.workspaceState.shortcutOverrides, ids[i]);
+      if (k.key.length === 0) {
+        continue;
+      }
+      const mods: Array<ModifierKey> = [];
+      if (k.mod) {
+        mods.push(ModifierKey.CTRL);
+      }
+      if (k.shift) {
+        mods.push(ModifierKey.SHIFT);
+      }
+      list.push({ value: k.key, mods: mods, action: this.actionFor(ids[i]) });
+    }
+    // Fixed aliases (web EXTRA_BINDINGS): Ctrl+P palette, Ctrl+Y redo.
+    list.push({ value: 'P', mods: [ModifierKey.CTRL], action: (): void => this.togglePalette() });
+    list.push({ value: 'Y', mods: [ModifierKey.CTRL], action: (): void => this.redoLast() });
+    return list;
+  }
+
+  private actionFor(id: string): () => void {
+    if (id === 'commandPalette') {
+      return (): void => this.togglePalette();
+    }
+    if (id === 'saveProject') {
+      return (): void => this.saveProjectNow();
+    }
+    if (id === 'globalUndo') {
+      return (): void => this.undoLast();
+    }
+    if (id === 'globalRedo') {
+      return (): void => this.redoLast();
+    }
+    return (): void => this.workspaceState.setShortcutsOpen(true);
+  }
+
   /** Global shortcut: Ctrl+S (web saveProject). */
   private saveProjectNow(): void {
     Settings.saveProject(this.workspaceState.exportJson()).then((ok: boolean) => {
@@ -132,35 +203,35 @@ struct Index {
         SqlWorkbench()
       }
 
-      // Keyboard shortcut sinks (web App.tsx global shortcuts): Ctrl+K/Z/S.
-      Column()
-        .width(1)
-        .height(1)
-        .opacity(0)
-        .hitTestBehavior(HitTestMode.None)
-        .keyboardShortcut('K', [ModifierKey.CTRL], () => {
-          this.togglePalette();
-        })
-      Column()
-        .width(1)
-        .height(1)
-        .opacity(0)
-        .hitTestBehavior(HitTestMode.None)
-        .keyboardShortcut('Z', [ModifierKey.CTRL], () => {
-          this.undoLast();
-        })
-      Column()
-        .width(1)
-        .height(1)
-        .opacity(0)
-        .hitTestBehavior(HitTestMode.None)
-        .keyboardShortcut('S', [ModifierKey.CTRL], () => {
-          this.saveProjectNow();
-        })
+      if (this.workspaceState.shortcutsOpen) {
+        ShortcutsPanel()
+      }
+
+      // Keyboard shortcut sinks (web App.tsx global shortcuts), rebuilt when
+      // bindings change via the epoch parity branch.
+      if (this.sinkEpoch) {
+        this.shortcutSinks()
+      } else {
+        this.shortcutSinks()
+      }
     }
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.background)
+  }
+
+  @Builder
+  shortcutSinks() {
+    ForEach(this.sinkList(), (s: SinkDef, idx: number) => {
+      Column()
+        .width(1)
+        .height(1)
+        .opacity(0)
+        .hitTestBehavior(HitTestMode.None)
+        .keyboardShortcut(s.value, s.mods, () => {
+          s.action();
+        })
+    }, (s: SinkDef, idx: number) => idx.toString() + '_' + s.value + '_' + this.sinkEpoch.toString())
   }
 
   @Builder
