@@ -54,9 +54,10 @@ export struct TitleBar {
           tip: l10n(this.workspaceState.language, '保存项目', 'Save project'),
           tipBelow: true,
           action: () => {
-            // Save project: persist charts + preferences
-            Settings.saveProject(this.workspaceState.exportJson());
-            promptAction.showToast({ message: 'Project saved' });
+            // Save project: persist charts + datasets + snapshots + QA
+            Settings.saveProject(this.workspaceState.exportJson()).then((ok: boolean) => {
+              promptAction.showToast({ message: ok ? 'Project saved' : 'Save failed' });
+            });
           }
         })
         IconButton({

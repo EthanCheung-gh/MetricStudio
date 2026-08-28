@@ -149,8 +149,11 @@ export struct CommandPalette {
       title: t(lang, 'layout.saveProject'),
       group: t(lang, 'palette.groupSettings'),
       action: () => {
-        Settings.saveProject(this.workspaceState.exportJson());
-        promptAction.showToast({ message: l10n(this.workspaceState.language, '项目已保存', 'Project saved') });
+        Settings.saveProject(this.workspaceState.exportJson()).then((ok: boolean) => {
+          promptAction.showToast({ message: ok
+            ? l10n(this.workspaceState.language, '项目已保存', 'Project saved')
+            : l10n(this.workspaceState.language, '保存失败', 'Save failed') });
+        });
       }
     };
     out.push(c13);

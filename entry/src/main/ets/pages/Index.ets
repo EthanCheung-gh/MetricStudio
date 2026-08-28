@@ -31,12 +31,50 @@ struct Index {
   @Provide('qaState') qaState: QaState = new QaState();
   @StorageLink('themeFlag') @Watch('onThemeFlag') themeFlag: boolean = false;
   @State uiDark: boolean = true;
+  private autoSaveBusy: boolean = false;
+  private autoSaveTimer: number = -1;
 
   aboutToAppear(): void {
     Settings.load().then((lang: Language) => {
       this.workspaceState.language = lang;
     });
     Settings.applyTheme();
+    this.workspaceState.attach(this.dataState, this.qaState);
+    // Auto-save (web utils/autoSave.ts): 120s interval, saving mutex, silent.
+    this.autoSaveTimer = setInterval(() => {
+      this.runAutoSave();
+    }, 120000);
+  }
+
+  aboutToDisappear(): void {
+    if (this.autoSaveTimer >= 0) {
+      clearInterval(this.autoSaveTimer);
+      this.autoSaveTimer = -1;
+    }
+  }
+
+  onPageHide(): void {
+    // Background persist (web beforeunload-ish safety net).
+    this.runAutoSave();
+  }
+
+  /** Silent auto-save (web runAutoSave): skip when idle-empty or busy. */
+  private runAutoSave(): void {
+    if (this.autoSaveBusy) {
+      return;
+    }
+    if (!this.dataState.hasData && this.workspaceState.charts.length === 0) {
+      return;
+    }
+    this.autoSaveBusy = true;
+    Settings.saveProject(this.workspaceState.exportJson()).then((ok: boolean) => {
+      this.autoSaveBusy = false;
+      if (!ok) {
+        // silently ignore (web: failures never notify)
+      }
+    }).catch(() => {
+      this.autoSaveBusy = false;
+    });
   }
 
   /** Theme tokens are read at build time — flip the branch to remount the tree. */
@@ -58,8 +96,9 @@ struct Index {
 
   /** Global shortcut: Ctrl+S (web saveProject). */
   private saveProjectNow(): void {
-    Settings.saveProject(this.workspaceState.exportJson());
-    promptAction.showToast({ message: 'Project saved' });
+    Settings.saveProject(this.workspaceState.exportJson()).then((ok: boolean) => {
+      promptAction.showToast({ message: ok ? 'Project saved' : 'Save failed' });
+    });
   }
 
   build() {

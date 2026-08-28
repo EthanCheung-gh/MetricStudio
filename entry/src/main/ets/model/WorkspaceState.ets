@@ -1,5 +1,8 @@
 import { AggregateType, ChartAnnotation, ChartConfig, ChartLayout, ChartOptions, ChartShape, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
 import { DashboardItem, DashboardItemKind, DashboardState } from './DashboardState';
+import { CellValue, ColumnMeta, DataFrame, DType } from './DataFrame';
+import { DataState, DataSnapshot } from './DataState';
+import { QaConvJson, QaState } from './QaState';
 import { Theme } from '../common/Theme';
 
 export enum Language {
@@ -64,6 +67,15 @@ export class WorkspaceState {
   theme: AppTheme = AppTheme.Light;
   llmConfig: LlmConfig = new LlmConfig();
   dashboard: DashboardState = new DashboardState();
+  // Sibling states wired by Index so project save/load covers datasets + QA.
+  private dataState: DataState | null = null;
+  private qaState: QaState | null = null;
+
+  /** Wire sibling states (web: project save reaches dataStore + qaStore). */
+  attach(dataState: DataState, qaState: QaState): void {
+    this.dataState = dataState;
+    this.qaState = qaState;
+  }
 
   setSettingsOpen(open: boolean): void {
     this.settingsOpen = open;
@@ -315,12 +327,41 @@ export class WorkspaceState {
       };
       dashItems.push(dj);
     }
+    // Datasets: current frames incl. rows (web zip data/{id} equivalent).
+    const datasets: ProjectDatasetJson[] = [];
+    const snaps: ProjectSnapshotJson[] = [];
+    if (this.dataState !== null) {
+      for (let i = 0; i < this.dataState.dataFrames.length; i++) {
+        const df = this.dataState.dataFrames[i];
+        datasets.push({
+          id: df.name,
+          name: df.name,
+          columns: columnsToJson(df.columns),
+          rows: df.rows,
+          active: i === this.dataState.activeIndex,
+        });
+      }
+      for (let i = 0; i < this.dataState.snapshots.length; i++) {
+        const s = this.dataState.snapshots[i];
+        snaps.push({
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          createdAt: s.createdAt,
+          columns: columnsToJson(s.frame.columns),
+          rows: s.frame.rows,
+        });
+      }
+    }
     const payload: ProjectPayload = {
       charts: items,
       language: this.language,
       theme: this.theme,
       activeChartId: this.activeChartId,
       dashboardItems: dashItems,
+      datasets: datasets,
+      snapshots: snaps,
+      qaConversations: this.qaState !== null ? this.qaState.exportList() : [],
     };
     return JSON.stringify(payload);
   }
@@ -414,6 +455,37 @@ export class WorkspaceState {
         this.dashboard.items = restored;
       }
       this.dashboard.bump();
+      // Datasets + snapshots + QA conversations (web zip restore + hydrate).
+      if (data.datasets !== undefined && this.dataState !== null) {
+        const frames: DataFrame[] = [];
+        let activeIdx = 0;
+        for (let i = 0; i < data.datasets.length; i++) {
+          const d = data.datasets[i];
+          if (d.columns === undefined || d.rows === undefined) {
+            continue;
+          }
+          const cols = columnsFromJson(d.columns);
+          frames.push(new DataFrame(d.name !== undefined && d.name.length > 0 ? d.name : d.id, cols, d.rows));
+          if (d.active === true) {
+            activeIdx = i;
+          }
+        }
+        const snaps: DataSnapshot[] = [];
+        if (data.snapshots !== undefined) {
+          for (let i = 0; i < data.snapshots.length; i++) {
+            const s = data.snapshots[i];
+            if (s.columns === undefined || s.rows === undefined) {
+              continue;
+            }
+            snaps.push(new DataSnapshot(s.name, s.description, new DataFrame(s.name, columnsFromJson(s.columns), s.rows),
+              s.id, s.createdAt));
+          }
+        }
+        this.dataState.restoreAll(frames, snaps, activeIdx);
+      }
+      if (data.qaConversations !== undefined && this.qaState !== null) {
+        this.qaState.importList(data.qaConversations);
+      }
       if (data.language !== undefined) {
         this.language = data.language === 1 ? Language.En : Language.Zh;
       }
@@ -441,6 +513,51 @@ interface ProjectPayload {
   theme?: number;
   activeChartId?: string;
   dashboardItems?: DashboardItemJson[];
+  datasets?: ProjectDatasetJson[];
+  snapshots?: ProjectSnapshotJson[];
+  qaConversations?: QaConvJson[];
+}
+
+interface ProjectColumnJson {
+  name: string;
+  dtype: string;
+  inferredType: string;
+  nullable?: boolean;
+}
+
+interface ProjectDatasetJson {
+  id: string;
+  name?: string;
+  columns?: ProjectColumnJson[];
+  rows?: CellValue[][];
+  active?: boolean;
+}
+
+interface ProjectSnapshotJson {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  columns?: ProjectColumnJson[];
+  rows?: CellValue[][];
+}
+
+function columnsToJson(cols: ColumnMeta[]): ProjectColumnJson[] {
+  const out: ProjectColumnJson[] = [];
+  for (let i = 0; i < cols.length; i++) {
+    const c = cols[i];
+    out.push({ name: c.name, dtype: c.dtype, inferredType: c.inferredType, nullable: c.nullable });
+  }
+  return out;
+}
+
+function columnsFromJson(list: ProjectColumnJson[]): ColumnMeta[] {
+  const cols: ColumnMeta[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    cols.push(new ColumnMeta(c.name, c.dtype as DType, c.inferredType as FieldType, c.nullable !== false));
+  }
+  return cols;
 }
 interface ProjectChart {
   id?: string;

@@ -219,6 +219,34 @@ main 的 DataView 结构：左侧视图 tab（table/lineage/snapshots/sql）+ �
   - 方案 B（不推荐）：纯 ArkTS 解析 OOXML（zlib 解压 + 手写 sharedStrings/styles/日期推断）——工作量与坑位显著更高。
 - Parquet：纯 ArkTS 不现实（列式编码 + snappy/zstd）；C++ NAPI 引 parquet 工具链成本与个人工具场景失衡；JS 侧存在 hyparquet（MIT，纯 JS）可走同款 WebView 桥但编码覆盖待验证。**建议拒绝/远期**——CSV + SQLite + Excel 已覆盖绝大多数数据来源。
 
+## 100% 对齐收尾规划（2026-08-28，Batch 11-18）
+
+基于 main 分支源码全量规格分析（project/qaStore/autoSave、shortcuts/registry/palette、dashboard 全家桶、quality/recipes/lineage/diff、plotlyLayout/timeseries/story+report）。**三处盘点修正**：
+- KPI 同比环比：main 分支没有（KPI 仅单值聚合 + `—`/`x.xM`/`x.xK` 格式）→ 鸿蒙现状已对齐，撤销该缺口
+- 逐单元格 diff：main 分支 diff 同为摘要级（rows/cols/only_left/only_right/numeric_diff）→ 已对齐，撤销该缺口
+- ColumnStats samples 展开：main 无此交互（样本折叠在清洗 issue 卡片内）→ 对齐点改为清洗 issue 样本折叠展开
+
+**Batch 11 数据持久化**（对齐 web 项目 zip 三成员语义 + autoSave）：
+1. 项目保存改写 `filesDir/project.json`（Preferences 仅适合轻量键值；行数据体积大），读取兼容旧 Preferences 值
+2. `exportJson/importJson` 扩展：`datasets[]`（columns+rows 当前态）、`snapshots[]`（帧+元数据）、`qaConversations[]`（web `qa_conversations` 等价）；打开项目全量恢复（数据集免重导入）；血缘 base/history 暂不持久化（Batch 16 随血缘对齐补）
+3. autoSave：120s interval + saving 互斥 + 静默失败 + onPageHide 兜底（web idle 30s 检测在触屏无全局输入事件等价物，简化）
+
+**Batch 12 LLM 真实接入**：Settings LLM 配置（baseUrl/model/apiKey，Preferences）；InsightsPanel 叙述 + QA ask 走 LlmClient 真实请求（失败回退本地摘要，web 隐私开关语义保留）
+
+**Batch 13 快捷键面板 + 命令面板动态化**：5 个可重绑定动作（commandPalette/saveProject/globalUndo/globalRedo/shortcutsPanel）+ 固定别名 Ctrl+P/Y；override 存 Preferences；录制流程（Esc 取消、纯修饰键等待、无冲突检测）；重置默认。命令面板动态命令三类：最近保存、数据集切换、图表切换；过滤为子串匹配（title+keywords）保序分组
+
+**Batch 14 Dashboard 对齐**：12 列×80px 行高绝对布局 + 卡头拖拽重排（PanGesture）+ 垂直压实/防重叠 + minW3/minH3；锁定卡；左对齐/顶对齐/水平/垂直等距；编辑/查看模式；undo/redo 快照栈（move/resize 不入栈，上限 50）；筛选条（category=多选 in / range=date 双输入，`datasetId:field` 推断 kind，语义对齐后端 `_filter_by_filters`）；KPI 值格式（—/≥1e6 M/≥1e4 K/整数/2 位小数）；brush 跨图联动（WebView `plotly_selected` 事件桥 → xRange/yRange SelectionFilter → 反哺其他卡重取数）
+
+**Batch 15 清洗/质量对齐**：6 类检查全量（缺失值 warning/重复行 warning/离群值 IQR info/常量列 info/数字字符串列 info/格式问题 warning + `_dominant_format`）；issue 样本 ≤3 行折叠展开（`查看样本（N）`）；修复配方枚举（dedupe/dropna/fillna-median/clip-outliers=IQR 截断/coerce-numeric/trim-whitespace 含内部连续空白折叠）；批量修复预览（操作计划+预计影响+修复后样例 8 行）；内置预设 6 条对齐文案；用户配方（保存当前变换链/应用/删除，存 Preferences，created_at 倒序）；列统计摘要表
+
+**Batch 16 血缘对齐**：数据集切换保留各自 base/history（并行数组重构）；join 生成 cross 边 + ghost 节点（主链水平直线 + 贝塞尔虚线下垂，NODE_W=84/NODE_H=34/GAP_X=30/MAIN_Y=52/JOIN_Y=132）；节点点击预览（前 8 行 + 参数摘要 k=v）；版本对比（`导入状态`/`步骤 N · op` 下拉 + 摘要 diff）；项目保存补 base/history 重放元数据
+
+**Batch 17 图表修饰 + 时序**：facet（仅 line/bar/area/step/scatter/dot；`layout.grid` rows×min(n,3) pattern independent；组名写 xaxis.title；legendgroup 仅首组 showlegend）；marginal（histogram/box/violin/rug=透明 box 模拟；主图 domain [0,0.8]、边缘 [0.82,1] 无刻度）；heatmap corr（Pearson 成对剔除、RdBu reversescale zmin-1 zmax1）/annotated（`texttemplate:'%{text}'` toFixed(2)）；barmode 堆叠 UI（柱状/面积）；EncodingPanel 新增下拉与开关（柱状模式/X 边缘分布/Y 边缘分布/标注单元格/相关系数矩阵）；InsightsPanel 时序表补齐：同比列（上年同月，查无 null）、3 期移动平均、异常行（残差 z≥2 黄底⚠）、预测 3 期（naive drift，`↑`+趋势外推预测）
+
+**Batch 18 Story/Report 拆分**：StoryDialog（章节素材：数据来源/清洗步骤/图表/洞察 + 结论手写 → 叙事单页 HTML，全空报错）与 ReportDialog（标题+图表多选+notes 草稿+包含洞察开关）分离；ReportTemplate（id/name/title/chartIds/notes/includeInsights）持久化
+
+收尾：全量构建 + 真机冒烟 + 盘点清单勾销 + 推送。永久不适用项维持结论：Parquet（成本失衡）、服务器路径导入（设备无此概念）、拖拽导入（点选已覆盖）。
+
 ## 验证
 
 每批完成后在 DevEco/devecocli 环境执行 `devecocli build`；批内以静态自查为准（本仓库当前无 ArkTS SDK 可本地编译）。

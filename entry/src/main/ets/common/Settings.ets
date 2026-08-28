@@ -1,5 +1,7 @@
 import { preferences } from '@kit.ArkData';
 import { common } from '@kit.AbilityKit';
+import { fileIo as fs } from '@kit.CoreFileKit';
+import { util } from '@kit.ArkTS';
 import { Language } from '../model/WorkspaceState';
 import { Theme } from './Theme';
 
@@ -9,6 +11,7 @@ const KEY_THEME = 'theme';
 const KEY_PROJECT = 'project';
 const KEY_SQL_HISTORY = 'sql_history';
 const KEY_RECIPES = 'recipes';
+const PROJECT_FILE = 'project.json';
 
 /**
  * Persists language + theme via Preferences (web: localStorage). Loaded once at
@@ -84,22 +87,50 @@ export class Settings {
     }
   }
 
-  /** Persist the project payload (charts/preferences). */
-  static async saveProject(json: string): Promise<void> {
-    const store = await Settings.getStore();
-    if (store === null) {
-      return;
-    }
+  private static projectPath(): string {
+    const ctx = getContext() as common.UIAbilityContext;
+    return ctx.filesDir + '/' + PROJECT_FILE;
+  }
+
+  /**
+   * Persist the project payload (charts/datasets/QA/snapshots) as a JSON file.
+   * The payload now carries dataset rows, which exceed what Preferences should
+   * hold (web: zip members under the project file).
+   */
+  static async saveProject(json: string): Promise<boolean> {
     try {
-      store.putSync(KEY_PROJECT, json);
-      await store.flush();
+      const path = Settings.projectPath();
+      const file = fs.openSync(path, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
+      fs.writeSync(file.fd, json);
+      fs.closeSync(file);
+      return true;
     } catch (e) {
-      // ignore persistence errors
+      return false;
     }
   }
 
-  /** Load the persisted project payload, or '' when none saved. */
+  /**
+   * Load the persisted project payload, or '' when none saved. Falls back to
+   * the legacy Preferences value (pre-datasets projects) and migrates it.
+   */
   static loadProject(): string {
+    try {
+      const path = Settings.projectPath();
+      if (fs.accessSync(path)) {
+        const stat = fs.statSync(path);
+        const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+        const buf = new ArrayBuffer(stat.size);
+        fs.readSync(file.fd, buf);
+        fs.closeSync(file);
+        const text = util.TextDecoder.create('utf-8').decodeToString(new Uint8Array(buf));
+        if (text.length > 0) {
+          return text;
+        }
+      }
+    } catch (e) {
+      // fall through to legacy Preferences
+    }
+    // Legacy migration: project JSON stored in Preferences before datasets.
     let v = '';
     try {
       const ctx = getContext() as common.UIAbilityContext;
@@ -107,7 +138,7 @@ export class Settings {
       const store = preferences.getPreferencesSync(ctx, options);
       v = store.getSync(KEY_PROJECT, '') as string;
     } catch (e) {
-      // no project yet
+      v = '';
     }
     return v;
   }

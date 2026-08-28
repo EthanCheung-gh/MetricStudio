@@ -1,8 +1,8 @@
 /**
  * Q&A conversation state (web: stores/qaStore.ts + utils/qaExport.ts subset).
  * One conversation per dataset; turns record question/answer plus the model
- * that produced the answer ('' = local engine). Sessions are in-memory for now
- * (web persists them through project save — planned for a later batch).
+ * that produced the answer ('' = local engine). Conversations persist through
+ * project save (web: qa_conversations in the project manifest).
  */
 export enum QaTurnRole {
   User = 0,
@@ -84,6 +84,52 @@ export class QaState {
     }
   }
 
+  /** Serialize all conversations for project save (web qa_conversations). */
+  exportList(): QaConvJson[] {
+    const out: QaConvJson[] = [];
+    for (let i = 0; i < this.conversations.length; i++) {
+      const c = this.conversations[i];
+      const turns: QaTurnJson[] = [];
+      for (let k = 0; k < c.turns.length; k++) {
+        const tt = c.turns[k];
+        turns.push({ question: tt.question, answer: tt.answer, model: tt.model, generatedAt: tt.generatedAt });
+      }
+      out.push({ id: c.id, name: c.name, datasetKey: c.datasetKey, turns: turns });
+    }
+    return out;
+  }
+
+  /** Restore conversations from a saved project (web hydrate). */
+  importList(list: QaConvJson[]): boolean {
+    try {
+      const convs: QaConversation[] = [];
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i];
+        if (c.id === undefined || c.datasetKey === undefined) {
+          continue;
+        }
+        const conv = new QaConversation(c.id,
+          c.name !== undefined && c.name.trim().length > 0 ? c.name : '新建问答', c.datasetKey);
+        if (c.turns !== undefined) {
+          for (let k = 0; k < c.turns.length; k++) {
+            const tt = c.turns[k];
+            const turn = new QaTurn(tt.question !== undefined ? tt.question : '',
+              tt.answer !== undefined ? tt.answer : '', tt.model !== undefined ? tt.model : '');
+            turn.generatedAt = tt.generatedAt !== undefined ? tt.generatedAt : turn.generatedAt;
+            conv.turns.push(turn);
+          }
+        }
+        convs.push(conv);
+      }
+      this.conversations = convs;
+      this.activeId = convs.length > 0 ? convs[0].id : '';
+      this.bump();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   /** Bump the tick and mirror it to AppStorage so @StorageLink watchers fire. */
   bump(): void {
     this.tick++;
@@ -104,4 +150,19 @@ export function conversationToMarkdown(conv: QaConversation): string {
     md += '> ' + (turn.model.length > 0 ? turn.model : '本地引擎') + ' · ' + turn.generatedAt + '\n\n';
   }
   return md;
+}
+
+/** JSON shapes of the persisted conversation list (web qa_conversations). */
+export interface QaTurnJson {
+  question: string;
+  answer: string;
+  model: string;
+  generatedAt: string;
+}
+
+export interface QaConvJson {
+  id: string;
+  name: string;
+  datasetKey: string;
+  turns?: QaTurnJson[];
 }

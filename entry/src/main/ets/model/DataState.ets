@@ -16,12 +16,12 @@ export class DataSnapshot {
   frame: DataFrame;
   createdAt: string;
 
-  constructor(name: string, description: string, frame: DataFrame) {
-    this.id = 'snap_' + Date.now().toString();
+  constructor(name: string, description: string, frame: DataFrame, id: string = '', createdAt: string = '') {
+    this.id = id.length > 0 ? id : 'snap_' + Date.now().toString();
     this.name = name;
     this.description = description;
     this.frame = frame;
-    this.createdAt = new Date().toISOString();
+    this.createdAt = createdAt.length > 0 ? createdAt : new Date().toISOString();
   }
 }
 
@@ -121,6 +121,21 @@ export class DataState {
     this.dataFrames.push(df);
     this.activeIndex = this.dataFrames.length - 1;
     this.baseFrame = df.clone();
+    this.transformHistory = [];
+    this.lastError = '';
+    this.bumpLineage();
+  }
+
+  /** Restore datasets + snapshots from a saved project (web zip data/ + snapshots/). */
+  restoreAll(frames: DataFrame[], snapshots: DataSnapshot[], activeIndex: number): void {
+    this.dataFrames = frames;
+    this.snapshots = snapshots;
+    if (frames.length === 0) {
+      this.activeIndex = -1;
+    } else {
+      this.activeIndex = activeIndex >= 0 && activeIndex < frames.length ? activeIndex : 0;
+    }
+    this.baseFrame = null;
     this.transformHistory = [];
     this.lastError = '';
     this.bumpLineage();
