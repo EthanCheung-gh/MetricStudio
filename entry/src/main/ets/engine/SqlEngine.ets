@@ -59,6 +59,83 @@ function getStore(context: common.Context): Promise<relationalStore.RdbStore> {
   return relationalStore.getRdbStore(context, config);
 }
 
+function openNamedStore(context: common.Context, dbName: string): Promise<relationalStore.RdbStore> {
+  const config: relationalStore.StoreConfig = {
+    name: dbName,
+    securityLevel: relationalStore.SecurityLevel.S1,
+  };
+  return relationalStore.getRdbStore(context, config);
+}
+
+const IMPORT_MAX_ROWS = 200000;
+
+export class SqliteTableData {
+  ok: boolean = false;
+  error: string = '';
+  columns: string[] = [];
+  rows: CellValue[][] = [];
+  truncated: boolean = false;
+}
+
+/** List user tables of an imported SQLite database file (web /sql/tables). */
+export async function listSqliteTables(context: common.Context, dbName: string): Promise<string[]> {
+  const store = await openNamedStore(context, dbName);
+  const rs = await store.querySql("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
+  const names: string[] = [];
+  if (rs.goToFirstRow()) {
+    do {
+      const idx = rs.columnNames.indexOf('name');
+      if (idx >= 0) {
+        names.push(rs.getString(idx));
+      }
+    } while (rs.goToNextRow());
+  }
+  rs.close();
+  return names;
+}
+
+/** Read one table of an imported SQLite file into columns/rows (web /sql/import). */
+export async function readSqliteTable(context: common.Context, dbName: string, table: string): Promise<SqliteTableData> {
+  const out = new SqliteTableData();
+  let rs: relationalStore.ResultSet | null = null;
+  try {
+    const store = await openNamedStore(context, dbName);
+    rs = await store.querySql('SELECT * FROM ' + quoteIdent(table));
+    out.columns = rs.columnNames.slice();
+    if (rs.goToFirstRow()) {
+      do {
+        const row: CellValue[] = [];
+        for (let c = 0; c < out.columns.length; c++) {
+          const t = rs.getColumnTypeSync(c);
+          if (t === relationalStore.ColumnType.INTEGER) {
+            row.push(rs.getLong(c));
+          } else if (t === relationalStore.ColumnType.REAL) {
+            row.push(rs.getDouble(c));
+          } else if (t === relationalStore.ColumnType.TEXT) {
+            row.push(rs.getString(c));
+          } else {
+            row.push(null);
+          }
+        }
+        out.rows.push(row);
+      } while (out.rows.length < IMPORT_MAX_ROWS && rs.goToNextRow());
+    }
+    out.truncated = rs.rowCount > out.rows.length;
+    out.ok = true;
+  } catch (e) {
+    out.error = e instanceof Error ? e.message : String(e);
+  } finally {
+    if (rs !== null) {
+      try {
+        rs.close();
+      } catch (e) {
+        // already closed
+      }
+    }
+  }
+  return out;
+}
+
 /** Mirror every dataset into its own table (web: pandas to_sql per dataset). */
 export async function mirrorDatasets(context: common.Context, dataFrames: DataFrame[]): Promise<boolean> {
   try {

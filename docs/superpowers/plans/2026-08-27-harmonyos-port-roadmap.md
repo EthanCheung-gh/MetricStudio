@@ -144,6 +144,13 @@ main 的 DataView 结构：左侧视图 tab（table/lineage/snapshots/sql）+ �
 - [x] 验证：`devecocli build` 通过；设备掉线，重连后覆盖安装复验
 - 修饰项差异（记录）：质量修复不含离群值处理；列级质量表无 samples 展开；洞察叙述暂为本地摘要
 
+#### Batch 10：数据导入补全（SQLite 文件导入 + Excel mergeSheets）
+
+- [x] **SQLite 文件导入**（评估二期项，SQL 引擎就绪后解锁）：DataExplorer SQLite 模式激活——picker 选 .db/.sqlite/.sqlite3/.db3 → 拷入沙箱 databaseDir → relationalStore 打开 → `sqlite_master` 列表（过滤 sqlite_%）→ 点表导入（列类型读取同工作台，20 万行截断保护）；web 对应 /sql/upload + /sql/tables + /sql/import
+- [x] **Excel mergeSheets**：多 sheet 工作簿出现「合并全部工作表」开关——所有 sheet 在首表表头下纵向拼接（web 同语义），导入为单数据集
+- [x] 不适用/拒绝项维持：服务器路径导入（设备无此概念）、拖拽（触屏价值低，保留点选）、Parquet
+- [x] 验证：`devecocli build` 通过；真机安装待设备重连（外部 SQLite 文件兼容性为首要冒烟项）
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite
