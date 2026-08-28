@@ -214,11 +214,38 @@ export struct EncodingPanel {
 
   private addY(): void {
     const c = this.workspaceState.activeChart();
-    if (c === null || c.encoding.yFields.length === 0) {
+    if (c === null) {
       return;
     }
-    const last = c.encoding.yFields[c.encoding.yFields.length - 1];
-    c.encoding.yFields.push(new YFieldConfig(last.field, last.type, 'sum', 'left', 'none'));
+    if (c.encoding.yFields.length === 0) {
+      // First Y field: default to the first numeric column of the dataset.
+      // A new chart starts with an empty yFields list and the add button is
+      // the only entry point, so it must not no-op here.
+      const df = this.dataState.activeDataFrame;
+      if (df === null) {
+        return;
+      }
+      let field = '';
+      let type: FieldType = 'quantitative';
+      for (let i = 0; i < df.columns.length; i++) {
+        if (df.columns[i].dtype === 'number') {
+          field = df.columns[i].name;
+          break;
+        }
+      }
+      if (field.length === 0) {
+        if (df.columns.length === 0) {
+          return;
+        }
+        field = df.columns[0].name;
+        type = this.fieldType(field);
+      }
+      c.encoding.yFields.push(new YFieldConfig(field, type, 'sum', 'left', 'none'));
+    } else {
+      const last = c.encoding.yFields[c.encoding.yFields.length - 1];
+      c.encoding.yFields.push(new YFieldConfig(last.field, last.type, 'sum', 'left', 'none'));
+    }
+    this.yMetaTick++;
     this.syncFromChart();
     this.workspaceState.refreshChart();
   }
@@ -229,6 +256,7 @@ export struct EncodingPanel {
       return;
     }
     c.encoding.yFields.splice(index, 1);
+    this.yMetaTick++;
     this.syncFromChart();
     this.workspaceState.refreshChart();
   }
