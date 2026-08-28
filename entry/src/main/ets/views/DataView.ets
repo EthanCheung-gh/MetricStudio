@@ -507,6 +507,54 @@ export struct DataView {
         .onClick(() => {
           this.exportCsv();
         })
+        // Pager moved to the top toolbar (bottom bar was occluded by the AI capsule)
+        Text('«')
+          .fontSize(13)
+          .fontColor(this.page > 0 ? Theme.colorForeground() : Theme.colorMuted())
+          .padding({ left: 4, right: 4 })
+          .onClick(() => {
+            this.page = 0;
+          })
+        Text('‹')
+          .fontSize(16)
+          .fontColor(this.page > 0 ? Theme.colorForeground() : Theme.colorMuted())
+          .padding({ left: 4, right: 4 })
+          .onClick(() => {
+            if (this.page > 0) {
+              this.page--;
+            }
+          })
+        Text((this.page + 1).toString() + '/' + this.totalPages().toString())
+          .fontSize(11)
+          .fontColor(Theme.colorMuted())
+        Text('›')
+          .fontSize(16)
+          .fontColor(this.page < this.totalPages() - 1 ? Theme.colorForeground() : Theme.colorMuted())
+          .padding({ left: 4, right: 4 })
+          .onClick(() => {
+            if (this.page < this.totalPages() - 1) {
+              this.page++;
+            }
+          })
+        Text('»')
+          .fontSize(13)
+          .fontColor(this.page < this.totalPages() - 1 ? Theme.colorForeground() : Theme.colorMuted())
+          .padding({ left: 4, right: 4 })
+          .onClick(() => {
+            this.page = this.totalPages() - 1;
+          })
+        Select(this.pageSizeOptions())
+          .selected(this.pageSizeIndex())
+          .value(this.pageSize.toString())
+          .font({ size: 11 })
+          .height(24)
+          .width(70)
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .onSelect((index: number, value: string) => {
+            this.pageSize = Number(value);
+            this.page = 0;
+          })
       }
       .width('100%')
       .height(30)
@@ -574,6 +622,8 @@ export struct DataView {
               }
             }
             .width(this.tableWidth())
+            // Keep the last rows clear of the floating AI capsule
+            .padding({ bottom: 56 })
           }
           .layoutWeight(1)
           .scrollBar(BarState.Auto)
@@ -588,66 +638,6 @@ export struct DataView {
       .align(Alignment.TopStart)
       .backgroundColor(Theme.colorSurface())
       .border({ width: { top: 1, bottom: 1 }, color: Theme.colorBorder() })
-
-      // Pager (web: page size select + first/prev/next/last)
-      Row({ space: 8 }) {
-        Text(l10n(this.lang(), '每页', 'Page size'))
-          .fontSize(11)
-          .fontColor(Theme.colorMuted())
-        Select(this.pageSizeOptions())
-          .selected(this.pageSizeIndex())
-          .value(this.pageSize.toString())
-          .font({ size: 11 })
-          .height(24)
-          .width(76)
-          .backgroundColor(Theme.colorSurface())
-          .borderRadius(6)
-          .onSelect((index: number, value: string) => {
-            this.pageSize = Number(value);
-            this.page = 0;
-          })
-        Blank()
-        Text('«')
-          .fontSize(14)
-          .fontColor(this.page > 0 ? Theme.colorForeground() : Theme.colorMuted())
-          .padding({ left: 6, right: 6 })
-          .onClick(() => {
-            this.page = 0;
-          })
-        Text('‹')
-          .fontSize(18)
-          .fontColor(this.page > 0 ? Theme.colorForeground() : Theme.colorMuted())
-          .padding({ left: 8, right: 8 })
-          .onClick(() => {
-            if (this.page > 0) {
-              this.page--;
-            }
-          })
-        Text(l10n(this.lang(), (this.page + 1).toString() + ' / ' + this.totalPages().toString(),
-          (this.page + 1).toString() + ' / ' + this.totalPages().toString()))
-          .fontSize(12)
-          .fontColor(Theme.colorMuted())
-        Text('›')
-          .fontSize(18)
-          .fontColor(this.page < this.totalPages() - 1 ? Theme.colorForeground() : Theme.colorMuted())
-          .padding({ left: 8, right: 8 })
-          .onClick(() => {
-            if (this.page < this.totalPages() - 1) {
-              this.page++;
-            }
-          })
-        Text('»')
-          .fontSize(14)
-          .fontColor(this.page < this.totalPages() - 1 ? Theme.colorForeground() : Theme.colorMuted())
-          .padding({ left: 6, right: 6 })
-          .onClick(() => {
-            this.page = this.totalPages() - 1;
-          })
-      }
-      .width('100%')
-      .height(32)
-      .padding({ left: 12, right: 12 })
-      .border({ width: { top: 1 }, color: Theme.colorBorder() })
     }
     .width('100%')
     .height('100%')
