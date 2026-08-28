@@ -1,5 +1,5 @@
 import { Theme } from '../common/Theme';
-import { t } from '../common/Locale';
+import { l10n, t } from '../common/Locale';
 import { Settings } from '../common/Settings';
 import { fmt } from '../common/Format';
 import { Language, WorkspaceState } from '../model/WorkspaceState';
@@ -20,10 +20,10 @@ export struct StatusBar {
         Row({ space: 4 }) {
           SymbolGlyph($r('sys.symbol.waveform'))
             .fontSize(12)
-            .fontColor([Theme.colorMuted()])
-          Text(t(this.workspaceState.language, 'status.backendOffline'))
+            .fontColor([Theme.success])
+          Text(l10n(this.workspaceState.language, '本地引擎 · 就绪', 'Local engine · Ready'))
             .fontSize(12)
-            .fontColor(Theme.danger)
+            .fontColor(Theme.success)
         }
         .alignItems(VerticalAlign.Center)
 

@@ -82,7 +82,6 @@ struct Index {
         }
         .width('100%')
         .layoutWeight(1)
-        .padding({ bottom: Theme.bottomReserve })
         .alignItems(VerticalAlign.Top)
 
         StatusBar()
@@ -97,7 +96,7 @@ struct Index {
 
       if (this.dataState.hasData) {
         AICommandBar()
-          .margin({ bottom: 32 })
+          .margin({ bottom: 10 })
       }
 
       if (this.workspaceState.chartConfigOpen) {
