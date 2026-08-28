@@ -191,10 +191,266 @@ export function applyTransformOp(df: DataFrame, op: TransformOp): DataFrame {
       castColumn(next, p.column, 'number');
       break;
     }
+    case 'expr': {
+      // web computed field with free-form arithmetic expression
+      const p = parseParams<ExprParams>(op);
+      if (p.name.length === 0 || p.expression.trim().length === 0) {
+        throw new Error('expr: 缺少列名或表达式');
+      }
+      if (next.columnIndex(p.name) >= 0) {
+        throw new Error('expr: 列名已存在: ' + p.name);
+      }
+      const outRows: CellValue[][] = [];
+      for (let r = 0; r < next.rows.length; r++) {
+        const row = next.rows[r].slice();
+        row.push(evalExpression(next, r, p.expression));
+        outRows.push(row);
+      }
+      next.rows = outRows;
+      next.columns.push(new ColumnMeta(p.name, 'number', 'quantitative', true));
+      break;
+    }
     default:
       throw new Error('Unknown transform op: ' + op.type);
   }
   return next;
+}
+
+// ---- Computed expression (web: /compute/preview backend expressions, local subset) ----
+
+export interface ExprParams {
+  name: string;
+  expression: string;
+}
+
+/**
+ * Recursive-descent evaluator for arithmetic column expressions:
+ * numbers, column identifiers, + - * / %, parentheses, unary minus.
+ * Null operands propagate to a null result.
+ */
+class ExprEval {
+  private src: string;
+  private pos: number = 0;
+  private df: DataFrame;
+  private row: number;
+
+  constructor(df: DataFrame, row: number, expression: string) {
+    this.df = df;
+    this.row = row;
+    this.src = expression;
+  }
+
+  evaluate(): number | null {
+    const v = this.parseExpr();
+    this.skipSpace();
+    if (this.pos < this.src.length) {
+      throw new Error('表达式语法错误 @' + this.pos.toString());
+    }
+    return v;
+  }
+
+  private peek(): string {
+    return this.pos < this.src.length ? this.src[this.pos] : '';
+  }
+
+  private skipSpace(): void {
+    while (this.pos < this.src.length && (this.src[this.pos] === ' ' || this.src[this.pos] === '\t')) {
+      this.pos++;
+    }
+  }
+
+  private parseExpr(): number | null {
+    let v = this.parseTerm();
+    for (;;) {
+      this.skipSpace();
+      const ch = this.peek();
+      if (ch === '+') {
+        this.pos++;
+        const r = this.parseTerm();
+        v = v === null || r === null ? null : v + r;
+      } else if (ch === '-') {
+        this.pos++;
+        const r = this.parseTerm();
+        v = v === null || r === null ? null : v - r;
+      } else {
+        return v;
+      }
+    }
+  }
+
+  private parseTerm(): number | null {
+    let v = this.parseFactor();
+    for (;;) {
+      this.skipSpace();
+      const ch = this.peek();
+      if (ch === '*') {
+        this.pos++;
+        const r = this.parseFactor();
+        v = v === null || r === null ? null : v * r;
+      } else if (ch === '/') {
+        this.pos++;
+        const r = this.parseFactor();
+        if (r === 0) {
+          throw new Error('除零');
+        }
+        v = v === null || r === null ? null : v / r;
+      } else if (ch === '%') {
+        this.pos++;
+        const r = this.parseFactor();
+        if (r === 0) {
+          throw new Error('除零');
+        }
+        v = v === null || r === null ? null : v % r;
+      } else {
+        return v;
+      }
+    }
+  }
+
+  private parseFactor(): number | null {
+    this.skipSpace();
+    const ch = this.peek();
+    if (ch === '-') {
+      this.pos++;
+      const v = this.parseFactor();
+      return v === null ? null : -v;
+    }
+    if (ch === '+') {
+      this.pos++;
+      return this.parseFactor();
+    }
+    if (ch === '(') {
+      this.pos++;
+      const v = this.parseExpr();
+      this.skipSpace();
+      if (this.peek() !== ')') {
+        throw new Error('缺少右括号');
+      }
+      this.pos++;
+      return v;
+    }
+    if (ch >= '0' && ch <= '9') {
+      let end = this.pos;
+      while (end < this.src.length && ((this.src[end] >= '0' && this.src[end] <= '9') || this.src[end] === '.')) {
+        end++;
+      }
+      const n = Number(this.src.substring(this.pos, end));
+      if (Number.isNaN(n)) {
+        throw new Error('非法数字');
+      }
+      this.pos = end;
+      return n;
+    }
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_' || ch.charCodeAt(0) > 127) {
+      let end = this.pos;
+      while (end < this.src.length) {
+        const c = this.src[end];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || (c >= '0' && c <= '9') || c.charCodeAt(0) > 127) {
+          end++;
+        } else {
+          break;
+        }
+      }
+      const name = this.src.substring(this.pos, end);
+      this.pos = end;
+      const idx = this.df.columnIndex(name);
+      if (idx < 0) {
+        throw new Error('未知列: ' + name);
+      }
+      return toNumber(this.df.rows[this.row][idx]);
+    }
+    throw new Error('表达式语法错误 @' + this.pos.toString());
+  }
+}
+
+export function evalExpression(df: DataFrame, row: number, expression: string): number | null {
+  const e = new ExprEval(df, row, expression);
+  return e.evaluate();
+}
+
+// ---- Join (web /transform/{id}/join; local hash join) ----
+
+export interface JoinParams {
+  otherIndex: number;
+  leftKey: string;
+  rightKey: string;
+  how: string; // 'inner' | 'left'
+}
+
+function joinKey(v: CellValue): string {
+  return v === null || v === undefined ? '\u0000' : String(v);
+}
+
+/** Hash join left frame with another dataset frame (all matching rows). */
+export function joinFrames(left: DataFrame, right: DataFrame, p: JoinParams): DataFrame {
+  const lk = left.columnIndex(p.leftKey);
+  const rk = right.columnIndex(p.rightKey);
+  if (lk < 0) {
+    throw new Error('join: 左键列不存在: ' + p.leftKey);
+  }
+  if (rk < 0) {
+    throw new Error('join: 右键列不存在: ' + p.rightKey);
+  }
+  const how = p.how === 'left' ? 'left' : 'inner';
+
+  // Build right-side lookup, keep left column order + right columns (minus right key).
+  const map = new Map<string, number[]>();
+  for (let r = 0; r < right.rows.length; r++) {
+    const k = joinKey(right.rows[r][rk]);
+    let arr = map.get(k);
+    if (arr === undefined) {
+      arr = [];
+      map.set(k, arr);
+    }
+    arr.push(r);
+  }
+
+  const rightCols: ColumnMeta[] = [];
+  const rightIdxs: number[] = [];
+  for (let c = 0; c < right.columns.length; c++) {
+    if (c !== rk) {
+      rightCols.push(right.columns[c]);
+      rightIdxs.push(c);
+    }
+  }
+
+  const columns: ColumnMeta[] = [];
+  for (let c = 0; c < left.columns.length; c++) {
+    columns.push(left.columns[c]);
+  }
+  for (let c = 0; c < rightCols.length; c++) {
+    const meta = rightCols[c];
+    columns.push(new ColumnMeta(meta.name, meta.dtype, meta.inferredType, meta.nullable || how === 'left'));
+  }
+
+  const rows: CellValue[][] = [];
+  const MAX_ROWS = 200000;
+  for (let r = 0; r < left.rows.length; r++) {
+    const k = joinKey(left.rows[r][lk]);
+    const matches = map.get(k);
+    if (matches === undefined || matches.length === 0) {
+      if (how === 'left') {
+        const row = left.rows[r].slice();
+        for (let c = 0; c < rightIdxs.length; c++) {
+          row.push(null);
+        }
+        rows.push(row);
+      }
+      continue;
+    }
+    for (let m = 0; m < matches.length; m++) {
+      const rr = matches[m];
+      const row = left.rows[r].slice();
+      for (let c = 0; c < rightIdxs.length; c++) {
+        row.push(right.rows[rr][rightIdxs[c]]);
+      }
+      rows.push(row);
+      if (rows.length > MAX_ROWS) {
+        throw new Error('join: 结果超过行数上限');
+      }
+    }
+  }
+  return new DataFrame(left.name, columns, rows);
 }
 
 function dedupeRows(df: DataFrame, columns: string[] | null): CellValue[][] {

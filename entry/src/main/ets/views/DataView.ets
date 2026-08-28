@@ -1,5 +1,5 @@
 import { Theme } from '../common/Theme';
-import { t } from '../common/Locale';
+import { l10n, t } from '../common/Locale';
 import { fmt } from '../common/Format';
 import { CellValue } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
@@ -7,6 +7,11 @@ import { Language, WorkspaceState } from '../model/WorkspaceState';
 import { toNumber } from '../engine/Numeric';
 import { SnapshotView } from './SnapshotView';
 import { LineageView } from './LineageView';
+import { CleaningPanel } from './CleaningPanel';
+import { InsightsPanel } from './InsightsPanel';
+import { StatsPanel } from './StatsPanel';
+import { TransformPanel } from './TransformPanel';
+import { ColumnStatsPanel } from './ColumnStats';
 
 const PAGE_SIZE: number = 100;
 
@@ -23,6 +28,7 @@ export struct DataView {
   @State sortCol: string = '';
   @State sortAsc: boolean = true;
   @State viewMode: string = 'table'; // 'table' | 'snapshots' | 'lineage'
+  @State openPanel: string = ''; // '' | 'cleaning' | 'insights' | 'stats' | 'transform' | 'columns'
 
   private sortedRows(): CellValue[][] {
     const df = this.dataState.activeDataFrame;
@@ -76,77 +82,196 @@ export struct DataView {
   }
 
   build() {
-    Column() {
-      // Toolbar: dataset name + view toggle + rows info
-      Row() {
-        Text(this.dataState.activeDataFrame !== null ? this.dataState.activeDataFrame.name : '')
-          .fontSize(12)
-          .fontWeight(600)
-          .fontColor(Theme.colorForeground())
-        Row({ space: 4 }) {
-          Text('表格')
-            .fontSize(11)
-            .fontColor(this.viewMode === 'table' ? Theme.primary : Theme.colorMuted())
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-            .borderRadius(4)
-            .backgroundColor(this.viewMode === 'table' ? Theme.primaryDim : Color.Transparent)
-            .onClick(() => {
-              this.viewMode = 'table';
-            })
-          Text('快照')
-            .fontSize(11)
-            .fontColor(this.viewMode === 'snapshots' ? Theme.primary : Theme.colorMuted())
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-            .borderRadius(4)
-            .backgroundColor(this.viewMode === 'snapshots' ? Theme.primaryDim : Color.Transparent)
-            .onClick(() => {
-              this.viewMode = 'snapshots';
-            })
-          Text('血缘')
-            .fontSize(11)
-            .fontColor(this.viewMode === 'lineage' ? Theme.primary : Theme.colorMuted())
-            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
-            .borderRadius(4)
-            .backgroundColor(this.viewMode === 'lineage' ? Theme.primaryDim : Color.Transparent)
-            .onClick(() => {
-              this.viewMode = 'lineage';
-            })
-        }
-        .margin({ left: 12 })
-        Blank()
-        if (this.dataState.activeDataFrame !== null) {
-          Text(`${fmt(this.dataState.activeDataFrame.rowCount)} ${t(this.lang(), 'status.rows')} × ${this.dataState.activeDataFrame.colCount} ${t(this.lang(), 'status.cols')}`)
+    Row() {
+      // Left: toolbar + active view (web DataView left card)
+      Column() {
+        // Toolbar: dataset name + view toggle + rows info
+        Row() {
+          Text(this.dataState.activeDataFrame !== null ? this.dataState.activeDataFrame.name : '')
             .fontSize(12)
-            .fontColor(Theme.colorMuted())
+            .fontWeight(600)
+            .fontColor(Theme.colorForeground())
+          Row({ space: 4 }) {
+            Text('表格')
+              .fontSize(11)
+              .fontColor(this.viewMode === 'table' ? Theme.primary : Theme.colorMuted())
+              .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+              .borderRadius(4)
+              .backgroundColor(this.viewMode === 'table' ? Theme.primaryDim : Color.Transparent)
+              .onClick(() => {
+                this.viewMode = 'table';
+              })
+            Text('快照')
+              .fontSize(11)
+              .fontColor(this.viewMode === 'snapshots' ? Theme.primary : Theme.colorMuted())
+              .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+              .borderRadius(4)
+              .backgroundColor(this.viewMode === 'snapshots' ? Theme.primaryDim : Color.Transparent)
+              .onClick(() => {
+                this.viewMode = 'snapshots';
+              })
+            Text('血缘')
+              .fontSize(11)
+              .fontColor(this.viewMode === 'lineage' ? Theme.primary : Theme.colorMuted())
+              .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+              .borderRadius(4)
+              .backgroundColor(this.viewMode === 'lineage' ? Theme.primaryDim : Color.Transparent)
+              .onClick(() => {
+                this.viewMode = 'lineage';
+              })
+            Text('SQL')
+              .fontSize(11)
+              .fontColor(Theme.colorMuted())
+              .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+              .borderRadius(4)
+              .onClick(() => {
+                this.workspaceState.setSqlOpen(true);
+              })
+          }
+          .margin({ left: 12 })
+          Blank()
+          if (this.dataState.activeDataFrame !== null) {
+            Text(`${fmt(this.dataState.activeDataFrame.rowCount)} ${t(this.lang(), 'status.rows')} × ${this.dataState.activeDataFrame.colCount} ${t(this.lang(), 'status.cols')}`)
+              .fontSize(12)
+              .fontColor(Theme.colorMuted())
+          }
         }
-      }
-      .width('100%')
-      .height(32)
-      .padding({ left: 12, right: 12 })
+        .width('100%')
+        .height(32)
+        .padding({ left: 12, right: 12 })
 
-      if (this.viewMode === 'snapshots') {
-        Scroll() {
-          SnapshotView()
-            .width('100%')
+        if (this.viewMode === 'snapshots') {
+          Scroll() {
+            SnapshotView()
+              .width('100%')
+          }
+          .layoutWeight(1)
+          .scrollBar(BarState.Auto)
+          .align(Alignment.TopStart)
+        } else if (this.viewMode === 'lineage') {
+          Scroll() {
+            LineageView()
+              .width('100%')
+          }
+          .layoutWeight(1)
+          .scrollBar(BarState.Auto)
+          .align(Alignment.TopStart)
+        } else {
+          this.tableArea()
         }
-        .layoutWeight(1)
-        .scrollBar(BarState.Auto)
-        .align(Alignment.TopStart)
-      } else if (this.viewMode === 'lineage') {
-        Scroll() {
-          LineageView()
-            .width('100%')
-        }
-        .layoutWeight(1)
-        .scrollBar(BarState.Auto)
-        .align(Alignment.TopStart)
-      } else {
-        this.tableArea()
       }
+      .layoutWeight(1)
+      .height('100%')
+      .backgroundColor(Theme.colorBackground())
+
+      // Right: icon rail + single open panel (web CleaningPanel/InsightsPanel/
+      // StatsPanel/TransformPanel/ColumnStats rail)
+      Row() {
+        Column({ space: 4 }) {
+          this.railButton('wand_and_stars', 'cleaning')
+          this.railButton('list_bullet', 'insights')
+          this.railButton('square_grid_2x2', 'stats')
+          this.railButton('slider_horizontal_2', 'transform')
+          this.railButton('doc_plaintext', 'columns')
+        }
+        .width(40)
+        .height('100%')
+        .padding({ top: 8 })
+        .border({ width: { left: 1 }, color: Theme.colorBorder() })
+        .backgroundColor(Theme.colorSurface())
+        .alignItems(HorizontalAlign.Center)
+
+        if (this.openPanel !== '') {
+          Column() {
+            Row() {
+              Text(this.panelTitle())
+                .fontSize(12)
+                .fontWeight(600)
+                .fontColor(Theme.colorMuted())
+              Blank()
+              Text('×')
+                .fontSize(14)
+                .fontColor(Theme.colorMuted())
+                .padding(4)
+                .onClick(() => {
+                  this.openPanel = '';
+                })
+            }
+            .width('100%')
+            .height(34)
+            .padding({ left: 10, right: 6 })
+            .border({ width: { bottom: 1 }, color: Theme.colorBorder() })
+
+            Scroll() {
+              Column() {
+                if (this.openPanel === 'cleaning') {
+                  CleaningPanel()
+                    .width('100%')
+                } else if (this.openPanel === 'insights') {
+                  InsightsPanel()
+                    .width('100%')
+                } else if (this.openPanel === 'stats') {
+                  StatsPanel()
+                    .width('100%')
+                } else if (this.openPanel === 'transform') {
+                  TransformPanel()
+                    .width('100%')
+                } else {
+                  ColumnStatsPanel()
+                    .width('100%')
+                }
+              }
+              .width('100%')
+              .padding(8)
+              .alignItems(HorizontalAlign.Start)
+            }
+            .layoutWeight(1)
+            .scrollBar(BarState.Auto)
+            .align(Alignment.TopStart)
+          }
+          .width(288)
+          .height('100%')
+          .border({ width: { left: 1 }, color: Theme.colorBorder() })
+          .backgroundColor(Theme.colorSurfaceElevated())
+        }
+      }
+      .height('100%')
     }
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.colorBackground())
+  }
+
+  private panelTitle(): string {
+    if (this.openPanel === 'cleaning') {
+      return l10n(this.lang(), '清洗', 'Cleaning');
+    }
+    if (this.openPanel === 'insights') {
+      return t(this.lang(), 'insights.title');
+    }
+    if (this.openPanel === 'stats') {
+      return l10n(this.lang(), '统计', 'Stats');
+    }
+    if (this.openPanel === 'transform') {
+      return t(this.lang(), 'transform.title');
+    }
+    return t(this.lang(), 'table.columns');
+  }
+
+  @Builder
+  railButton(symbol: string, panel: string) {
+    Column() {
+      SymbolGlyph($r('sys.symbol.' + symbol))
+        .fontSize(16)
+        .fontColor([this.openPanel === panel ? Theme.primary : Theme.colorMuted()])
+    }
+    .width(30)
+    .height(30)
+    .borderRadius(6)
+    .backgroundColor(this.openPanel === panel ? Theme.primaryDim : Color.Transparent)
+    .onClick(() => {
+      this.openPanel = this.openPanel === panel ? '' : panel;
+    })
   }
 
   @Builder

@@ -1,5 +1,6 @@
 import { DataFrame } from '../model/DataFrame';
 import { computeAllColumnStats, computeQualityMetrics, findOutliers, ColumnStats } from './ColumnStats';
+import { pearson } from './StatsTools';
 import { toNumber } from './Numeric';
 
 /** A single insight / quality issue row (web: QualityIssue). */
@@ -125,4 +126,141 @@ export function computeQualityReport(df: DataFrame): QualityReport {
   report.summary.rows = df.rowCount;
   report.issues = computeInsights(df);
   return report;
+}
+
+/** Analytics insight card (web InsightsPanel: trend/concentration/skew/correlation/missing). */
+export class AnalyticsInsight {
+  type: string; // trend | concentration | skew | correlation | missing
+  text: string;
+  evidence: string;
+
+  constructor(type: string, text: string, evidence: string) {
+    this.type = type;
+    this.text = text;
+    this.evidence = evidence;
+  }
+}
+
+/** Local narrative-style insight cards replacing web /insights backend cards. */
+export function computeAnalyticsInsights(df: DataFrame): AnalyticsInsight[] {
+  const out: AnalyticsInsight[] = [];
+
+  // trend over first temporal + first numeric column
+  const trend = computeTrend(df);
+  if (trend.length > 0 && trend.indexOf('—') < 0) {
+    out.push(new AnalyticsInsight('trend', trend, 'method=first_temporal_numeric'));
+  }
+
+  // concentration: dominant category of the first nominal column
+  for (let c = 0; c < df.columns.length; c++) {
+    const col = df.columns[c];
+    if (col.dtype === 'number' || col.dtype === 'boolean') {
+      continue;
+    }
+    const groups = new Map<string, number>();
+    let total = 0;
+    for (let r = 0; r < df.rows.length; r++) {
+      const v = df.rows[r][c];
+      if (v === null || v === undefined) {
+        continue;
+      }
+      const key = String(v);
+      groups.set(key, (groups.get(key) ?? 0) + 1);
+      total++;
+    }
+    let top = '';
+    let topN = 0;
+    groups.forEach((n: number, key: string) => {
+      if (n > topN) {
+        topN = n;
+        top = key;
+      }
+    });
+    if (total > 0 && topN / total >= 0.5) {
+      const pct = Math.round((topN / total) * 100);
+      out.push(new AnalyticsInsight('concentration',
+        `「${col.name}」中「${top}」占比 ${pct}%，分布高度集中。`,
+        `column=${col.name}  share=${pct}%  top=${top}`));
+    }
+    break; // first nominal column only
+  }
+
+  // skew: first numeric column, mean vs median
+  for (let c = 0; c < df.columns.length; c++) {
+    if (df.columns[c].dtype !== 'number') {
+      continue;
+    }
+    const vals: number[] = [];
+    for (let r = 0; r < df.rows.length; r++) {
+      const n = toNumber(df.rows[r][c]);
+      if (n !== null) {
+        vals.push(n);
+      }
+    }
+    if (vals.length < 3) {
+      break;
+    }
+    let s = 0;
+    for (let i = 0; i < vals.length; i++) {
+      s += vals[i];
+    }
+    const mean = s / vals.length;
+    const sorted = vals.slice().sort((a: number, b: number) => a - b);
+    const median = sorted.length % 2 === 1
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+    const denom = Math.max(Math.abs(median), 1e-9);
+    const skew = (mean - median) / denom;
+    if (Math.abs(skew) > 0.25) {
+      const dir = skew > 0 ? '右偏（右侧长尾）' : '左偏（左侧长尾）';
+      out.push(new AnalyticsInsight('skew',
+        `「${df.columns[c].name}」呈${dir}：均值 ${mean.toFixed(2)} ${skew > 0 ? '>' : '<'} 中位数 ${median.toFixed(2)}。`,
+        `column=${df.columns[c].name}  mean=${mean.toFixed(2)}  median=${median.toFixed(2)}`));
+    }
+    break; // first numeric column only
+  }
+
+  // correlation: strongest numeric pair
+  const stats = computeAllColumnStats(df);
+  const numericCols: string[] = [];
+  const vectors: number[][] = [];
+  for (let i = 0; i < stats.length && numericCols.length < 8; i++) {
+    if (stats[i].dtype === 'number' && stats[i].count > 1) {
+      const vals: number[] = [];
+      const idx = df.columnIndex(stats[i].column);
+      for (let r = 0; r < df.rows.length; r++) {
+        const n = toNumber(df.rows[r][idx]);
+        if (n !== null) {
+          vals.push(n);
+        }
+      }
+      numericCols.push(stats[i].column);
+      vectors.push(vals);
+    }
+  }
+  let bestR: number | null = null;
+  let bestPair = '';
+  for (let i = 0; i < vectors.length; i++) {
+    for (let j = i + 1; j < vectors.length; j++) {
+      const r = pearson(vectors[i], vectors[j]);
+      if (r !== null && (bestR === null || Math.abs(r) > Math.abs(bestR))) {
+        bestR = r;
+        bestPair = numericCols[i] + ' × ' + numericCols[j];
+      }
+    }
+  }
+  if (bestR !== null && Math.abs(bestR) >= 0.6) {
+    out.push(new AnalyticsInsight('correlation',
+      `${bestPair} 呈${bestR > 0 ? '正' : '负'}相关（r=${bestR.toFixed(2)}）。`,
+      `pair=${bestPair}  r=${bestR.toFixed(2)}`));
+  }
+
+  // missing
+  const metrics = computeQualityMetrics(df);
+  if (metrics.missingCells > 0) {
+    out.push(new AnalyticsInsight('missing',
+      `数据集共 ${metrics.missingCells} 个缺失单元格（约 ${metrics.totalCells > 0 ? Math.round(metrics.missingCells / metrics.totalCells * 100) : 0}%）。`,
+      `cells=${metrics.missingCells}`));
+  }
+  return out;
 }

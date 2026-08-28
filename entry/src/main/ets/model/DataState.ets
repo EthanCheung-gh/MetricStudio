@@ -1,5 +1,5 @@
 import { CellValue, DataFrame, TransformOp, TransformStep } from './DataFrame';
-import { applyTransformOp } from '../engine/TransformOps';
+import { applyTransformOp, joinFrames, JoinParams } from '../engine/TransformOps';
 
 /**
  * Data-layer state (web: stores/dataStore.ts, local-engine variant).
@@ -164,7 +164,18 @@ export class DataState {
       this.baseFrame = df.clone();
     }
     try {
-      const result = applyTransformOp(df, op);
+      let result: DataFrame;
+      if (op.type === 'join') {
+        // join needs the dataset list, handled here (web /transform/{id}/join)
+        const p = JSON.parse(op.params) as JoinParams;
+        if (p.otherIndex < 0 || p.otherIndex >= this.dataFrames.length || p.otherIndex === this.activeIndex) {
+          this.lastError = 'join: 无效的目标数据集';
+          return false;
+        }
+        result = joinFrames(df, this.dataFrames[p.otherIndex], p);
+      } else {
+        result = applyTransformOp(df, op);
+      }
       this.dataFrames[this.activeIndex] = result;
       const step = new TransformStep(op);
       step.rowsAfter = result.rowCount;

@@ -131,6 +131,19 @@
 
 仍不移植的**修饰项**（非图表类型，后续按需）：facet 子图网格、scatter marginal、heatmap corr/annotated 模式、barmode 栈叠 UI。
 
+#### Batch 9：数据页四功能面板（清洗/洞察/统计/变换，对齐 main DataView）
+
+main 的 DataView 结构：左侧视图 tab（table/lineage/snapshots/sql）+ 右侧 40px 图标栏 + 单开 288px 面板（cleaning/insights/stats/transform/columns）。本批对齐：
+
+- [x] DataView 重构：右侧图标栏（5 按钮）+ 单开面板（标题栏+关闭）；SQL 以 tab chip 打开既有浮层；CenterArea 移除旧 288 堆叠栏
+- [x] **CleaningPanel（新）**：质量扫描（本地 computeQualityReport）、缺失/重复摘要、安全修复计划（数值缺失填 0 + 去重）预览（模拟 clone 计算行列 delta）与一键应用、列级质量统计表（缺失%/唯一/范围）、我的配方（transformHistory 存 Preferences，应用/删除）+ 去重/去缺失预设
+- [x] **InsightsPanel 重写**：环比时序工作台（时间列分组求和 + MoM% + MA3 + 异常高亮，web tsResult 子集）、本地叙述摘要（LLM 接入位）、五类分析洞察卡（趋势/集中度/偏态/相关性/缺失，evidence k=v）
+- [x] **StatsPanel（新）**：Pearson 相关矩阵（≤8 数值列，正蓝负红背景色阶 + 最强对文本）、一元线性回归（OLS slope/intercept/R² + 解读）、两组差异检验（Welch t，正态近似显著性，已标注）、均值 95% 置信区间
+- [x] **TransformPanel 补齐**：计算字段改为**表达式**（本地递归下降求值器：列名/数字/+-*/%/括号/一元负号，空值传播，字段 chips 插入 + 前 5 行预览）；新增 **join** 段（右数据集/关联键/inner-left；TransformOps 新增 joinFrames 哈希连接 + DataState 分支处理）
+- [x] 持久化：Settings 新增 recipes 存取
+- [x] 验证：`devecocli build` 通过；设备掉线，重连后覆盖安装复验
+- 修饰项差异（记录）：质量修复不含离群值处理；列级质量表无 samples 展开；洞察叙述暂为本地摘要
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite

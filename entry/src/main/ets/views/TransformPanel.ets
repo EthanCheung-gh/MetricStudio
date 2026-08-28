@@ -1,14 +1,21 @@
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, LengthMetrics } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
-import { t } from '../common/Locale';
+import { l10n, t } from '../common/Locale';
 import { TransformOp } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
+import { evalExpression } from '../engine/TransformOps';
+
+/** Right-dataset shim for the join section. */
+interface DatasetShim {
+  index: number;
+  name: string;
+}
 
 const OPS_FILTER = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'contains'];
 const OPS_AGG = ['sum', 'mean', 'count', 'min', 'max'];
 const OPS_STR = ['trim', 'lower', 'upper'];
-const OPS_COMPUTE = ['copy', 'abs', 'neg', 'square', 'sqrt'];
+const OPS_JOIN = ['inner', 'left'];
 
 /**
  * Transform panel (web: src/components/data/TransformPanel.tsx). Card with
@@ -31,10 +38,13 @@ export struct TransformPanel {
   // rename
   @State renameFrom: string = '';
   @State renameTo: string = '';
-  // compute
+  // compute (expression, web computed field)
   @State computeName: string = '';
-  @State computeCol: string = '';
-  @State computeOp: string = 'copy';
+  @State computeExpr: string = '';
+  // join
+  @State joinRight: number = -1;
+  @State joinOn: string = '';
+  @State joinHow: string = 'inner';
   // pivot
   @State pivotIndex: string = '';
   @State pivotColumns: string = '';
@@ -135,11 +145,63 @@ export struct TransformPanel {
     this.run(new TransformOp('rename', JSON.stringify({ oldName: this.renameFrom, newName: this.renameTo })));
   }
 
-  private applyCompute(): void {
-    if (this.computeName.length === 0 || this.computeCol.length === 0) {
+  private applyExpr(): void {
+    if (this.computeName.length === 0 || this.computeExpr.trim().length === 0) {
       return;
     }
-    this.run(new TransformOp('compute', JSON.stringify({ name: this.computeName, sourceColumn: this.computeCol, operation: this.computeOp })));
+    this.run(new TransformOp('expr', JSON.stringify({ name: this.computeName, expression: this.computeExpr.trim() })));
+    this.computeName = '';
+    this.computeExpr = '';
+  }
+
+  private insertField(name: string): void {
+    this.computeExpr = (this.computeExpr.trim().length > 0 && !this.computeExpr.endsWith(' ')
+      ? this.computeExpr + ' ' : this.computeExpr) + name;
+  }
+
+  private exprPreview(): string {
+    const df = this.dataState.activeDataFrame;
+    if (df === null || this.computeExpr.trim().length === 0) {
+      return '';
+    }
+    const out: string[] = [];
+    const n = Math.min(5, df.rowCount);
+    for (let r = 0; r < n; r++) {
+      const v = evalExpression(df, r, this.computeExpr);
+      out.push(v === null ? 'null' : v.toString());
+    }
+    return out.join(', ');
+  }
+
+  private otherDatasets(): DatasetShim[] {
+    const out: DatasetShim[] = [];
+    for (let i = 0; i < this.dataState.dataFrames.length; i++) {
+      if (i !== this.dataState.activeIndex) {
+        out.push({ index: i, name: this.dataState.dataFrames[i].name });
+      }
+    }
+    return out;
+  }
+
+  private colOptionsForDatasets(): SelectOption[] {
+    const opts: SelectOption[] = [];
+    const ds = this.otherDatasets();
+    for (let i = 0; i < ds.length; i++) {
+      opts.push({ value: ds[i].name });
+    }
+    return opts;
+  }
+
+  private applyJoin(): void {
+    if (this.joinRight < 0 || this.joinOn.length === 0) {
+      return;
+    }
+    this.run(new TransformOp('join', JSON.stringify({
+      otherIndex: this.joinRight,
+      leftKey: this.joinOn,
+      rightKey: this.joinOn,
+      how: this.joinHow,
+    })));
   }
 
   private applyPivot(): void {
@@ -304,7 +366,7 @@ export struct TransformPanel {
           this.applyRename();
         })
 
-        // ---- Compute ----
+        // ---- Compute (expression, web computed field) ----
         this.sectionLabel(t(this.workspaceState.language, 'transform.compute'))
         TextInput({ placeholder: t(this.workspaceState.language, 'transform.newColumn'), text: this.computeName })
           .width('100%')
@@ -313,33 +375,41 @@ export struct TransformPanel {
           .onChange((v: string) => {
             this.computeName = v;
           })
-        Row({ space: 6 }) {
-          Select(this.colOptions())
-            .selected(this.colIndex(this.computeCol))
-            .value(this.computeCol.length > 0 ? this.computeCol : t(this.workspaceState.language, 'transform.column'))
-            .font({ size: 12 })
-            .height(30)
-            .layoutWeight(1)
+        TextInput({ placeholder: l10n(this.workspaceState.language, '表达式，如 单价 * 数量', 'Expression, e.g. price * qty'), text: this.computeExpr })
+          .width('100%')
+          .height(30)
+          .fontSize(12)
+          .onChange((v: string) => {
+            this.computeExpr = v;
+          })
+        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
+          ForEach(this.columns(), (col: string) => {
+            Button() {
+              Text(col)
+                .fontSize(10)
+                .fontColor(Theme.colorMuted())
+            }
+            .type(ButtonType.Normal)
+            .height(22)
+            .padding({ left: 8, right: 8 })
             .backgroundColor(Theme.colorSurface())
-            .borderRadius(6)
-            .onSelect((index: number, value: string) => {
-              this.computeCol = value;
+            .borderRadius(8)
+            .onClick(() => {
+              this.insertField(col);
             })
-          Select(this.stringOptions(OPS_COMPUTE))
-            .selected(this.stringIndex(OPS_COMPUTE, this.computeOp))
-            .value(this.computeOp)
-            .font({ size: 12 })
-            .height(30)
-            .width(90)
-            .backgroundColor(Theme.colorSurface())
-            .borderRadius(6)
-            .onSelect((index: number, value: string) => {
-              this.computeOp = value;
-            })
+          }, (col: string) => col)
         }
         .width('100%')
+        if (this.exprPreview().length > 0) {
+          Text(l10n(this.workspaceState.language, '预览: ' + this.exprPreview(), 'preview: ' + this.exprPreview()))
+            .fontSize(10)
+            .fontColor(Theme.colorMuted())
+            .width('100%')
+            .maxLines(2)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
         this.primaryButton(t(this.workspaceState.language, 'transform.addComputed'), () => {
-          this.applyCompute();
+          this.applyExpr();
         })
 
         // ---- Pivot ----
@@ -381,6 +451,40 @@ export struct TransformPanel {
         })
         this.primaryButton(t(this.workspaceState.language, 'transform.applyMelt'), () => {
           this.applyMelt();
+        })
+
+        // ---- Join (web join section) ----
+        this.sectionLabel(l10n(this.workspaceState.language, '关联数据集', 'Join'))
+        Select(this.colOptionsForDatasets())
+          .selected(this.joinRight >= 0 ? this.joinRight : 0)
+          .value(this.joinRight >= 0 && this.joinRight < this.dataState.dataFrames.length
+            ? this.dataState.dataFrames[this.joinRight].name
+            : l10n(this.workspaceState.language, '选择数据集', 'Select dataset'))
+          .font({ size: 12 })
+          .height(30)
+          .width('100%')
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .onSelect((index: number, value: string) => {
+            const ds = this.otherDatasets();
+            this.joinRight = index >= 0 && index < ds.length ? ds[index].index : -1;
+          })
+        this.inlineColSelect(this.joinOn, l10n(this.workspaceState.language, '关联键', 'Key'), (v: string) => {
+          this.joinOn = v;
+        })
+        Select(this.stringOptions(OPS_JOIN))
+          .selected(this.stringIndex(OPS_JOIN, this.joinHow))
+          .value(this.joinHow)
+          .font({ size: 12 })
+          .height(30)
+          .width('100%')
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .onSelect((index: number, value: string) => {
+            this.joinHow = value;
+          })
+        this.primaryButton(l10n(this.workspaceState.language, '执行关联', 'Join'), () => {
+          this.applyJoin();
         })
 
         // ---- Drop columns ----

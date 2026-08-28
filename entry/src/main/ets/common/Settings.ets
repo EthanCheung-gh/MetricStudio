@@ -8,6 +8,7 @@ const KEY_LANGUAGE = 'language';
 const KEY_THEME = 'theme';
 const KEY_PROJECT = 'project';
 const KEY_SQL_HISTORY = 'sql_history';
+const KEY_RECIPES = 'recipes';
 
 /**
  * Persists language + theme via Preferences (web: localStorage). Loaded once at
@@ -136,6 +137,34 @@ export class Settings {
     }
     try {
       store.putSync(KEY_SQL_HISTORY, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load cleaning recipes (web: /recipes, local Preferences persistence). */
+  static loadRecipes(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_RECIPES, '') as string;
+    } catch (e) {
+      v = '';
+    }
+    return v;
+  }
+
+  /** Persist cleaning recipes as a JSON document. */
+  static async saveRecipes(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_RECIPES, json);
       await store.flush();
     } catch (e) {
       // ignore persistence errors
