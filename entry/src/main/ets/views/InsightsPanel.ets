@@ -2,9 +2,11 @@ import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { l10n, t } from '../common/Locale';
 import { fmt } from '../common/Format';
+import { DataFrame } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { AnalyticsInsight, computeAnalyticsInsights, computeQualityReport } from '../engine/Insights';
+import { ChatMessage, chatCompletion, llmConfigured } from '../engine/LlmClient';
 
 /** One row of the MoM workbench table (web tsResult.periods subset). */
 interface TsRow {
@@ -96,12 +98,47 @@ export struct InsightsPanel {
     this.tsOn = true;
   }
 
-  /** 叙述：本地统计摘要（web 走 LLM narrate，接入后替换）。 */
+  /** 叙述：LLM 已配置时走 LLM（web /nl/narrate），否则本地摘要。 */
   private narrate(): void {
     const df = this.dataState.activeDataFrame;
     if (df === null) {
       return;
     }
+    if (llmConfigured(this.workspaceState.llmConfig)) {
+      this.narrateLlm(df);
+      return;
+    }
+    this.narrateLocal(df);
+  }
+
+  /** LLM narrative (web nl_narrate): insights → 2-3 句连贯中文叙述。 */
+  private narrateLlm(df: DataFrame): void {
+    this.narrating = true;
+    const cards = computeAnalyticsInsights(df);
+    if (cards.length === 0) {
+      this.narrateLocal(df);
+      return;
+    }
+    const lines: string[] = [];
+    for (let i = 0; i < cards.length; i++) {
+      lines.push('- ' + cards[i].text);
+    }
+    const prompt = '以下是数据集的分析洞察：\n' + lines.join('\n') +
+      '\n\n请用简体中文撰写一段 2-3 句的连贯分析叙述，基于上述洞察并引用具体数字，不要编造。';
+    const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+    chatCompletion(this.workspaceState.llmConfig, messages, 256).then((text: string) => {
+      this.narrative = text.trim();
+      this.narrating = false;
+    }).catch(() => {
+      this.narrating = false;
+      promptAction.showToast({ message: l10n(this.workspaceState.language,
+        'LLM 叙述失败，已用本地摘要', 'LLM narrate failed; local summary used') });
+      this.narrateLocal(df);
+    });
+  }
+
+  /** 叙述：本地统计摘要（LLM 未配置时的兜底）。 */
+  private narrateLocal(df: DataFrame): void {
     this.narrating = true;
     const rep = computeQualityReport(df);
     let text = l10n(this.workspaceState.language,
