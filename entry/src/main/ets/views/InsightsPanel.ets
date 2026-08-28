@@ -8,13 +8,39 @@ import { WorkspaceState } from '../model/WorkspaceState';
 import { AnalyticsInsight, computeAnalyticsInsights, computeQualityReport } from '../engine/Insights';
 import { ChatMessage, chatCompletion, llmConfigured } from '../engine/LlmClient';
 
-/** One row of the MoM workbench table (web tsResult.periods subset). */
+/** One row of the time-series workbench (web tsResult periods + forecast). */
 interface TsRow {
   period: string;
   value: number;
-  mom: number | null; // percent vs previous period
-  ma: number | null;  // moving average, window 3
+  mom: number | null;     // 环比 % vs previous period
+  yoy: number | null;     // 同比 % vs same month last year
+  ma: number | null;      // moving average, window 3
   anomaly: boolean;
+  forecast: boolean;      // 趋势外推预测行（web naive drift）
+}
+
+/** 月度键：'YYYY-MM-DD…' → 'YYYY-MM'（web Period 月度聚合口径）。 */
+function monthKey(raw: string): string {
+  return raw.length >= 7 ? raw.slice(0, 7) : raw;
+}
+
+/** 下一个月的 'YYYY-MM' 键（预测行用）。 */
+function nextMonthKey(key: string): string {
+  if (key.length !== 7) {
+    return key + '+';
+  }
+  let year = Number(key.slice(0, 4));
+  let month = Number(key.slice(5, 7));
+  if (Number.isNaN(year) || Number.isNaN(month)) {
+    return key + '+';
+  }
+  month++;
+  if (month > 12) {
+    month = 1;
+    year++;
+  }
+  const mm = month < 10 ? '0' + month.toString() : month.toString();
+  return year.toString() + '-' + mm;
 }
 
 /**
@@ -34,7 +60,10 @@ export struct InsightsPanel {
   @State tsPeriodCol: string = '';
   @State tick: number = 0;
 
-  /** 环比工作台：按时间列分组求和首个数值列，计算 MoM 与 3 期移动平均。 */
+  /**
+   * 时序工作台（web backend/core/timeseries.py 口径）：月度均值聚合、
+   * 环比 / 同比、3 期移动平均、残差 z≥2 异常、naive drift 预测 3 期。
+   */
   private buildTs(): void {
     const df = this.dataState.activeDataFrame;
     if (df === null) {
@@ -60,39 +89,121 @@ export struct InsightsPanel {
     }
     this.tsPeriodCol = df.columns[periodIdx].name;
     this.tsColumn = df.columns[valueIdx].name;
-    const groups = new Map<string, number>();
+    // 月度均值聚合（web groupby 月 → mean）
+    const sums = new Map<string, number>();
+    const counts = new Map<string, number>();
     const order: string[] = [];
     for (let r = 0; r < df.rows.length; r++) {
-      const key = String(df.rows[r][periodIdx] ?? '');
-      if (!groups.has(key)) {
-        groups.set(key, 0);
-        order.push(key);
+      const raw = df.rows[r][periodIdx];
+      const key = monthKey(raw === null || raw === undefined ? '' : String(raw));
+      if (key.length === 0) {
+        continue;
       }
       const n = Number(df.rows[r][valueIdx]);
-      if (!Number.isNaN(n)) {
-        groups.set(key, (groups.get(key) ?? 0) + n);
+      if (Number.isNaN(n)) {
+        continue;
       }
+      if (!sums.has(key)) {
+        sums.set(key, 0);
+        counts.set(key, 0);
+        order.push(key);
+      }
+      sums.set(key, (sums.get(key) ?? 0) + n);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    if (order.length < 2) {
+      promptAction.showToast({ message: l10n(this.workspaceState.language,
+        '时间序列数据不足（少于两个月）', 'Not enough time series data (< 2 months)') });
+      return;
     }
     order.sort((a: string, b: string) => (a < b ? -1 : 1));
+    const values: number[] = [];
+    for (let i = 0; i < order.length; i++) {
+      const cnt = counts.get(order[i]) ?? 1;
+      values.push((sums.get(order[i]) ?? 0) / Math.max(1, cnt));
+    }
     const rows: TsRow[] = [];
     for (let i = 0; i < order.length; i++) {
-      const v = groups.get(order[i]) ?? 0;
+      const v = values[i];
       let mom: number | null = null;
-      if (i > 0) {
-        const prev = groups.get(order[i - 1]) ?? 0;
-        mom = prev !== 0 ? Math.round(((v - prev) / Math.abs(prev)) * 100) : null;
+      if (i > 0 && values[i - 1] !== 0) {
+        mom = Math.round(((v - values[i - 1]) / Math.abs(values[i - 1])) * 1000) / 10;
+      }
+      // 同比：上年同月（键 'YYYY-MM'），查无或基数为 0 → null
+      let yoy: number | null = null;
+      const key = order[i];
+      if (key.length === 7) {
+        const year = Number(key.slice(0, 4));
+        const mm = key.slice(4, 7);
+        if (!Number.isNaN(year)) {
+          const prevKey = (year - 1).toString() + mm;
+          const pi = order.indexOf(prevKey);
+          if (pi >= 0 && values[pi] !== 0) {
+            yoy = Math.round(((v - values[pi]) / Math.abs(values[pi])) * 1000) / 10;
+          }
+        }
       }
       let ma: number | null = null;
       if (i >= 2) {
-        ma = ((groups.get(order[i]) ?? 0) + (groups.get(order[i - 1]) ?? 0) + (groups.get(order[i - 2]) ?? 0)) / 3;
+        ma = (values[i] + values[i - 1] + values[i - 2]) / 3;
       }
       rows.push({
-        period: order[i],
+        period: key,
         value: v,
         mom: mom,
+        yoy: yoy,
         ma: ma,
-        anomaly: mom !== null && Math.abs(mom) >= 50,
+        anomaly: false,
+        forecast: false,
       });
+    }
+    // 异常：残差 = 本期 − MA3，|z| ≥ 2 标记（web _OUTLIER_SIGMA）
+    const residuals: number[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].ma !== null) {
+        residuals.push(rows[i].value - (rows[i].ma as number));
+      }
+    }
+    if (residuals.length >= 2) {
+      let mean = 0;
+      for (let i = 0; i < residuals.length; i++) {
+        mean += residuals[i];
+      }
+      mean /= residuals.length;
+      let variance = 0;
+      for (let i = 0; i < residuals.length; i++) {
+        variance += (residuals[i] - mean) * (residuals[i] - mean);
+      }
+      const std = Math.sqrt(variance / residuals.length);
+      if (std > 0) {
+        for (let i = 0; i < rows.length; i++) {
+          if (rows[i].ma !== null) {
+            const z = (rows[i].value - (rows[i].ma as number) - mean) / std;
+            rows[i].anomaly = Math.abs(z) >= 2;
+          }
+        }
+      }
+    }
+    // 预测：naive drift 线性趋势外推 3 期（web _FORECAST_HORIZON）
+    const window = Math.min(6, rows.length);
+    if (window >= 2) {
+      const first = values[rows.length - window];
+      const last = values[rows.length - 1];
+      const step = (last - first) / (window - 1);
+      let lastKey = order[order.length - 1];
+      for (let f = 1; f <= 3; f++) {
+        const fv = Math.max(0, last + step * f);
+        lastKey = nextMonthKey(lastKey);
+        rows.push({
+          period: lastKey,
+          value: fv,
+          mom: null,
+          yoy: null,
+          ma: null,
+          anomaly: false,
+          forecast: true,
+        });
+      }
     }
     this.tsRows = rows;
     this.tsOn = true;
@@ -204,33 +315,43 @@ export struct InsightsPanel {
           .fontSize(11)
           .fontColor(Theme.colorMuted())
       } else {
-        // MoM workbench table (web tsResult table, local subset: value/MoM/MA)
+        // MoM workbench table (web tsResult: 月份/值/环比/同比/MA3 + 预测行)
         if (this.tsOn && this.tsRows.length > 0) {
           Column({ space: 4 }) {
-            Text(l10n(this.workspaceState.language, '时序环比 · ' + this.tsColumn, 'Trend · ' + this.tsColumn))
+            Text(l10n(this.workspaceState.language, '时间序列工作台 · ' + this.tsColumn, 'Time series · ' + this.tsColumn))
               .fontSize(10)
               .fontWeight(600)
               .fontColor(Theme.colorMuted())
               .alignSelf(ItemAlign.Start)
             Row() {
-              Text(l10n(this.workspaceState.language, '周期', 'Period')).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2)
+              Text(l10n(this.workspaceState.language, '月份', 'Month')).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2)
               Text(this.tsColumn).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2).textAlign(TextAlign.End)
               Text(l10n(this.workspaceState.language, '环比', 'MoM')).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2).textAlign(TextAlign.End)
-              Text(l10n(this.workspaceState.language, 'MA3', 'MA3')).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2).textAlign(TextAlign.End)
+              Text(l10n(this.workspaceState.language, '同比', 'YoY')).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2).textAlign(TextAlign.End)
+              Text(l10n(this.workspaceState.language, '3期均值', 'MA3')).fontSize(9).fontColor(Theme.colorMuted()).layoutWeight(2).textAlign(TextAlign.End)
             }
             .width('100%')
             ForEach(this.tsRows, (row: TsRow) => {
               Row() {
-                Text(row.period + (row.anomaly ? ' ⚠' : ''))
+                Text(row.period + (row.anomaly ? ' ⚠' : '') + (row.forecast ? ' ↑' : ''))
                   .fontSize(9)
-                  .fontColor(row.anomaly ? Theme.warning : Theme.colorMuted())
+                  .fontColor(row.anomaly ? Theme.warning : (row.forecast ? Theme.primary : Theme.colorMuted()))
                   .layoutWeight(2)
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(fmt(row.value)).fontSize(9).fontColor(Theme.colorForeground()).layoutWeight(2).textAlign(TextAlign.End)
+                Text(fmt(row.value))
+                  .fontSize(9)
+                  .fontColor(row.forecast ? Theme.primary : Theme.colorForeground())
+                  .layoutWeight(2)
+                  .textAlign(TextAlign.End)
                 Text(row.mom !== null ? row.mom.toString() + '%' : '—')
                   .fontSize(9)
                   .fontColor(row.mom !== null && row.mom < 0 ? Theme.danger : Theme.success)
+                  .layoutWeight(2)
+                  .textAlign(TextAlign.End)
+                Text(row.yoy !== null ? row.yoy.toString() + '%' : '—')
+                  .fontSize(9)
+                  .fontColor(row.yoy !== null && row.yoy < 0 ? Theme.danger : Theme.success)
                   .layoutWeight(2)
                   .textAlign(TextAlign.End)
                 Text(row.ma !== null ? row.ma.toFixed(1) : '—')
@@ -242,7 +363,13 @@ export struct InsightsPanel {
               .width('100%')
               .padding({ top: 1, bottom: 1 })
               .backgroundColor(row.anomaly ? Theme.primaryDim : Color.Transparent)
-            }, (row: TsRow) => row.period + '_' + this.tick.toString())
+            }, (row: TsRow) => row.period + (row.forecast ? '_f' : '') + '_' + this.tick.toString())
+            if (this.hasForecast()) {
+              Text(l10n(this.workspaceState.language, '↑ 趋势外推预测', '↑ naive drift forecast'))
+                .fontSize(9)
+                .fontColor(Theme.primary)
+                .alignSelf(ItemAlign.Start)
+            }
           }
           .width('100%')
           .padding(8)
@@ -322,5 +449,14 @@ export struct InsightsPanel {
       return '⚠';
     }
     return '💡';
+  }
+
+  private hasForecast(): boolean {
+    for (let i = 0; i < this.tsRows.length; i++) {
+      if (this.tsRows[i].forecast) {
+        return true;
+      }
+    }
+    return false;
   }
 }

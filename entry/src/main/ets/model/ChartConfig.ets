@@ -48,6 +48,11 @@ export class ChartOptions {
   highField?: string;
   lowField?: string;
   closeField?: string;
+  // scatter marginals + heatmap corr modes (web options.marginalX/Y, corr, annotated)
+  marginalX?: string;   // '' | histogram | box | violin | rug
+  marginalY?: string;
+  corrMatrix?: boolean; // heatmap: Pearson correlation matrix mode
+  annotateCells?: boolean; // heatmap: cell value annotations
 
   constructor() {
   }
@@ -104,6 +109,10 @@ export class ChartEncoding {
       o.highField = this.options.highField;
       o.lowField = this.options.lowField;
       o.closeField = this.options.closeField;
+      o.marginalX = this.options.marginalX;
+      o.marginalY = this.options.marginalY;
+      o.corrMatrix = this.options.corrMatrix;
+      o.annotateCells = this.options.annotateCells;
       e.options = o;
     }
     for (let i = 0; i < this.path.length; i++) {

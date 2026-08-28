@@ -451,6 +451,35 @@ export struct EncodingPanel {
           this.setColor(col);
         })
 
+      // Facet 分面通道（spec 带 facet 的类型，web chart.channel.facet）
+      if (this.hasFacet()) {
+        this.fieldSelect(l10n(this.workspaceState.language, '分面', 'Facet'),
+          this.columns(), this.facetField(), (col: string) => {
+            this.setFacet(col);
+          })
+        if (this.facetField().length > 0) {
+          Button() {
+            Text(l10n(this.workspaceState.language, '清除分面', 'Clear facet'))
+              .fontSize(10)
+              .fontColor(Theme.colorMuted())
+          }
+          .type(ButtonType.Normal)
+          .height(22)
+          .padding({ left: 8, right: 8 })
+          .backgroundColor(Color.Transparent)
+          .borderRadius(6)
+          .border({ width: 1, color: Theme.colorBorder() })
+          .onClick(() => {
+            const c = this.workspaceState.activeChart();
+            if (c !== null) {
+              c.encoding.facet = null;
+              this.yMetaTick++;
+              this.workspaceState.refreshChart();
+            }
+          })
+        }
+      }
+
       // Z / value channel (heatmap & contour families)
       if (this.needsZ()) {
         this.fieldSelect('Z / Value', this.columns(), this.selZ, (col: string) => {
@@ -551,6 +580,181 @@ export struct EncodingPanel {
             this.setOptField('close', col);
           })
       }
+
+      // 图表修饰（web EncodingPanel OptionsSection: barMode / marginals / corr）
+      if (this.isType('bar') || this.isType('barh') || this.isType('area')) {
+        this.optionSelect(l10n(this.workspaceState.language, '柱状模式', 'Bar mode'),
+          [l10n(this.workspaceState.language, '分组', 'Group'), l10n(this.workspaceState.language, '堆叠', 'Stack')],
+          this.optStr('barmode') === 'stack' ? 1 : 0, (i: number) => {
+            this.setOptStr('barmode', i === 1 ? 'stack' : 'group');
+          })
+      }
+      if (this.isType('scatter')) {
+        this.optionSelect(l10n(this.workspaceState.language, 'X 边缘分布', 'Marginal X'),
+          MARGINAL_LABELS_ZH.map((v: string) => l10n(this.workspaceState.language, v, MARGINAL_LABELS_EN[MARGINAL_LABELS_ZH.indexOf(v)])),
+          this.marginalIndex(this.optStr('marginalX')), (i: number) => {
+            this.setOptStr('marginalX', MARGINAL_VALUES[i]);
+          })
+        this.optionSelect(l10n(this.workspaceState.language, 'Y 边缘分布', 'Marginal Y'),
+          MARGINAL_LABELS_ZH.map((v: string) => l10n(this.workspaceState.language, v, MARGINAL_LABELS_EN[MARGINAL_LABELS_ZH.indexOf(v)])),
+          this.marginalIndex(this.optStr('marginalY')), (i: number) => {
+            this.setOptStr('marginalY', MARGINAL_VALUES[i]);
+          })
+      }
+      if (this.isType('heatmap') || this.isType('contour')) {
+        Row({ space: 12 }) {
+          Row({ space: 4 }) {
+            Checkbox()
+              .select(this.optBool('corrMatrix'))
+              .width(15)
+              .height(15)
+              .onChange((v: boolean) => {
+                this.setOptBool('corrMatrix', v);
+              })
+            Text(l10n(this.workspaceState.language, '相关系数矩阵', 'Corr matrix'))
+              .fontSize(11)
+              .fontColor(Theme.colorForeground())
+          }
+          .alignItems(VerticalAlign.Center)
+          Row({ space: 4 }) {
+            Checkbox()
+              .select(this.optBool('annotateCells'))
+              .width(15)
+              .height(15)
+              .onChange((v: boolean) => {
+                this.setOptBool('annotateCells', v);
+              })
+            Text(l10n(this.workspaceState.language, '标注单元格', 'Annotate cells'))
+              .fontSize(11)
+              .fontColor(Theme.colorForeground())
+          }
+          .alignItems(VerticalAlign.Center)
+        }
+        .width('100%')
+      }
+    }
+    .width('100%')
+    .alignItems(HorizontalAlign.Start)
+  }
+
+  private optStr(key: string): string {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.options === null) {
+      return '';
+    }
+    const o = c.encoding.options;
+    if (key === 'barmode') {
+      return o.barmode !== undefined ? o.barmode : '';
+    }
+    if (key === 'marginalX') {
+      return o.marginalX !== undefined ? o.marginalX : '';
+    }
+    return o.marginalY !== undefined ? o.marginalY : '';
+  }
+
+  private setOptStr(key: string, val: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return;
+    }
+    if (c.encoding.options === null) {
+      c.encoding.options = new ChartOptions();
+    }
+    const o = c.encoding.options;
+    if (key === 'barmode') {
+      o.barmode = val;
+    } else if (key === 'marginalX') {
+      o.marginalX = val;
+    } else {
+      o.marginalY = val;
+    }
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private optBool(key: string): boolean {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.options === null) {
+      return false;
+    }
+    const o = c.encoding.options;
+    if (key === 'corrMatrix') {
+      return o.corrMatrix === true;
+    }
+    return o.annotateCells === true;
+  }
+
+  private setOptBool(key: string, val: boolean): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return;
+    }
+    if (c.encoding.options === null) {
+      c.encoding.options = new ChartOptions();
+    }
+    const o = c.encoding.options;
+    if (key === 'corrMatrix') {
+      o.corrMatrix = val;
+    } else {
+      o.annotateCells = val;
+    }
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private marginalIndex(v: string): number {
+    const i = MARGINAL_VALUES.indexOf(v);
+    return i >= 0 ? i : 0;
+  }
+
+  private hasFacet(): boolean {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return false;
+    }
+    const spec = chartTypeSpecs[c.encoding.chartType];
+    return spec !== undefined && spec.channels.indexOf('facet') >= 0;
+  }
+
+  private facetField(): string {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.facet === null) {
+      return '';
+    }
+    return (c.encoding.facet as EncodingChannel).field;
+  }
+
+  private setFacet(col: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || col.length === 0) {
+      return;
+    }
+    c.encoding.facet = new EncodingChannel(col, this.fieldType(col), null);
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  @Builder
+  optionSelect(label: string, options: string[], selected: number, onPick: (i: number) => void) {
+    Column({ space: 4 }) {
+      Text(label)
+        .fontSize(11)
+        .fontWeight(600)
+        .fontColor(Theme.colorMuted())
+        .alignSelf(ItemAlign.Start)
+      Select(options.map((v: string): SelectOption => ({ value: v })))
+        .fontColor(Theme.colorForeground())
+        .border({ width: 1, color: Theme.colorBorder() })
+        .selected(selected)
+        .value(options[selected] !== undefined ? options[selected] : '')
+        .font({ size: 12 })
+        .width('100%')
+        .height(30)
+        .backgroundColor(Theme.colorSurface())
+        .borderRadius(6)
+        .onSelect((index: number, _value: string) => {
+          onPick(index);
+        })
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)
@@ -775,3 +979,8 @@ interface YRowShim {
   axis: string;
   normalize: string;
 }
+
+/** Marginal options (web chart.marginalX/Y selects). */
+const MARGINAL_VALUES: string[] = ['', 'histogram', 'box', 'violin', 'rug'];
+const MARGINAL_LABELS_ZH: string[] = ['无', '直方图', '箱线', '小提琴', '地毯'];
+const MARGINAL_LABELS_EN: string[] = ['None', 'Histogram', 'Box', 'Violin', 'Rug'];

@@ -311,6 +311,10 @@ export class WorkspaceState {
           highField: o.highField,
           lowField: o.lowField,
           closeField: o.closeField,
+          marginalX: o.marginalX,
+          marginalY: o.marginalY,
+          corrMatrix: o.corrMatrix,
+          annotateCells: o.annotateCells,
         };
       }
       let pathj: string[] | null = enc.path.length > 0 ? [] : null;
@@ -467,6 +471,10 @@ export class WorkspaceState {
             o.highField = c.options.highField;
             o.lowField = c.options.lowField;
             o.closeField = c.options.closeField;
+            o.marginalX = c.options.marginalX;
+            o.marginalY = c.options.marginalY;
+            o.corrMatrix = c.options.corrMatrix;
+            o.annotateCells = c.options.annotateCells;
             chart.encoding.options = o;
           }
           if (c.path !== null && c.path !== undefined) {
@@ -675,6 +683,10 @@ interface EncOptionsJson {
   highField?: string;
   lowField?: string;
   closeField?: string;
+  marginalX?: string;
+  marginalY?: string;
+  corrMatrix?: boolean;
+  annotateCells?: boolean;
 }
 interface ProjectLayoutJson {
   annotations: string[];

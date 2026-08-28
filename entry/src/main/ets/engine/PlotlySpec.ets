@@ -1,10 +1,11 @@
-import { DataFrame } from '../model/DataFrame';
+import { CellValue, DataFrame } from '../model/DataFrame';
 import { ChartEncoding, ChartLayout, defaultColors } from '../model/ChartConfig';
 import { Theme } from '../common/Theme';
-import {
-  buildCandle, buildChartData, buildGantt, buildHierarchy, buildNominalDims,
+import { pearson } from './StatsTools';
+import { toNumber } from './Numeric';
+import { buildCandle, buildChartData, buildGantt, buildHierarchy, buildNominalDims,
   buildNumericDims, buildSankey, buildScatter3D, buildStages, buildTable,
-  buildTernary, buildTimeline, DimsData
+  buildTernary, buildTimeline, DimsData, SeriesData
 } from './ChartData';
 
 /** Explicit interfaces for the Plotly JSON payload (arkts-no-untyped-obj-literals). */
@@ -25,6 +26,16 @@ export interface PlotlyAxis {
   overlaying?: string;
   anchor?: string;
   type?: string;
+  domain?: number[];
+  showticklabels?: boolean;
+  matches?: string;
+}
+export interface PlotlyGrid {
+  rows: number;
+  columns: number;
+  pattern: string;
+  xgap?: number;
+  ygap?: number;
 }
 export interface PlotlyMarker {
   colors?: string[];
@@ -113,8 +124,9 @@ export interface PlotlyTrace {
   boxpoints?: boolean | string;
   histnorm?: string;
   cumulative?: PlotlyCumulative;
-  text?: string[];
+  text?: string[] | string[][];
   textposition?: string;
+  points?: boolean;
   colorscale?: string;
   contours?: PlotlyContours;
   theta?: string[];
@@ -148,6 +160,15 @@ export interface PlotlyTrace {
   // violin
   box_visible?: boolean;
   meanline_visible?: boolean;
+  // facet / marginal / corr-annotated (web encodingToPlotly)
+  xaxis?: string;
+  showlegend?: boolean;
+  legendgroup?: string;
+  zmin?: number;
+  zmax?: number;
+  reversescale?: boolean;
+  texttemplate?: string;
+  fillcolor?: string;
 }
 
 export interface PlotlyShapeLine {
@@ -176,6 +197,22 @@ export interface PlotlyLayout {
   xaxis: PlotlyAxis;
   yaxis: PlotlyAxis;
   yaxis2?: PlotlyAxis;
+  xaxis2?: PlotlyAxis;
+  xaxis3?: PlotlyAxis;
+  xaxis4?: PlotlyAxis;
+  xaxis5?: PlotlyAxis;
+  xaxis6?: PlotlyAxis;
+  xaxis7?: PlotlyAxis;
+  xaxis8?: PlotlyAxis;
+  xaxis9?: PlotlyAxis;
+  yaxis3?: PlotlyAxis;
+  yaxis4?: PlotlyAxis;
+  yaxis5?: PlotlyAxis;
+  yaxis6?: PlotlyAxis;
+  yaxis7?: PlotlyAxis;
+  yaxis8?: PlotlyAxis;
+  yaxis9?: PlotlyAxis;
+  grid?: PlotlyGrid;
   showlegend: boolean;
   barmode?: string;
   bargap?: number;
@@ -254,6 +291,10 @@ function toDims(dims: DimsData): PlotlyDim[] {
   return out;
 }
 
+/** Chart types that support facet subplots (web encodingToPlotly facet). */
+const FACET_TYPES: string[] = ['line', 'bar', 'area', 'step', 'scatter', 'dot'];
+const FACET_MAX: number = 9; // subplot axes capped at x9/y9
+
 /**
  * Build a Plotly figure JSON string for the WebView (web: utils/encodingToPlotly
  * + plotlyLayout). Implements the core trace types; unsupported types degrade
@@ -261,6 +302,17 @@ function toDims(dims: DimsData): PlotlyDim[] {
  */
 export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: string,
   userLayout: ChartLayout | null = null): string {
+  // Facet 分面（web facet 语义）：按 facet 值分组子图，layout.grid 网格。
+  // 实现方式：对每个分组以去除 facet 的 encoding 递归构建子图，再合并
+  // traces 并分配 xaxis/yaxis 后缀——聚合在分组内重算，口径与 web 一致。
+  const facetField = encoding.facet !== null && FACET_TYPES.indexOf(encoding.chartType) >= 0
+    ? encoding.facet.field : '';
+  if (facetField.length > 0) {
+    const facetFig = buildFacetFigure(df, encoding, title, userLayout, facetField);
+    if (facetFig !== null) {
+      return JSON.stringify(facetFig);
+    }
+  }
   const layout = baseLayout(title);
   const data = buildChartData(df, encoding);
   const traces: PlotlyTrace[] = [];
@@ -316,6 +368,9 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
         traces.push(tr);
       }
       showLegend = data.series.length > 1;
+      if (type === 'scatter') {
+        appendMarginals(encoding, data.series, traces, layout);
+      }
       break;
     case 'bar':
     case 'barh':
@@ -460,7 +515,32 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
       }
       break;
     case 'heatmap':
-    case 'contour':
+    case 'contour': {
+      const hmOpts = encoding.options;
+      const useCorr = hmOpts !== null && hmOpts.corrMatrix === true;
+      const annotate = hmOpts !== null && hmOpts.annotateCells === true;
+      if (useCorr) {
+        // 相关系数矩阵（web options.corr）：数值列 Pearson，RdBu 反转 [-1,1]
+        const corr = buildCorrMatrix(df);
+        if (corr !== null) {
+          const ctr: PlotlyTrace = {
+            type: 'heatmap',
+            x: corr.labels,
+            y: corr.labels,
+            z: corr.z,
+            colorscale: 'RdBu',
+            zmin: -1,
+            zmax: 1,
+            reversescale: true,
+          };
+          if (annotate) {
+            ctr.text = corr.text;
+            ctr.texttemplate = '%{text}';
+          }
+          traces.push(ctr);
+          break;
+        }
+      }
       if (data.hmXs.length > 0 && data.hmYs.length > 0) {
         const trace: PlotlyTrace = {
           type: type.indexOf('contour') >= 0 ? 'contour' : 'heatmap',
@@ -469,13 +549,27 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
           z: data.hmZ,
           colorscale: 'Viridis',
         };
+        if (annotate) {
+          // 标注单元格（web options.annotated）：z 值 toFixed(2) 文本
+          const texts: string[][] = [];
+          for (let i = 0; i < data.hmZ.length; i++) {
+            const rowZ = data.hmZ[i];
+            const rowT: string[] = [];
+            for (let k = 0; k < rowZ.length; k++) {
+              rowT.push(rowZ[k] === null ? '' : (rowZ[k] as number).toFixed(2));
+            }
+            texts.push(rowT);
+          }
+          trace.text = texts;
+          trace.texttemplate = '%{text}';
+        }
         if (type.indexOf('contour') >= 0) {
           trace.contours = { coloring: 'heatmap' };
         }
         traces.push(trace);
       } else {
         layout.annotations = [{
-          text: 'heatmap 需要 X + Y + Z(值) 字段',
+          text: useCorr ? '相关系数矩阵需要 ≥2 个数值列' : 'heatmap 需要 X + Y + Z(值) 字段',
           xref: 'paper',
           yref: 'paper',
           x: 0.5,
@@ -485,6 +579,7 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
         }];
       }
       break;
+    }
     case 'radar':
       // theta = x categories (aggregated), r per y field; close the loop
       for (let i = 0; i < data.series.length; i++) {
@@ -880,4 +975,281 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
     config: config(),
   };
   return JSON.stringify(fig);
+}
+
+/**
+ * Facet subplots (web layout.grid parity): group rows by facet value, build a
+ * sub-figure per group (aggregation recomputed inside the group), merge traces
+ * with x/y axis suffixes, group name into each subplot's xaxis.title, and only
+ * the first group shows legend entries. Returns null when facet is not usable
+ * (single group / missing column) so the caller falls back to the plain chart.
+ */
+function buildFacetFigure(df: DataFrame, encoding: ChartEncoding, title: string,
+  userLayout: ChartLayout | null, facetField: string): PlotlyFigure | null {
+  const idx = df.columnIndex(facetField);
+  if (idx < 0) {
+    return null;
+  }
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (let r = 0; r < df.rows.length; r++) {
+    const v = df.rows[r][idx];
+    const key = v === null || v === undefined ? 'null' : String(v);
+    if (!seen.has(key)) {
+      seen.add(key);
+      order.push(key);
+    }
+  }
+  if (order.length < 2) {
+    return null;
+  }
+  const capped = order.slice(0, FACET_MAX);
+  const ncols = Math.min(capped.length, 3);
+  const nrows = Math.ceil(capped.length / ncols);
+  const allTraces: PlotlyTrace[] = [];
+  let firstLayout: PlotlyLayout | null = null;
+  for (let gi = 0; gi < capped.length; gi++) {
+    const rows: CellValue[][] = [];
+    for (let r = 0; r < df.rows.length; r++) {
+      const v = df.rows[r][idx];
+      const key = v === null || v === undefined ? 'null' : String(v);
+      if (key === capped[gi]) {
+        rows.push(df.rows[r]);
+      }
+    }
+    if (rows.length === 0) {
+      continue;
+    }
+    const subDf = new DataFrame(df.name, df.columns, rows);
+    const subEnc = encoding.clone();
+    subEnc.facet = null;
+    let fig: PlotlyFigure;
+    try {
+      fig = JSON.parse(buildFigureJson(subDf, subEnc, title, userLayout)) as PlotlyFigure;
+    } catch (e) {
+      continue;
+    }
+    if (firstLayout === null) {
+      firstLayout = fig.layout;
+      firstLayout.showlegend = fig.data.length > 1;
+    }
+    const suffix = gi === 0 ? '' : String(gi + 1);
+    for (let t = 0; t < fig.data.length; t++) {
+      const tr = fig.data[t];
+      if (suffix.length > 0) {
+        tr.xaxis = 'x' + suffix;
+        tr.yaxis = 'y' + suffix;
+        tr.showlegend = false;
+      }
+      allTraces.push(tr);
+    }
+  }
+  if (firstLayout === null) {
+    return null;
+  }
+  const layout = firstLayout;
+  layout.grid = { rows: nrows, columns: ncols, pattern: 'independent', xgap: 0.08, ygap: 0.12 };
+  // 组名写入各子图 xaxis.title（web 子图标题方式）
+  for (let gi = 1; gi < capped.length; gi++) {
+    const xa: PlotlyAxis = { title: capped[gi], gridcolor: baseGrid() };
+    const ya: PlotlyAxis = { title: null, gridcolor: baseGrid() };
+    setFacetAxes(layout, gi + 1, xa, ya);
+  }
+  const out: PlotlyFigure = {
+    data: allTraces,
+    layout: layout,
+    config: config(),
+  };
+  return out;
+}
+
+function setFacetAxes(layout: PlotlyLayout, n: number, xa: PlotlyAxis, ya: PlotlyAxis): void {
+  switch (n) {
+    case 2:
+      layout.xaxis2 = xa;
+      layout.yaxis2 = ya;
+      break;
+    case 3:
+      layout.xaxis3 = xa;
+      layout.yaxis3 = ya;
+      break;
+    case 4:
+      layout.xaxis4 = xa;
+      layout.yaxis4 = ya;
+      break;
+    case 5:
+      layout.xaxis5 = xa;
+      layout.yaxis5 = ya;
+      break;
+    case 6:
+      layout.xaxis6 = xa;
+      layout.yaxis6 = ya;
+      break;
+    case 7:
+      layout.xaxis7 = xa;
+      layout.yaxis7 = ya;
+      break;
+    case 8:
+      layout.xaxis8 = xa;
+      layout.yaxis8 = ya;
+      break;
+    case 9:
+      layout.xaxis9 = xa;
+      layout.yaxis9 = ya;
+      break;
+    default:
+      break;
+  }
+}
+
+/**
+ * Scatter marginals (web options.marginalX/Y): shrink the main axes to
+ * domain [0, 0.8], add marginal axes at [0.82, 1] without tick labels, and
+ * append histogram/box/violin traces (rug = transparent box with all points,
+ * the same trick the web version uses).
+ */
+function appendMarginals(encoding: ChartEncoding, series: SeriesData[],
+  traces: PlotlyTrace[], layout: PlotlyLayout): void {
+  const o = encoding.options;
+  if (o === null) {
+    return;
+  }
+  const mx = o.marginalX !== undefined && o.marginalX !== null ? o.marginalX : '';
+  const my = o.marginalY !== undefined && o.marginalY !== null ? o.marginalY : '';
+  if (mx.length === 0 && my.length === 0) {
+    return;
+  }
+  if (mx.length > 0) {
+    layout.yaxis.domain = [0, 0.8];
+    layout.yaxis2 = { domain: [0.82, 1], showticklabels: false };
+  } else {
+    layout.yaxis.domain = [0, 1];
+  }
+  if (my.length > 0) {
+    layout.xaxis.domain = [0, 0.8];
+    layout.xaxis2 = { domain: [0.82, 1], showticklabels: false };
+  } else {
+    layout.xaxis.domain = [0, 1];
+  }
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i];
+    if (mx.length > 0) {
+      traces.push(marginalTrace(mx, s.x, undefined));
+    }
+    if (my.length > 0) {
+      traces.push(marginalTrace(my, undefined, s.y));
+    }
+  }
+}
+
+/** One marginal trace; x given → top marginal (yaxis y2), y given → right (xaxis x2). */
+function marginalTrace(kind: string, x: (string | number)[] | undefined,
+  y: (string | number)[] | undefined): PlotlyTrace {
+  if (kind === 'histogram') {
+    const tr: PlotlyTrace = { type: 'histogram', showlegend: false, marker: { color: '#888888' } };
+    if (x !== undefined) {
+      tr.x = x;
+      tr.yaxis = 'y2';
+    }
+    if (y !== undefined) {
+      tr.y = y;
+      tr.xaxis = 'x2';
+    }
+    return tr;
+  }
+  if (kind === 'violin') {
+    const tr: PlotlyTrace = {
+      type: 'violin', showlegend: false, box_visible: false, points: false,
+      marker: { color: '#888888' },
+    };
+    if (x !== undefined) {
+      tr.x = x;
+      tr.yaxis = 'y2';
+    }
+    if (y !== undefined) {
+      tr.y = y;
+      tr.xaxis = 'x2';
+    }
+    return tr;
+  }
+  if (kind === 'rug') {
+    // rug 无原生类型：透明 box + 全部点（web 同款模拟）
+    const tr: PlotlyTrace = {
+      type: 'box', showlegend: false, boxpoints: 'all',
+      fillcolor: 'rgba(0,0,0,0)',
+      marker: { color: '#888888', size: 4 },
+    };
+    if (x !== undefined) {
+      tr.x = x;
+      tr.yaxis = 'y2';
+    }
+    if (y !== undefined) {
+      tr.y = y;
+      tr.xaxis = 'x2';
+    }
+    return tr;
+  }
+  // box（默认）
+  const tr: PlotlyTrace = {
+    type: 'box', showlegend: false, boxpoints: false,
+    marker: { color: '#888888' },
+  };
+  if (x !== undefined) {
+    tr.x = x;
+    tr.yaxis = 'y2';
+  }
+  if (y !== undefined) {
+    tr.y = y;
+    tr.xaxis = 'x2';
+  }
+  return tr;
+}
+
+/** Corr matrix bundle (labels + z + annotated text). */
+interface CorrMatrixResult {
+  labels: string[];
+  z: (number | null)[][];
+  text: string[][];
+}
+
+/** Numeric column vectors with >50% parsable rows (web corr column rule). */
+function buildCorrMatrix(df: DataFrame): CorrMatrixResult | null {
+  const labels: string[] = [];
+  const vectors: number[][] = [];
+  for (let c = 0; c < df.columns.length; c++) {
+    const vals: number[] = [];
+    for (let r = 0; r < df.rows.length; r++) {
+      const n = toNumber(df.rows[r][c]);
+      if (n !== null) {
+        vals.push(n);
+      }
+    }
+    if (vals.length * 2 > df.rows.length && vals.length >= 2) {
+      labels.push(df.columns[c].name);
+      vectors.push(vals);
+    }
+  }
+  if (labels.length < 2) {
+    return null;
+  }
+  const n = labels.length;
+  const z: (number | null)[][] = [];
+  const text: string[][] = [];
+  for (let i = 0; i < n; i++) {
+    const rowZ: (number | null)[] = [];
+    const rowT: string[] = [];
+    for (let j = 0; j < n; j++) {
+      let v: number | null;
+      if (i === j) {
+        v = 1;
+      } else {
+        v = pearson(vectors[i], vectors[j]);
+      }
+      rowZ.push(v);
+      rowT.push(v === null ? '' : v.toFixed(2));
+    }
+    z.push(rowZ);
+    text.push(rowT);
+  }
+  return { labels: labels, z: z, text: text };
 }
