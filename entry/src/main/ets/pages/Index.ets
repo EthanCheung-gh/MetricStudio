@@ -18,6 +18,7 @@ import { AICommandBar } from '../views/AICommandBar';
 import { ChartConfigDialog } from '../views/ChartConfigDialog';
 import { CommandPalette } from '../views/CommandPalette';
 import { ReportDialog } from '../views/ReportDialog';
+import { StoryDialog } from '../views/StoryDialog';
 import { SqlWorkbench } from '../views/SqlWorkbench';
 
 /** One registered keyboard sink (web: App.tsx global shortcut handler). */
@@ -197,6 +198,10 @@ struct Index {
 
       if (this.workspaceState.reportOpen) {
         ReportDialog()
+      }
+
+      if (this.workspaceState.storyOpen) {
+        StoryDialog()
       }
 
       if (this.workspaceState.sqlOpen) {

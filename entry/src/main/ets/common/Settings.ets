@@ -12,6 +12,8 @@ const KEY_PROJECT = 'project';
 const KEY_SQL_HISTORY = 'sql_history';
 const KEY_RECIPES = 'recipes';
 const KEY_SHORTCUTS = 'shortcut_overrides';
+const KEY_REPORT_TEMPLATES = 'report_templates';
+const KEY_NOTES_DRAFT = 'report_notes_draft';
 const PROJECT_FILE = 'project.json';
 
 /**
@@ -225,6 +227,62 @@ export class Settings {
     }
     try {
       store.putSync(KEY_SHORTCUTS, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load report templates JSON (web: uiStore reportTemplates). */
+  static loadReportTemplates(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_REPORT_TEMPLATES, '') as string;
+    } catch (e) {
+      v = '';
+    }
+    return v;
+  }
+
+  /** Persist report templates as a JSON document. */
+  static async saveReportTemplates(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_REPORT_TEMPLATES, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load the report notes draft (web: uiStore reportNotesDraft). */
+  static loadNotesDraft(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_NOTES_DRAFT, '') as string;
+    } catch (e) {
+      v = '';
+    }
+    return v;
+  }
+
+  /** Persist the report notes draft. */
+  static async saveNotesDraft(text: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_NOTES_DRAFT, text);
       await store.flush();
     } catch (e) {
       // ignore persistence errors

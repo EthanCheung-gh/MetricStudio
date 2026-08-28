@@ -65,6 +65,7 @@ export class WorkspaceState {
   chartConfigOpen: boolean = false;
   paletteOpen: boolean = false;
   reportOpen: boolean = false;
+  storyOpen: boolean = false;
   sqlOpen: boolean = false;
   theme: AppTheme = AppTheme.Light;
   llmConfig: LlmConfig = new LlmConfig();
@@ -127,6 +128,10 @@ export class WorkspaceState {
 
   setReportOpen(open: boolean): void {
     this.reportOpen = open;
+  }
+
+  setStoryOpen(open: boolean): void {
+    this.storyOpen = open;
   }
 
   setSqlOpen(open: boolean): void {

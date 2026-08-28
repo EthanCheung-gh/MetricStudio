@@ -167,6 +167,15 @@ export struct CommandPalette {
       }
     };
     out.push(c14);
+    const c16: Command = {
+      id: 'generate-story',
+      title: t(lang, 'story.title'),
+      group: t(lang, 'palette.groupAction'),
+      action: () => {
+        this.workspaceState.setStoryOpen(true);
+      }
+    };
+    out.push(c16);
     const c15: Command = {
       id: 'sql-workbench',
       title: t(lang, 'sql.title'),

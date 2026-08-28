@@ -5,7 +5,7 @@ import { t } from '../common/Locale';
 import { buildFigureJson } from './PlotlySpec';
 import { Insight, computeInsights } from './Insights';
 
-/** User-selectable report content (web: ReportDialog/StoryDialog union). */
+/** User-selectable report content (web: ReportDialog/StoryDialog split). */
 export class ReportOptions {
   title: string = '';
   includeSource: boolean = true;
@@ -14,6 +14,8 @@ export class ReportOptions {
   includeConclusion: boolean = false;
   conclusion: string = '';
   chartIds: string[] = [];
+  // report mode: 备注（显示在报告中）
+  notes: string = '';
 }
 
 function escapeHtml(s: string): string {
@@ -160,6 +162,14 @@ export function buildReportHtml(df: DataFrame, charts: ChartConfig[], history: T
     parts.push(escapeHtml(t(lang, 'report.sectionConclusion')));
     parts.push('</h2>\n<p class="conclusion">');
     parts.push(escapeHtml(options.conclusion));
+    parts.push('</p>\n');
+  }
+
+  if (options.notes.trim().length > 0) {
+    parts.push('<h2>');
+    parts.push(escapeHtml(t(lang, 'report.notes')));
+    parts.push('</h2>\n<p class="conclusion">');
+    parts.push(escapeHtml(options.notes));
     parts.push('</p>\n');
   }
 

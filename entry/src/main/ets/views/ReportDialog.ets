@@ -1,27 +1,30 @@
 import { common } from '@kit.AbilityKit';
-import { LengthMetrics } from '@kit.ArkUI';
 import { util } from '@kit.ArkTS';
-import { promptAction } from '@kit.ArkUI';
+import { LengthMetrics, promptAction } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { Theme } from '../common/Theme';
 import { l10n, t } from '../common/Locale';
+import { Settings } from '../common/Settings';
 import { ChartConfig } from '../model/ChartConfig';
-import { TransformOp } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { ReportOptions, buildReportHtml } from '../engine/ReportBuilder';
 
-/** Toggle-chip shim for section selection. */
-interface SectionChip {
-  key: string;
-  label: string;
+/** Persisted report template (web types ReportTemplate). */
+interface ReportTemplateJson {
+  id: string;
+  name: string;
+  title: string;
+  chartIds: string[];
+  notes: string;
+  includeInsights: boolean;
 }
 
 /**
- * Report/story export dialog (web: ReportDialog.tsx + StoryDialog.tsx union,
- * local generation instead of the backend). Pick charts + sections + a
- * conclusion; buildReportHtml inlines plotly.min.js and DocumentSavePicker
- * writes a self-contained HTML file.
+ * Report dialog (web ReportDialog.tsx): title + chart multi-select (all
+ * selected by default) + notes draft (persisted) + include-insights switch +
+ * report templates (web uiStore reportTemplates → local Preferences).
+ * Story mode lives in StoryDialog (web split).
  */
 @Component
 export struct ReportDialog {
@@ -29,11 +32,9 @@ export struct ReportDialog {
   @Consume('dataState') dataState: DataState;
   @State reportTitle: string = '';
   @State selectedChartIds: string[] = [];
-  @State includeSource: boolean = true;
-  @State includeSteps: boolean = true;
   @State includeInsights: boolean = true;
-  @State includeConclusion: boolean = false;
-  @State conclusion: string = '';
+  @State notes: string = '';
+  @State templates: ReportTemplateJson[] = [];
   @State busy: boolean = false;
   @State chipTick: number = 0;
 
@@ -43,6 +44,63 @@ export struct ReportDialog {
     for (let i = 0; i < charts.length; i++) {
       this.selectedChartIds.push(charts[i].id);
     }
+    this.reportTitle = t(this.workspaceState.language, 'report.untitled');
+    this.notes = Settings.loadNotesDraft();
+    this.loadTemplates();
+  }
+
+  private loadTemplates(): void {
+    try {
+      const raw = Settings.loadReportTemplates();
+      if (raw.length > 0) {
+        this.templates = JSON.parse(raw) as ReportTemplateJson[];
+        return;
+      }
+    } catch (e) {
+      // fall through
+    }
+    this.templates = [];
+  }
+
+  private persistTemplates(): void {
+    Settings.saveReportTemplates(JSON.stringify(this.templates));
+  }
+
+  private saveTemplate(): void {
+    const name = l10n(this.workspaceState.language, '模板 ' + (this.templates.length + 1).toString(),
+      'Template ' + (this.templates.length + 1).toString());
+    this.templates.push({
+      id: 'tpl_' + Date.now().toString(),
+      name: name,
+      title: this.reportTitle,
+      chartIds: this.selectedChartIds.slice(),
+      notes: this.notes,
+      includeInsights: this.includeInsights,
+    });
+    this.persistTemplates();
+    this.chipTick++;
+    promptAction.showToast({ message: t(this.workspaceState.language, 'report.templateSaved') });
+  }
+
+  private applyTemplate(id: string): void {
+    for (let i = 0; i < this.templates.length; i++) {
+      if (this.templates[i].id === id) {
+        this.reportTitle = this.templates[i].title;
+        this.selectedChartIds = this.templates[i].chartIds.slice();
+        this.notes = this.templates[i].notes;
+        this.includeInsights = this.templates[i].includeInsights;
+        this.chipTick++;
+        return;
+      }
+    }
+  }
+
+  private templateOptions(): SelectOption[] {
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < this.templates.length; i++) {
+      opts.push({ value: this.templates[i].name });
+    }
+    return opts;
   }
 
   private toggleChart(id: string): void {
@@ -73,48 +131,13 @@ export struct ReportDialog {
     return out;
   }
 
-  private sectionChips(): SectionChip[] {
-    const lang = this.workspaceState.language;
-    const out: SectionChip[] = [];
-    out.push({ key: 'source', label: t(lang, 'report.sectionSource') });
-    out.push({ key: 'steps', label: t(lang, 'report.sectionSteps') });
-    out.push({ key: 'insights', label: t(lang, 'report.sectionInsights') });
-    out.push({ key: 'conclusion', label: t(lang, 'report.sectionConclusion') });
-    return out;
-  }
-
-  private sectionOn(key: string): boolean {
-    if (key === 'source') {
-      return this.includeSource;
-    }
-    if (key === 'steps') {
-      return this.includeSteps;
-    }
-    if (key === 'insights') {
-      return this.includeInsights;
-    }
-    return this.includeConclusion;
-  }
-
-  private toggleSection(key: string): void {
-    if (key === 'source') {
-      this.includeSource = !this.includeSource;
-    } else if (key === 'steps') {
-      this.includeSteps = !this.includeSteps;
-    } else if (key === 'insights') {
-      this.includeInsights = !this.includeInsights;
-    } else {
-      this.includeConclusion = !this.includeConclusion;
-    }
-  }
-
   private async generate(): Promise<void> {
     const df = this.dataState.activeDataFrame;
     if (df === null || this.busy) {
       return;
     }
     const charts = this.selectedCharts();
-    if (charts.length === 0 && !this.includeSource && !this.includeSteps && !this.includeInsights) {
+    if (charts.length === 0) {
       promptAction.showToast({ message: t(this.workspaceState.language, 'report.noCharts') });
       return;
     }
@@ -126,23 +149,18 @@ export struct ReportDialog {
       const plotlyJs = decoder.decodeToString(raw);
       const options: ReportOptions = new ReportOptions();
       options.title = this.reportTitle;
-      options.includeSource = this.includeSource;
-      options.includeSteps = this.includeSteps;
+      options.includeSource = false;
+      options.includeSteps = false;
       options.includeInsights = this.includeInsights;
-      options.includeConclusion = this.includeConclusion;
-      options.conclusion = this.conclusion;
+      options.includeConclusion = false;
+      options.notes = this.notes;
       options.chartIds = this.selectedChartIds;
-      const historyOps: TransformOp[] = [];
-      const steps = this.dataState.transformHistory;
-      for (let i = 0; i < steps.length; i++) {
-        historyOps.push(steps[i].op);
-      }
-      const html = buildReportHtml(df, charts, historyOps, options, plotlyJs,
+      const html = buildReportHtml(df, charts, [], options, plotlyJs,
         this.workspaceState.language);
 
       const documentPicker = new picker.DocumentViewPicker(getContext(this));
       const saveOpts = new picker.DocumentSaveOptions();
-      saveOpts.newFileNames = ['metricstudio-report.html'];
+      saveOpts.newFileNames = [t(this.workspaceState.language, 'report.fileName') + '.html'];
       const uris = await documentPicker.save(saveOpts);
       if (uris.length === 0) {
         this.busy = false;
@@ -190,7 +208,7 @@ export struct ReportDialog {
 
       Column({ space: 10 }) {
         Row() {
-          Text(t(this.workspaceState.language, 'report.title'))
+          Text(t(this.workspaceState.language, 'report.dialogTitle'))
             .fontSize(14)
             .fontWeight(600)
             .fontColor(Theme.colorForeground())
@@ -205,13 +223,12 @@ export struct ReportDialog {
         }
         .width('100%')
 
-        TextInput({ placeholder: t(this.workspaceState.language, 'report.namePlaceholder'), text: this.reportTitle })
+        TextInput({ text: this.reportTitle })
           .width('100%')
           .height(32)
           .padding({ top: 0, bottom: 0 })
-          .placeholderFont({ size: 13 })
-          .placeholderColor(Theme.colorMuted())
           .fontSize(13)
+          .fontColor(Theme.colorForeground())
           .backgroundColor(Theme.colorSurface())
           .borderRadius(6)
           .onChange((v: string) => {
@@ -240,27 +257,75 @@ export struct ReportDialog {
             .alignSelf(ItemAlign.Start)
         }
 
-        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-          ForEach(this.sectionChips(), (chip: SectionChip) => {
-            this.chip(chip.label, this.sectionOn(chip.key), () => {
-              this.toggleSection(chip.key);
+        // includeInsights + notes draft (web uiStore reportNotesDraft)
+        Row({ space: 6 }) {
+          Checkbox()
+            .select(this.includeInsights)
+            .width(16)
+            .height(16)
+            .onChange((v: boolean) => {
+              this.includeInsights = v;
             })
-          }, (chip: SectionChip) => chip.key)
-        }
-        .width('100%')
-
-        if (this.includeConclusion) {
-          TextArea({ placeholder: t(this.workspaceState.language, 'report.conclusionPlaceholder'), text: this.conclusion })
-            .width('100%')
-            .height(72)
+          Text(t(this.workspaceState.language, 'report.includeInsights'))
             .fontSize(12)
             .fontColor(Theme.colorForeground())
+          Blank()
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center)
+
+        Text(t(this.workspaceState.language, 'report.notes'))
+          .fontSize(11)
+          .fontWeight(600)
+          .fontColor(Theme.colorMuted())
+          .alignSelf(ItemAlign.Start)
+        TextArea({ placeholder: t(this.workspaceState.language, 'report.notesPlaceholder'), text: this.notes })
+          .width('100%')
+          .height(64)
+          .fontSize(12)
+          .fontColor(Theme.colorForeground())
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .onChange((v: string) => {
+            this.notes = v;
+            Settings.saveNotesDraft(v);
+          })
+
+        // Templates (web 应用报告模板… / 保存模板)
+        Row({ space: 6 }) {
+          Select(this.templateOptions())
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
+            .value(t(this.workspaceState.language, 'report.applyTemplate'))
+            .font({ size: 11 })
+            .height(28)
+            .layoutWeight(1)
             .backgroundColor(Theme.colorSurface())
             .borderRadius(6)
-            .onChange((v: string) => {
-              this.conclusion = v;
+            .onSelect((_i: number, value: string) => {
+              for (let k = 0; k < this.templates.length; k++) {
+                if (this.templates[k].name === value) {
+                  this.applyTemplate(this.templates[k].id);
+                  break;
+                }
+              }
             })
+          Button() {
+            Text(t(this.workspaceState.language, 'report.saveTemplate'))
+              .fontSize(11)
+              .fontColor(Theme.primary)
+          }
+          .type(ButtonType.Normal)
+          .height(28)
+          .padding({ left: 10, right: 10 })
+          .backgroundColor(Theme.colorSurface())
+          .borderRadius(6)
+          .border({ width: 1, color: Theme.colorBorder() })
+          .onClick(() => {
+            this.saveTemplate();
+          })
         }
+        .width('100%')
 
         Row() {
           Blank()
