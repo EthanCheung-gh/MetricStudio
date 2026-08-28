@@ -27,6 +27,7 @@ export struct AICommandBar {
   @Consume('workspaceState') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
   @Consume('qaState') qaState: QaState;
+  @StorageLink('themeFlag') themeFlag: boolean = false; // re-render on theme switch
   @State mode: string = 'query'; // 'query' | 'ask'
   @State input: string = '';
   @State operations: TransformOp[] = [];

@@ -15,13 +15,13 @@ export class Theme {
   private static readonly borderDark: string = '#333333';
   private static readonly mutedDark: string = '#9ca3af';
 
-  // Light tokens (index.css .light overrides)
+  // Light tokens (index.css .light overrides; border darkened for contrast)
   private static readonly backgroundLight: string = '#f7f7f8';
   private static readonly foregroundLight: string = '#1a1a1a';
   private static readonly surfaceLight: string = '#ffffff';
   private static readonly surfaceElevatedLight: string = '#f0f0f2';
-  private static readonly borderLight: string = '#d9d9de';
-  private static readonly mutedLight: string = '#71717a';
+  private static readonly borderLight: string = '#c9c9ce';
+  private static readonly mutedLight: string = '#6f6f78';
 
   /** true = light mode, false = dark mode (default). */
   static lightMode: boolean = false;

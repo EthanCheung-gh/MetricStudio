@@ -204,7 +204,7 @@ function baseFont(): PlotlyFont {
 }
 
 function baseGrid(): string {
-  return Theme.lightMode ? '#d9d9de' : '#333333';
+  return Theme.lightMode ? '#c9c9ce' : '#333333';
 }
 
 function baseLayout(title: string): PlotlyLayout {
