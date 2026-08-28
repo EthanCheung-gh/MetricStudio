@@ -210,6 +210,7 @@ export struct ReportDialog {
           .height(32)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 13 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(13)
           .backgroundColor(Theme.colorSurface())
           .borderRadius(6)

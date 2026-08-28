@@ -504,6 +504,8 @@ export struct DashboardView {
     Column({ space: 6 }) {
       Row({ space: 6 }) {
         Select(this.numericColOptions())
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.numericColIndex(this.kpiCol))
           .value(this.kpiCol.length > 0 ? this.kpiCol : t(this.workspaceState.language, 'dashboard.kpiColumn'))
           .font({ size: 12 })
@@ -515,6 +517,8 @@ export struct DashboardView {
             this.kpiCol = value;
           })
         Select(this.aggOptions())
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.aggIndex(this.kpiAgg))
           .value(this.aggLabel(this.kpiAgg))
           .font({ size: 12 })

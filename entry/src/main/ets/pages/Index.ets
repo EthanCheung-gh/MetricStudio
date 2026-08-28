@@ -65,22 +65,12 @@ struct Index {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       // Theme remount branch: toggling uiDark destroys & recreates the whole
-      // tree so every Theme token re-resolves after a light/dark switch.
+      // themed tree (incl. TitleBar + AICommandBar) so every Theme token
+      // re-resolves after a light/dark switch.
       if (this.uiDark) {
-        this.appContent()
+        this.themedContent()
       } else {
-        this.appContent()
-      }
-
-      // TitleBar floats above the workspace so its hover tooltips can extend
-      // downward without being covered.
-      TitleBar()
-        .width('100%')
-        .position({ x: 0, y: 0 })
-
-      if (this.dataState.hasData) {
-        AICommandBar()
-          .margin({ bottom: 10 })
+        this.themedContent()
       }
 
       if (this.workspaceState.settingsOpen) {
@@ -135,7 +125,7 @@ struct Index {
   }
 
   @Builder
-  appContent() {
+  themedContent() {
     Column() {
       Row() {
         LeftActivityBar()
@@ -167,6 +157,17 @@ struct Index {
     .width('100%')
     .height('100%')
     .backgroundColor(Theme.background)
+
+    // TitleBar floats above the workspace so its hover tooltips can extend
+    // downward without being covered.
+    TitleBar()
+      .width('100%')
+      .position({ x: 0, y: 0 })
+
+    if (this.dataState.hasData) {
+      AICommandBar()
+        .margin({ bottom: 10 })
+    }
   }
 
   @Builder

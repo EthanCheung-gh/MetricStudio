@@ -265,6 +265,8 @@ export struct TransformPanel {
         this.sectionLabel(t(this.workspaceState.language, 'transform.filter'))
         Row({ space: 6 }) {
           Select(this.colOptions())
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndex(this.filterCol))
             .value(this.filterCol.length > 0 ? this.filterCol : t(this.workspaceState.language, 'transform.column'))
             .font({ size: 12 })
@@ -276,6 +278,8 @@ export struct TransformPanel {
               this.filterCol = value;
             })
           Select(this.stringOptions(OPS_FILTER))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.stringIndex(OPS_FILTER, this.filterOp))
             .value(this.filterOp)
             .font({ size: 12 })
@@ -293,6 +297,7 @@ export struct TransformPanel {
           .height(30)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 12 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(12)
           .onChange((v: string) => {
             this.filterVal = v;
@@ -305,6 +310,8 @@ export struct TransformPanel {
         this.sectionLabel(t(this.workspaceState.language, 'transform.sort'))
         Row({ space: 6 }) {
           Select(this.colOptions())
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndex(this.sortCol))
             .value(this.sortCol.length > 0 ? this.sortCol : t(this.workspaceState.language, 'transform.column'))
             .font({ size: 12 })
@@ -344,6 +351,8 @@ export struct TransformPanel {
         this.sectionLabel(t(this.workspaceState.language, 'transform.rename'))
         Row({ space: 6 }) {
           Select(this.colOptions())
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndex(this.renameFrom))
             .value(this.renameFrom.length > 0 ? this.renameFrom : t(this.workspaceState.language, 'transform.from'))
             .font({ size: 12 })
@@ -360,6 +369,7 @@ export struct TransformPanel {
             .height(30)
             .padding({ top: 0, bottom: 0 })
             .placeholderFont({ size: 12 })
+            .placeholderColor(Theme.colorMuted())
             .fontSize(12)
             .onChange((v: string) => {
               this.renameTo = v;
@@ -377,6 +387,7 @@ export struct TransformPanel {
           .height(30)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 12 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(12)
           .onChange((v: string) => {
             this.computeName = v;
@@ -386,6 +397,7 @@ export struct TransformPanel {
           .height(30)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 12 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(12)
           .onChange((v: string) => {
             this.computeExpr = v;
@@ -436,6 +448,8 @@ export struct TransformPanel {
             this.pivotValues = v;
           })
           Select(this.stringOptions(OPS_AGG))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.stringIndex(OPS_AGG, this.pivotAgg))
             .value(this.pivotAgg)
             .font({ size: 12 })
@@ -464,6 +478,8 @@ export struct TransformPanel {
         // ---- Join (web join section) ----
         this.sectionLabel(l10n(this.workspaceState.language, '关联数据集', 'Join'))
         Select(this.colOptionsForDatasets())
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.joinRight >= 0 ? this.joinRight : 0)
           .value(this.joinRight >= 0 && this.joinRight < this.dataState.dataFrames.length
             ? this.dataState.dataFrames[this.joinRight].name
@@ -481,6 +497,8 @@ export struct TransformPanel {
           this.joinOn = v;
         })
         Select(this.stringOptions(OPS_JOIN))
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.stringIndex(OPS_JOIN, this.joinHow))
           .value(this.joinHow)
           .font({ size: 12 })
@@ -511,6 +529,8 @@ export struct TransformPanel {
             this.strCol = v;
           })
           Select(this.stringOptions(OPS_STR))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.stringIndex(OPS_STR, this.strAction))
             .value(this.strAction)
             .font({ size: 12 })
@@ -528,6 +548,7 @@ export struct TransformPanel {
           .height(30)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 12 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(12)
           .onChange((v: string) => {
             this.strNewCol = v;
@@ -548,6 +569,8 @@ export struct TransformPanel {
         }
         .width('100%')
         Select(this.stringOptions(OPS_AGG))
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.stringIndex(OPS_AGG, this.groupAgg))
           .value(this.groupAgg)
           .font({ size: 12 })
@@ -569,6 +592,7 @@ export struct TransformPanel {
           .height(30)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 12 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(12)
           .type(InputType.Number)
           .onChange((v: string) => {
@@ -642,6 +666,8 @@ export struct TransformPanel {
   @Builder
   inlineColSelect(selected: string, placeholder: string, onPick: (v: string) => void) {
     Select(this.colOptions())
+      .fontColor(Theme.colorForeground())
+      .border({ width: 1, color: Theme.colorBorder() })
       .selected(this.colIndex(selected))
       .value(selected.length > 0 ? selected : placeholder)
       .font({ size: 12 })

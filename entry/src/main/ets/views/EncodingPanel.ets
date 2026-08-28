@@ -580,6 +580,8 @@ export struct EncodingPanel {
       Row({ space: 6 }) {
         // Field select
         Select(this.columnOptions())
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.columnIndex(row.field))
           .value(row.field)
           .font({ size: 12 })
@@ -599,6 +601,8 @@ export struct EncodingPanel {
 
         // Aggregate select
         Select(this.aggOptions())
+          .fontColor(Theme.colorForeground())
+          .border({ width: 1, color: Theme.colorBorder() })
           .selected(this.aggIndex(row.agg))
           .value(this.aggLabel(row.agg))
           .font({ size: 12 })
@@ -629,6 +633,8 @@ export struct EncodingPanel {
       if (this.isMultiY()) {
         Row({ space: 6 }) {
           Select(this.axisOptions())
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(row.axis === 'right' ? 1 : 0)
             .value(this.axisLabel(row.axis))
             .font({ size: 12 })
@@ -640,6 +646,8 @@ export struct EncodingPanel {
               this.setYRowAxis(idx, value);
             })
           Select(this.normOptions())
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.normIndex(row.normalize))
             .value(this.normLabel(row.normalize))
             .font({ size: 12 })
@@ -680,6 +688,8 @@ export struct EncodingPanel {
         .fontColor(Theme.colorMuted())
         .alignSelf(ItemAlign.Start)
       Select(this.columnOptions())
+        .fontColor(Theme.colorForeground())
+        .border({ width: 1, color: Theme.colorBorder() })
         .selected(this.columnIndex(selected))
         .value(selected.length > 0 ? selected : '请选择字段')
         .font({ size: 12 })

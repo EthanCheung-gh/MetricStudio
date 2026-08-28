@@ -522,6 +522,7 @@ export struct CleaningPanel {
               .height(28)
               .padding({ top: 0, bottom: 0 })
               .placeholderFont({ size: 12 })
+              .placeholderColor(Theme.colorMuted())
               .fontSize(12)
               .backgroundColor(Theme.colorSurface())
               .borderRadius(6)

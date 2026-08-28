@@ -213,6 +213,7 @@ export struct CommandPalette {
           .height(36)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 14 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(14)
           .backgroundColor(Theme.colorSurface())
           .borderRadius(8)

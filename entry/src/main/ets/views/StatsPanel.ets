@@ -222,6 +222,8 @@ export struct StatsPanel {
         this.sectionTitle(l10n(this.workspaceState.language, '线性回归', 'Regression'))
         Row({ space: 4 }) {
           Select(this.colOptions(this.numericColumns()))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.numericColumns(), this.regX))
             .value(this.regX.length > 0 ? this.regX : 'X')
             .font({ size: 11 })
@@ -234,6 +236,8 @@ export struct StatsPanel {
             })
           Text('~').fontSize(11).fontColor(Theme.colorMuted())
           Select(this.colOptions(this.numericColumns()))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.numericColumns(), this.regY))
             .value(this.regY.length > 0 ? this.regY : 'Y')
             .font({ size: 11 })
@@ -283,6 +287,8 @@ export struct StatsPanel {
         this.sectionTitle(l10n(this.workspaceState.language, '两组差异检验', 'Difference test'))
         Row({ space: 4 }) {
           Select(this.colOptions(this.allColumns()))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.allColumns(), this.groupCol))
             .value(this.groupCol.length > 0 ? this.groupCol : l10n(this.workspaceState.language, '分组列', 'Group'))
             .font({ size: 11 })
@@ -295,6 +301,8 @@ export struct StatsPanel {
               this.refreshGroupOptions();
             })
           Select(this.colOptions(this.numericColumns()))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.numericColumns(), this.measureCol))
             .value(this.measureCol.length > 0 ? this.measureCol : l10n(this.workspaceState.language, '数值列', 'Measure'))
             .font({ size: 11 })
@@ -309,6 +317,8 @@ export struct StatsPanel {
         .width('100%')
         Row({ space: 4 }) {
           Select(this.colOptions(this.groupOptions))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.groupOptions, this.groupA))
             .value(this.groupA.length > 0 ? this.groupA : 'A')
             .font({ size: 11 })
@@ -321,6 +331,8 @@ export struct StatsPanel {
             })
           Text(l10n(this.workspaceState.language, '对比', 'vs')).fontSize(10).fontColor(Theme.colorMuted())
           Select(this.colOptions(this.groupOptions))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.groupOptions, this.groupB))
             .value(this.groupB.length > 0 ? this.groupB : 'B')
             .font({ size: 11 })
@@ -377,6 +389,8 @@ export struct StatsPanel {
         this.sectionTitle(l10n(this.workspaceState.language, '均值 95% 置信区间', '95% CI of mean'))
         Row({ space: 4 }) {
           Select(this.colOptions(this.numericColumns()))
+            .fontColor(Theme.colorForeground())
+            .border({ width: 1, color: Theme.colorBorder() })
             .selected(this.colIndexIn(this.numericColumns(), this.ciCol))
             .value(this.ciCol.length > 0 ? this.ciCol : l10n(this.workspaceState.language, '数值列', 'Column'))
             .font({ size: 11 })

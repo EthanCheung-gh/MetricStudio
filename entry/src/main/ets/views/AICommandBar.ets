@@ -27,7 +27,6 @@ export struct AICommandBar {
   @Consume('workspaceState') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
   @Consume('qaState') qaState: QaState;
-  @StorageLink('themeFlag') themeFlag: boolean = false; // re-render on theme switch
   @State mode: string = 'query'; // 'query' | 'ask'
   @State input: string = '';
   @State operations: TransformOp[] = [];
@@ -485,6 +484,7 @@ export struct AICommandBar {
           .height(30)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 14 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(14)
           .backgroundColor(Color.Transparent)
           .onChange((v: string) => {

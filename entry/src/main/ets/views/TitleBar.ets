@@ -13,7 +13,6 @@ import { IconButton } from './IconButton';
 @Component
 export struct TitleBar {
   @Consume('workspaceState') workspaceState: WorkspaceState;
-  @StorageLink('themeFlag') themeFlag: boolean = false; // re-render on theme switch
 
   build() {
     Row() {

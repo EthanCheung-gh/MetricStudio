@@ -311,6 +311,8 @@ export struct DataExplorer {
                 .fontSize(11)
                 .fontColor(Theme.colorMuted())
               Select(this.sheetOptions())
+                .fontColor(Theme.colorForeground())
+                .border({ width: 1, color: Theme.colorBorder() })
                 .selected(this.sheetIndex(this.currentSheet))
                 .value(this.currentSheet.length > 0 ? this.currentSheet : this.sheetNames[0])
                 .font({ size: 12 })
@@ -417,6 +419,7 @@ export struct DataExplorer {
               .height(30)
               .padding({ top: 0, bottom: 0 })
               .placeholderFont({ size: 12 })
+              .placeholderColor(Theme.colorMuted())
               .fontSize(12)
               .onChange((v: string) => {
                 this.pasteName = v;

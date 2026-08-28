@@ -61,6 +61,7 @@ export struct SnapshotView {
           .height(32)
           .padding({ top: 0, bottom: 0 })
           .placeholderFont({ size: 12 })
+          .placeholderColor(Theme.colorMuted())
           .fontSize(12)
           .onChange((v: string) => {
             this.snapName = v;
