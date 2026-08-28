@@ -1,6 +1,7 @@
 import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { Settings } from '../common/Settings';
+import { l10n } from '../common/Locale';
 import { PanelSection, WorkspaceState } from '../model/WorkspaceState';
 import { IconButton } from './IconButton';
 
@@ -31,6 +32,7 @@ export struct TitleBar {
         IconButton({
           icon: $r('sys.symbol.folder'),
           iconSize: 16,
+          tip: l10n(this.workspaceState.language, '打开项目', 'Open project'),
           action: () => {
             // Open project: restore persisted charts/preferences
             const json = Settings.loadProject();
@@ -48,6 +50,7 @@ export struct TitleBar {
         IconButton({
           icon: $r('sys.symbol.save'),
           iconSize: 16,
+          tip: l10n(this.workspaceState.language, '保存项目', 'Save project'),
           action: () => {
             // Save project: persist charts + preferences
             Settings.saveProject(this.workspaceState.exportJson());
@@ -57,6 +60,7 @@ export struct TitleBar {
         IconButton({
           icon: $r('sys.symbol.doc_plaintext'),
           iconSize: 16,
+          tip: l10n(this.workspaceState.language, '导入数据', 'Import data'),
           action: () => {
             // Import: expand the left panel and show the explorer (import entries)
             this.workspaceState.openLeftSection(PanelSection.None);
@@ -66,6 +70,7 @@ export struct TitleBar {
         IconButton({
           icon: $r('sys.symbol.wand_and_stars'),
           iconSize: 16,
+          tip: l10n(this.workspaceState.language, '命令面板', 'Command palette'),
           action: () => {
             this.workspaceState.setPaletteOpen(true);
           }
@@ -73,6 +78,7 @@ export struct TitleBar {
         IconButton({
           icon: $r('sys.symbol.line_3_horizontal'),
           iconSize: 16,
+          tip: l10n(this.workspaceState.language, '设置', 'Settings'),
           action: () => {
             this.workspaceState.setSettingsOpen(true);
           }

@@ -1,4 +1,5 @@
 import { Theme } from '../common/Theme';
+import { l10n } from '../common/Locale';
 import { PanelSection, RightPanelSection, WorkspaceState } from '../model/WorkspaceState';
 import { IconButton } from './IconButton';
 
@@ -15,6 +16,7 @@ export struct LeftActivityBar {
       IconButton({
         icon: $r('sys.symbol.chevron_right'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '折叠侧栏', 'Toggle panel'),
         action: () => {
           this.workspaceState.toggleLeft();
         }
@@ -22,6 +24,7 @@ export struct LeftActivityBar {
       IconButton({
         icon: $r('sys.symbol.list_bullet'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '图表', 'Charts'),
         active: this.workspaceState.leftSection === PanelSection.Charts,
         action: () => {
           this.workspaceState.activateLeftSection(PanelSection.Charts);
@@ -30,6 +33,7 @@ export struct LeftActivityBar {
       IconButton({
         icon: $r('sys.symbol.externaldrive'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '数据集', 'Datasets'),
         active: this.workspaceState.leftSection === PanelSection.Datasets,
         action: () => {
           this.workspaceState.activateLeftSection(PanelSection.Datasets);
@@ -38,6 +42,7 @@ export struct LeftActivityBar {
       IconButton({
         icon: $r('sys.symbol.upload'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '导入数据', 'Import data'),
         active: this.workspaceState.leftSection === PanelSection.None,
         action: () => {
           // Import: expand the left panel and show the explorer (import entries)
@@ -66,6 +71,7 @@ export struct RightActivityBar {
       IconButton({
         icon: $r('sys.symbol.chevron_left'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '折叠侧栏', 'Toggle panel'),
         action: () => {
           this.workspaceState.toggleRight();
         }
@@ -73,6 +79,7 @@ export struct RightActivityBar {
       IconButton({
         icon: $r('sys.symbol.slider_horizontal_2'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '图表配置', 'Chart config'),
         active: this.workspaceState.rightSection === RightPanelSection.Properties,
         action: () => {
           // Chart config: open the floating config dialog (web ChartConfigDialog)
@@ -82,6 +89,7 @@ export struct RightActivityBar {
       IconButton({
         icon: $r('sys.symbol.gearshape'),
         iconSize: 16,
+        tip: l10n(this.workspaceState.language, '属性', 'Properties'),
         active: this.workspaceState.rightSection === RightPanelSection.Properties,
         action: () => {
           this.workspaceState.activateRightSection(RightPanelSection.Properties);

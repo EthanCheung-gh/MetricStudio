@@ -484,6 +484,8 @@ export struct CleaningPanel {
             TextInput({ placeholder: l10n(this.workspaceState.language, '配方名称', 'Recipe name'), text: this.saveName })
               .layoutWeight(1)
               .height(28)
+              .padding({ top: 0, bottom: 0 })
+              .placeholderFont({ size: 12 })
               .fontSize(12)
               .backgroundColor(Theme.colorSurface())
               .borderRadius(6)

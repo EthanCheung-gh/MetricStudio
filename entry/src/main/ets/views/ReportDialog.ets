@@ -208,6 +208,8 @@ export struct ReportDialog {
         TextInput({ placeholder: t(this.workspaceState.language, 'report.namePlaceholder'), text: this.reportTitle })
           .width('100%')
           .height(32)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 13 })
           .fontSize(13)
           .backgroundColor(Theme.colorSurface())
           .borderRadius(6)

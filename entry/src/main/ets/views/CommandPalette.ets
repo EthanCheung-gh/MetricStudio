@@ -211,6 +211,8 @@ export struct CommandPalette {
         TextInput({ placeholder: t(this.workspaceState.language, 'palette.placeholder'), text: this.query })
           .width('100%')
           .height(36)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 14 })
           .fontSize(14)
           .backgroundColor(Theme.colorSurface())
           .borderRadius(8)

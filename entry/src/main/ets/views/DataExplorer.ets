@@ -415,6 +415,8 @@ export struct DataExplorer {
             TextInput({ placeholder: t(this.workspaceState.language, 'data.pasteName'), text: this.pasteName })
               .width('100%')
               .height(30)
+              .padding({ top: 0, bottom: 0 })
+              .placeholderFont({ size: 12 })
               .fontSize(12)
               .onChange((v: string) => {
                 this.pasteName = v;

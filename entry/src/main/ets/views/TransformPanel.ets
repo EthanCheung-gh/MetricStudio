@@ -291,6 +291,8 @@ export struct TransformPanel {
         TextInput({ placeholder: t(this.workspaceState.language, 'transform.value'), text: this.filterVal })
           .width('100%')
           .height(30)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 12 })
           .fontSize(12)
           .onChange((v: string) => {
             this.filterVal = v;
@@ -356,6 +358,8 @@ export struct TransformPanel {
             .width('100%')
             .layoutWeight(1)
             .height(30)
+            .padding({ top: 0, bottom: 0 })
+            .placeholderFont({ size: 12 })
             .fontSize(12)
             .onChange((v: string) => {
               this.renameTo = v;
@@ -371,6 +375,8 @@ export struct TransformPanel {
         TextInput({ placeholder: t(this.workspaceState.language, 'transform.newColumn'), text: this.computeName })
           .width('100%')
           .height(30)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 12 })
           .fontSize(12)
           .onChange((v: string) => {
             this.computeName = v;
@@ -378,6 +384,8 @@ export struct TransformPanel {
         TextInput({ placeholder: l10n(this.workspaceState.language, '表达式，如 单价 * 数量', 'Expression, e.g. price * qty'), text: this.computeExpr })
           .width('100%')
           .height(30)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 12 })
           .fontSize(12)
           .onChange((v: string) => {
             this.computeExpr = v;
@@ -518,6 +526,8 @@ export struct TransformPanel {
         TextInput({ placeholder: t(this.workspaceState.language, 'transform.newColumn'), text: this.strNewCol })
           .width('100%')
           .height(30)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 12 })
           .fontSize(12)
           .onChange((v: string) => {
             this.strNewCol = v;
@@ -557,6 +567,8 @@ export struct TransformPanel {
         TextInput({ placeholder: t(this.workspaceState.language, 'transform.sampleN'), text: this.sampleN })
           .width('100%')
           .height(30)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 12 })
           .fontSize(12)
           .type(InputType.Number)
           .onChange((v: string) => {

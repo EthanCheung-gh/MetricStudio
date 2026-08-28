@@ -40,6 +40,7 @@ export struct DataView {
   @State copiedCell: string = '';
   @State colFilterTick: number = 0;
   @State widthTick: number = 0;
+  @State hoveredPanel: string = '';
   private colFilters: Map<string, string> = new Map();
   private colWidths: Map<string, number> = new Map();
   private resizeCol: string = '';
@@ -338,11 +339,11 @@ export struct DataView {
       // StatsPanel/TransformPanel/ColumnStats rail)
       Row() {
         Column({ space: 4 }) {
-          this.railButton('wand_and_stars', 'cleaning')
-          this.railButton('list_bullet', 'insights')
-          this.railButton('square_grid_2x2', 'stats')
-          this.railButton('slider_horizontal_2', 'transform')
-          this.railButton('doc_plaintext', 'columns')
+          this.railButton('wand_and_stars', 'cleaning', l10n(this.lang(), '清洗', 'Cleaning'))
+          this.railButton('list_bullet', 'insights', t(this.lang(), 'insights.title'))
+          this.railButton('square_grid_2x2', 'stats', l10n(this.lang(), '统计', 'Stats'))
+          this.railButton('slider_horizontal_2', 'transform', t(this.lang(), 'transform.title'))
+          this.railButton('doc_plaintext', 'columns', t(this.lang(), 'table.columns'))
         }
         .width(40)
         .height('100%')
@@ -429,7 +430,7 @@ export struct DataView {
   }
 
   @Builder
-  railButton(symbol: string, panel: string) {
+  railButton(symbol: string, panel: string, label: string) {
     Column() {
       SymbolGlyph($r('sys.symbol.' + symbol))
         .fontSize(16)
@@ -439,6 +440,10 @@ export struct DataView {
     .height(30)
     .borderRadius(6)
     .backgroundColor(this.openPanel === panel ? Theme.primaryDim : Color.Transparent)
+    .bindPopup(this.hoveredPanel === panel, { message: label } as PopupOptions)
+    .onHover((hover: boolean) => {
+      this.hoveredPanel = hover ? panel : (this.hoveredPanel === panel ? '' : this.hoveredPanel);
+    })
     .onClick(() => {
       this.openPanel = this.openPanel === panel ? '' : panel;
     })
@@ -459,6 +464,8 @@ export struct DataView {
         TextInput({ placeholder: l10n(this.lang(), '搜索全部列', 'Search all columns'), text: this.globalFilter })
           .width(150)
           .height(24)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 11 })
           .fontSize(11)
           .backgroundColor(Theme.colorSurface())
           .borderRadius(6)
@@ -695,8 +702,9 @@ export struct DataView {
         TextInput({ placeholder: l10n(this.lang(), '筛选', 'Filter'), text: this.colFilterText(col.name) })
           .width('100%')
           .height(22)
+          .padding({ top: 0, bottom: 0, left: 6, right: 6 })
+          .placeholderFont({ size: 10 })
           .fontSize(10)
-          .padding({ left: 6, right: 6 })
           .backgroundColor(Theme.colorBackground())
           .borderRadius(4)
           .onChange((v: string) => {

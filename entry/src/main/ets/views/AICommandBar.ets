@@ -482,6 +482,8 @@ export struct AICommandBar {
         TextInput({ placeholder: this.mode === 'query' ? '例如：去重、填充缺失、按列排序…' : '例如：这个数据集有多少行？' })
           .layoutWeight(1)
           .height(30)
+          .padding({ top: 0, bottom: 0 })
+          .placeholderFont({ size: 14 })
           .fontSize(14)
           .backgroundColor(Color.Transparent)
           .onChange((v: string) => {
