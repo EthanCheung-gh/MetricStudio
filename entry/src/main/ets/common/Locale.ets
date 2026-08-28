@@ -261,6 +261,9 @@ const zh: Record<string, string> = {
   'lineage.onlyLeft': '仅此步骤',
   'lineage.onlyRight': '仅当前',
   'lineage.numericDiff': '均值差异',
+  'lineage.importState': '导入状态',
+  'lineage.compare': '对比版本',
+  'lineage.compareSame': '请选择不同的版本进行对比',
 
   // Insights
   'insights.title': '洞察',

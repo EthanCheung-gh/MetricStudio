@@ -92,10 +92,30 @@ export class DataState {
   // Lineage chain of the active dataset: base snapshot + applied steps.
   baseFrame: DataFrame | null = null;
   transformHistory: TransformStep[] = [];
+  // Per-dataset lineage kept across switches (web keeps history per dataset).
+  // Slots for the active dataset are stale; baseAt/historyAt read the fields.
+  private bases: (DataFrame | null)[] = [];
+  private histories: TransformStep[][] = [];
   redoStack: TransformStep[][] = [];
   lineageTick: number = 0;
   lastError: string = '';
   snapshots: DataSnapshot[] = [];
+
+  /** Lineage base of dataset i (active reads the live field). */
+  baseAt(i: number): DataFrame | null {
+    if (i < 0 || i >= this.dataFrames.length) {
+      return null;
+    }
+    return i === this.activeIndex ? this.baseFrame : this.bases[i];
+  }
+
+  /** Transform chain of dataset i (active reads the live field). */
+  historyAt(i: number): TransformStep[] {
+    if (i < 0 || i >= this.dataFrames.length) {
+      return [];
+    }
+    return i === this.activeIndex ? this.transformHistory : this.histories[i];
+  }
 
   get activeDataFrame(): DataFrame | null {
     if (this.activeIndex < 0 || this.activeIndex >= this.dataFrames.length) {
@@ -124,6 +144,8 @@ export class DataState {
     this.baseFrame = df.clone();
     this.transformHistory = [];
     this.redoStack = [];
+    this.bases.push(this.baseFrame);
+    this.histories.push([]);
     this.lastError = '';
     this.bumpLineage();
   }
@@ -140,7 +162,28 @@ export class DataState {
     this.baseFrame = null;
     this.transformHistory = [];
     this.redoStack = [];
+    this.bases = [];
+    this.histories = [];
+    for (let i = 0; i < frames.length; i++) {
+      this.bases.push(null);
+      this.histories.push([]);
+    }
     this.lastError = '';
+    this.bumpLineage();
+  }
+
+  /** Install a saved lineage (base + steps) for dataset i (web transforms/). */
+  restoreLineage(i: number, base: DataFrame, steps: TransformStep[]): void {
+    if (i < 0 || i >= this.dataFrames.length) {
+      return;
+    }
+    if (i === this.activeIndex) {
+      this.baseFrame = base;
+      this.transformHistory = steps;
+    } else {
+      this.bases[i] = base;
+      this.histories[i] = steps;
+    }
     this.bumpLineage();
   }
 
@@ -149,6 +192,8 @@ export class DataState {
       return;
     }
     this.dataFrames.splice(index, 1);
+    this.bases.splice(index, 1);
+    this.histories.splice(index, 1);
     if (this.dataFrames.length === 0) {
       this.activeIndex = -1;
     } else if (this.activeIndex >= this.dataFrames.length) {
@@ -160,10 +205,17 @@ export class DataState {
   }
 
   setActive(index: number): void {
-    if (index >= 0 && index < this.dataFrames.length) {
+    if (index >= 0 && index < this.dataFrames.length && index !== this.activeIndex) {
+      // Stash the outgoing dataset's lineage, restore the incoming one
+      // (web keeps transform history per dataset across switches).
+      const old = this.activeIndex;
+      if (old >= 0 && old < this.dataFrames.length) {
+        this.bases[old] = this.baseFrame;
+        this.histories[old] = this.transformHistory;
+      }
       this.activeIndex = index;
-      this.baseFrame = null;
-      this.transformHistory = [];
+      this.baseFrame = this.bases[index];
+      this.transformHistory = this.histories[index];
       this.redoStack = [];
       this.lastError = '';
       this.bumpLineage();

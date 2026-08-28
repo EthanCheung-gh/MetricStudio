@@ -1,6 +1,6 @@
 import { AggregateType, ChartAnnotation, ChartConfig, ChartLayout, ChartOptions, ChartShape, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
 import { DashboardItem, DashboardItemKind, DashboardState } from './DashboardState';
-import { CellValue, ColumnMeta, DataFrame, DType } from './DataFrame';
+import { CellValue, ColumnMeta, DataFrame, DType, TransformOp, TransformStep } from './DataFrame';
 import { DataState, DataSnapshot } from './DataState';
 import { QaConvJson, QaState } from './QaState';
 import { ShortcutKey } from '../common/Shortcuts';
@@ -363,18 +363,32 @@ export class WorkspaceState {
       };
       dashItems.push(dj);
     }
-    // Datasets: current frames incl. rows (web zip data/{id} equivalent).
+    // Datasets: current frames incl. rows (web zip data/{id} equivalent),
+    // plus per-dataset lineage base + chain (web transforms/{id}.json).
     const datasets: ProjectDatasetJson[] = [];
     const snaps: ProjectSnapshotJson[] = [];
     if (this.dataState !== null) {
       for (let i = 0; i < this.dataState.dataFrames.length; i++) {
         const df = this.dataState.dataFrames[i];
+        const base = this.dataState.baseAt(i);
+        const hist = this.dataState.historyAt(i);
+        let baseJson: ProjectFrameJson | null = null;
+        if (base !== null) {
+          baseJson = { columns: columnsToJson(base.columns), rows: base.rows };
+        }
+        const steps: ProjectStepJson[] = [];
+        for (let k = 0; k < hist.length; k++) {
+          steps.push({ type: hist[k].op.type, params: hist[k].op.params,
+            timestamp: hist[k].op.timestamp, enabled: hist[k].enabled });
+        }
         datasets.push({
           id: df.name,
           name: df.name,
           columns: columnsToJson(df.columns),
           rows: df.rows,
           active: i === this.dataState.activeIndex,
+          base: baseJson,
+          history: steps,
         });
       }
       for (let i = 0; i < this.dataState.snapshots.length; i++) {
@@ -518,6 +532,29 @@ export class WorkspaceState {
           }
         }
         this.dataState.restoreAll(frames, snaps, activeIdx);
+        // Per-dataset lineage (web transforms/{id}.json replay metadata).
+        for (let i = 0; i < data.datasets.length && i < frames.length; i++) {
+          const d = data.datasets[i];
+          if (d.base === null || d.base === undefined || d.history === undefined || d.history.length === 0) {
+            continue;
+          }
+          if (d.base.columns === undefined || d.base.rows === undefined) {
+            continue;
+          }
+          const baseFrame = new DataFrame(frames[i].name, columnsFromJson(d.base.columns), d.base.rows);
+          const steps: TransformStep[] = [];
+          for (let k = 0; k < d.history.length; k++) {
+            const sj = d.history[k];
+            const op = new TransformOp(sj.type, sj.params);
+            if (sj.timestamp !== undefined) {
+              op.timestamp = sj.timestamp;
+            }
+            const step = new TransformStep(op);
+            step.enabled = sj.enabled !== false;
+            steps.push(step);
+          }
+          this.dataState.restoreLineage(i, baseFrame, steps);
+        }
       }
       if (data.qaConversations !== undefined && this.qaState !== null) {
         this.qaState.importList(data.qaConversations);
@@ -567,6 +604,20 @@ interface ProjectDatasetJson {
   columns?: ProjectColumnJson[];
   rows?: CellValue[][];
   active?: boolean;
+  base?: ProjectFrameJson | null;
+  history?: ProjectStepJson[];
+}
+
+interface ProjectFrameJson {
+  columns?: ProjectColumnJson[];
+  rows?: CellValue[][];
+}
+
+interface ProjectStepJson {
+  type: string;
+  params: string;
+  timestamp?: string;
+  enabled?: boolean;
 }
 
 interface ProjectSnapshotJson {
