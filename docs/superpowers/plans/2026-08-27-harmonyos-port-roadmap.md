@@ -97,6 +97,40 @@
 - [x] Parquet 维持拒绝/远期（评估不变）
 - [x] 验证：`devecocli build` 通过；真机冒烟（多 sheet xlsx、日期列、大文件）待做
 
+#### Batch 8：图表类型 33/33 全量移植（逐一比对 web encodingToPlotly）
+
+本批后 **33 种图表类型全部本地渲染，占位提示仅对字段配置不足时出现**。逐类型比对（web 语义 → 移植实现）：
+
+| 类型 | web 语义要点 | 移植状态 |
+|---|---|---|
+| line/step/area/dot/scatter | multi-Y + color 拆分 + 右轴/归一化 | ✅ Batch 1 |
+| bar/barh | 同上 + orientation | ✅ Batch 1 |
+| waterfall | x/y 聚合 + measure:'relative' | ✅ 本批补 measure |
+| pie | color=标签 y=值（无 color 时 web 返回空） | ✅（无 color 回退 X，比 web 宽松） |
+| funnel | y=阶段（首次出现序）x=聚合值 | ✅ 本批修正（旧实现误用 pie labels/values） |
+| histogram | 原始值分箱 + histnorm/cumulative | ✅ |
+| box/violin | color 分组；violin 加 box_visible/meanline_visible | ✅ 本批补 violin 两字段 |
+| ecdf | 排序累计占比 + color 分组 | ✅ |
+| heatmap/contour | pivot(x,y,z) 矩阵 | ✅ |
+| density_heatmap/contour | histogram2d(contour) + **原始 x/y**（无需 z） | ✅ 本批修正（旧实现误要求 z） |
+| radar | scatterpolar 闭合 + polar.bgcolor | ✅ 本批补 polar |
+| scatter3d | x/y/z 数值 + 颜色类别色阶 + layout.scene | ✅ 本批 |
+| surface | web 前端留空（靠后端）；pivot 矩阵→surface | ✅ 本批（超越 web 前端） |
+| splom | 数值维度矩阵（默认取数值列≤8）+ 颜色索引 | ✅ 本批 |
+| parcoords | 数值维度 + 颜色色阶 | ✅ 本批 |
+| parcats | 文本维度（默认取文本列≤6） | ✅ 本批 |
+| treemap/sunburst/icicle | path 层级聚合 + branchvalues total | ✅ 本批（新增 path 层级选择 UI） |
+| sankey | source/target + y 聚合，node/link | ✅ 本批（新增 source/target 选择 UI） |
+| ternary | scatterternary a/b/c + color 分组 + 三轴标题 | ✅ 本批 |
+| table | 全列字符串 cells + 深色 header/cells | ✅ 本批 |
+| gantt | options.start/end + 横条 base/时长 + color 分组 + xaxis date | ✅ 本批（新增开始/结束选择 UI） |
+| candlestick | options O/H/L/C 列（默认列名 open/high/low/close）+ x | ✅ 本批（新增 OHLC 选择 UI） |
+| timeline | 散点 + xaxis date | ✅ 本批 |
+
+配套改动：`ChartEncoding` 增 `path/source/target`，`ChartOptions` 增 start/end/OHLC 字段（含 clone 与项目 JSON 持久化）；EncodingPanel 按类型出现层级路径 chips、Sankey 端点、甘特起止、K线 OHLC 配置段。
+
+仍不移植的**修饰项**（非图表类型，后续按需）：facet 子图网格、scatter marginal、heatmap corr/annotated 模式、barmode 栈叠 UI。
+
 ### 暂缓项评估（2026-08-28）
 
 #### 1. SQL 工作台 —— **建议做（首选）**，relationalStore 即 SQLite

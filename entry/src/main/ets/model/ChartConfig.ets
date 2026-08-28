@@ -40,6 +40,14 @@ export class ChartOptions {
   histnorm?: string;
   cumulative?: boolean;
   boxPoints?: string;
+  // gantt (web options.startField/endField)
+  startField?: string;
+  endField?: string;
+  // candlestick (web options.openField/highField/lowField/closeField, default column names)
+  openField?: string;
+  highField?: string;
+  lowField?: string;
+  closeField?: string;
 
   constructor() {
   }
@@ -54,6 +62,11 @@ export class ChartEncoding {
   facet: EncodingChannel | null = null;
   z: EncodingChannel | null = null;
   options: ChartOptions | null = null;
+  // hierarchical levels for treemap/sunburst/icicle (web encoding.path)
+  path: string[] = [];
+  // sankey endpoints (web encoding.source/target)
+  source: EncodingChannel | null = null;
+  target: EncodingChannel | null = null;
   chartType: string = 'bar';
 
   clone(): ChartEncoding {
@@ -85,7 +98,22 @@ export class ChartEncoding {
       o.histnorm = this.options.histnorm;
       o.cumulative = this.options.cumulative;
       o.boxPoints = this.options.boxPoints;
+      o.startField = this.options.startField;
+      o.endField = this.options.endField;
+      o.openField = this.options.openField;
+      o.highField = this.options.highField;
+      o.lowField = this.options.lowField;
+      o.closeField = this.options.closeField;
       e.options = o;
+    }
+    for (let i = 0; i < this.path.length; i++) {
+      e.path.push(this.path[i]);
+    }
+    if (this.source !== null) {
+      e.source = new EncodingChannel(this.source.field, this.source.type, this.source.aggregate);
+    }
+    if (this.target !== null) {
+      e.target = new EncodingChannel(this.target.field, this.target.type, this.target.aggregate);
     }
     return e;
   }

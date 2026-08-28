@@ -38,7 +38,7 @@ devecocli run --skip-build
 - [x] 应用外壳：标题栏 / 活动栏 / 侧边栏 / 状态栏 / 主区域布局 / 可折叠与拖拽浮层
 - [x] 数据视图：表格（排序 / 分页）/ CSV 文件导入 / 粘贴文本导入 / 示例数据 / 数据集列表
 - [x] 变换引擎（本地）：筛选 / 排序 / 去缺失 / 重命名 / 计算列 / 透视 / 宽转长 / 删列 / 字符串清洗 / 分组聚合 / 抽样 / 撤销
-- [x] 图表构建器：33 种类型选择、multi-Y 字段列表、聚合、颜色 / Z 通道；Plotly 渲染核心类型（line / bar / area / step / scatter / dot / waterfall / pie / funnel / histogram / box / violin / ecdf / heatmap / contour / radar），其余类型显示引导提示
+- [x] 图表构建器：**33 种图表类型 100% 本地渲染**（逐类型对齐 web encodingToPlotly 语义），multi-Y 左右轴/归一化、注解参考线；类型级配置（层级路径 / Sankey 端点 / 甘特起止 / K线 OHLC）随项目持久化
 - [x] 多 Y 轴：每系列 左/右 轴 + 归一化（无 / 按序列 / 全局）配置与渲染
 - [x] Dashboard 卡片化：图表 / KPI（可配置数值列与聚合）/ 文本卡片，全局筛选作用于图表与 KPI，随项目持久化
 - [x] AI 命令栏：LLM 优先（OpenAI 兼容接口）+ 本地确定性引擎兜底（中英文 NL→清洗操作、数据问答）

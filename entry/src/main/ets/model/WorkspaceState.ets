@@ -1,4 +1,4 @@
-import { AggregateType, ChartAnnotation, ChartConfig, ChartLayout, ChartShape, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
+import { AggregateType, ChartAnnotation, ChartConfig, ChartLayout, ChartOptions, ChartShape, EncodingChannel, FieldType, YFieldConfig } from './ChartConfig';
 import { DashboardItem, DashboardItemKind, DashboardState } from './DashboardState';
 import { Theme } from '../common/Theme';
 
@@ -235,6 +235,38 @@ export class WorkspaceState {
       const zj: EncChannelJson | null = enc.z !== null
         ? { field: enc.z.field, type: enc.z.type, aggregate: enc.z.aggregate }
         : null;
+      const fj: EncChannelJson | null = enc.facet !== null
+        ? { field: enc.facet.field, type: enc.facet.type, aggregate: enc.facet.aggregate }
+        : null;
+      const sj: EncChannelJson | null = enc.source !== null
+        ? { field: enc.source.field, type: enc.source.type, aggregate: enc.source.aggregate }
+        : null;
+      const tj: EncChannelJson | null = enc.target !== null
+        ? { field: enc.target.field, type: enc.target.type, aggregate: enc.target.aggregate }
+        : null;
+      let oj: EncOptionsJson | null = null;
+      if (enc.options !== null) {
+        const o = enc.options;
+        oj = {
+          orientation: o.orientation,
+          barmode: o.barmode,
+          histnorm: o.histnorm,
+          cumulative: o.cumulative,
+          boxPoints: o.boxPoints,
+          startField: o.startField,
+          endField: o.endField,
+          openField: o.openField,
+          highField: o.highField,
+          lowField: o.lowField,
+          closeField: o.closeField,
+        };
+      }
+      let pathj: string[] | null = enc.path.length > 0 ? [] : null;
+      if (pathj !== null) {
+        for (let k = 0; k < enc.path.length; k++) {
+          pathj.push(enc.path[k]);
+        }
+      }
       const lay = c.layout;
       const anns: string[] = [];
       for (let k = 0; k < lay.annotations.length; k++) {
@@ -258,6 +290,11 @@ export class WorkspaceState {
         color: cj,
         z: zj,
         layout: layoutJson,
+        facet: fj,
+        source: sj,
+        target: tj,
+        options: oj,
+        path: pathj,
       };
       items.push(item);
     }
@@ -312,6 +349,35 @@ export class WorkspaceState {
           }
           if (c.z !== null && c.z !== undefined) {
             chart.encoding.z = new EncodingChannel(c.z.field, c.z.type as FieldType, c.z.aggregate as AggregateType);
+          }
+          if (c.facet !== null && c.facet !== undefined) {
+            chart.encoding.facet = new EncodingChannel(c.facet.field, c.facet.type as FieldType, c.facet.aggregate as AggregateType);
+          }
+          if (c.source !== null && c.source !== undefined) {
+            chart.encoding.source = new EncodingChannel(c.source.field, c.source.type as FieldType, c.source.aggregate as AggregateType);
+          }
+          if (c.target !== null && c.target !== undefined) {
+            chart.encoding.target = new EncodingChannel(c.target.field, c.target.type as FieldType, c.target.aggregate as AggregateType);
+          }
+          if (c.options !== null && c.options !== undefined) {
+            const o = new ChartOptions();
+            o.orientation = c.options.orientation;
+            o.barmode = c.options.barmode;
+            o.histnorm = c.options.histnorm;
+            o.cumulative = c.options.cumulative;
+            o.boxPoints = c.options.boxPoints;
+            o.startField = c.options.startField;
+            o.endField = c.options.endField;
+            o.openField = c.options.openField;
+            o.highField = c.options.highField;
+            o.lowField = c.options.lowField;
+            o.closeField = c.options.closeField;
+            chart.encoding.options = o;
+          }
+          if (c.path !== null && c.path !== undefined) {
+            for (let k = 0; k < c.path.length; k++) {
+              chart.encoding.path.push(c.path[k]);
+            }
           }
           if (c.layout !== null && c.layout !== undefined) {
             const lay = new ChartLayout();
@@ -383,6 +449,24 @@ interface ProjectChart {
   color: EncChannelJson | null;
   z: EncChannelJson | null;
   layout?: ProjectLayoutJson | null;
+  facet?: EncChannelJson | null;
+  source?: EncChannelJson | null;
+  target?: EncChannelJson | null;
+  options?: EncOptionsJson | null;
+  path?: string[] | null;
+}
+interface EncOptionsJson {
+  orientation?: string;
+  barmode?: string;
+  histnorm?: string;
+  cumulative?: boolean;
+  boxPoints?: string;
+  startField?: string;
+  endField?: string;
+  openField?: string;
+  highField?: string;
+  lowField?: string;
+  closeField?: string;
 }
 interface ProjectLayoutJson {
   annotations: string[];

@@ -1,6 +1,7 @@
+import { LengthMetrics } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
-import { t } from '../common/Locale';
-import { AggregateType, EncodingChannel, FieldType, YFieldConfig, chartTypeSpecs } from '../model/ChartConfig';
+import { l10n, t } from '../common/Locale';
+import { AggregateType, ChartOptions, EncodingChannel, FieldType, YFieldConfig, chartTypeSpecs } from '../model/ChartConfig';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 
@@ -212,6 +213,130 @@ export struct EncodingPanel {
     return spec !== undefined && spec.yFields === 'multi';
   }
 
+  private isType(type: string): boolean {
+    const c = this.workspaceState.activeChart();
+    return c !== null && c.encoding.chartType === type;
+  }
+
+  private isHierarchical(): boolean {
+    const c = this.workspaceState.activeChart();
+    return c !== null && (c.encoding.chartType === 'treemap'
+      || c.encoding.chartType === 'sunburst' || c.encoding.chartType === 'icicle');
+  }
+
+  private activePath(): string[] {
+    const c = this.workspaceState.activeChart();
+    return c !== null ? c.encoding.path : [];
+  }
+
+  private remainingCols(): string[] {
+    const cols = this.columns();
+    const path = this.activePath();
+    const out: string[] = [];
+    for (let i = 0; i < cols.length; i++) {
+      if (path.indexOf(cols[i]) < 0) {
+        out.push(cols[i]);
+      }
+    }
+    return out;
+  }
+
+  private addPathCol(col: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.path.indexOf(col) >= 0) {
+      return;
+    }
+    c.encoding.path.push(col);
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private removePathAt(index: number): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || index < 0 || index >= c.encoding.path.length) {
+      return;
+    }
+    c.encoding.path.splice(index, 1);
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private channelField(which: string): string {
+    const c = this.workspaceState.activeChart();
+    if (c === null) {
+      return '';
+    }
+    if (which === 'source') {
+      return c.encoding.source !== null ? c.encoding.source.field : '';
+    }
+    return c.encoding.target !== null ? c.encoding.target.field : '';
+  }
+
+  private setChannel(which: string, col: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || col.length === 0) {
+      return;
+    }
+    const chan = new EncodingChannel(col, this.fieldType(col), null);
+    if (which === 'source') {
+      c.encoding.source = chan;
+    } else {
+      c.encoding.target = chan;
+    }
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
+  private optField(key: string): string {
+    const c = this.workspaceState.activeChart();
+    if (c === null || c.encoding.options === null) {
+      return '';
+    }
+    const o = c.encoding.options;
+    if (key === 'start') {
+      return o.startField !== undefined ? o.startField : '';
+    }
+    if (key === 'end') {
+      return o.endField !== undefined ? o.endField : '';
+    }
+    if (key === 'open') {
+      return o.openField !== undefined ? o.openField : '';
+    }
+    if (key === 'high') {
+      return o.highField !== undefined ? o.highField : '';
+    }
+    if (key === 'low') {
+      return o.lowField !== undefined ? o.lowField : '';
+    }
+    return o.closeField !== undefined ? o.closeField : '';
+  }
+
+  private setOptField(key: string, col: string): void {
+    const c = this.workspaceState.activeChart();
+    if (c === null || col.length === 0) {
+      return;
+    }
+    if (c.encoding.options === null) {
+      c.encoding.options = new ChartOptions();
+    }
+    const o = c.encoding.options;
+    if (key === 'start') {
+      o.startField = col;
+    } else if (key === 'end') {
+      o.endField = col;
+    } else if (key === 'open') {
+      o.openField = col;
+    } else if (key === 'high') {
+      o.highField = col;
+    } else if (key === 'low') {
+      o.lowField = col;
+    } else {
+      o.closeField = col;
+    }
+    this.yMetaTick++;
+    this.workspaceState.refreshChart();
+  }
+
   private addY(): void {
     const c = this.workspaceState.activeChart();
     if (c === null) {
@@ -331,6 +456,100 @@ export struct EncodingPanel {
         this.fieldSelect('Z / Value', this.columns(), this.selZ, (col: string) => {
           this.setZ(col);
         })
+      }
+
+      // Hierarchical path levels (treemap/sunburst/icicle)
+      if (this.isHierarchical()) {
+        Text(l10n(this.workspaceState.language, '路径层级（按添加顺序）', 'Path levels (tap order)'))
+          .fontSize(11)
+          .fontWeight(600)
+          .fontColor(Theme.colorMuted())
+          .alignSelf(ItemAlign.Start)
+        if (this.activePath().length > 0) {
+          Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
+            ForEach(this.activePath(), (col: string) => {
+              Button() {
+                Text(col + ' ×')
+                  .fontSize(11)
+                  .fontColor(Theme.primary)
+              }
+              .type(ButtonType.Normal)
+              .height(24)
+              .padding({ left: 10, right: 10 })
+              .backgroundColor(Theme.primaryDim)
+              .borderRadius(10)
+              .onClick(() => {
+                this.removePathAt(this.activePath().indexOf(col));
+              })
+            }, (col: string) => 'p_' + col + '_' + this.yMetaTick.toString())
+          }
+          .width('100%')
+        }
+        if (this.remainingCols().length > 0) {
+          Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
+            ForEach(this.remainingCols(), (col: string) => {
+              Button() {
+                Text('+ ' + col)
+                  .fontSize(11)
+                  .fontColor(Theme.colorMuted())
+              }
+              .type(ButtonType.Normal)
+              .height(24)
+              .padding({ left: 10, right: 10 })
+              .backgroundColor(Color.Transparent)
+              .borderRadius(10)
+              .border({ width: 1, color: Theme.colorBorder() })
+              .onClick(() => {
+                this.addPathCol(col);
+              })
+            }, (col: string) => 'a_' + col + '_' + this.yMetaTick.toString())
+          }
+          .width('100%')
+        }
+      }
+
+      // Sankey endpoints
+      if (this.isType('sankey')) {
+        this.fieldSelect(l10n(this.workspaceState.language, '来源字段', 'Source'),
+          this.columns(), this.channelField('source'), (col: string) => {
+            this.setChannel('source', col);
+          })
+        this.fieldSelect(l10n(this.workspaceState.language, '目标字段', 'Target'),
+          this.columns(), this.channelField('target'), (col: string) => {
+            this.setChannel('target', col);
+          })
+      }
+
+      // Gantt start/end
+      if (this.isType('gantt')) {
+        this.fieldSelect(l10n(this.workspaceState.language, '开始时间', 'Start'),
+          this.columns(), this.optField('start'), (col: string) => {
+            this.setOptField('start', col);
+          })
+        this.fieldSelect(l10n(this.workspaceState.language, '结束时间', 'End'),
+          this.columns(), this.optField('end'), (col: string) => {
+            this.setOptField('end', col);
+          })
+      }
+
+      // Candlestick OHLC fields
+      if (this.isType('candlestick')) {
+        this.fieldSelect(l10n(this.workspaceState.language, '开盘列', 'Open'),
+          this.columns(), this.optField('open'), (col: string) => {
+            this.setOptField('open', col);
+          })
+        this.fieldSelect(l10n(this.workspaceState.language, '最高列', 'High'),
+          this.columns(), this.optField('high'), (col: string) => {
+            this.setOptField('high', col);
+          })
+        this.fieldSelect(l10n(this.workspaceState.language, '最低列', 'Low'),
+          this.columns(), this.optField('low'), (col: string) => {
+            this.setOptField('low', col);
+          })
+        this.fieldSelect(l10n(this.workspaceState.language, '收盘列', 'Close'),
+          this.columns(), this.optField('close'), (col: string) => {
+            this.setOptField('close', col);
+          })
       }
     }
     .width('100%')
