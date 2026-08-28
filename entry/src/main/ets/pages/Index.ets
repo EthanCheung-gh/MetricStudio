@@ -29,12 +29,19 @@ struct Index {
   @Provide('workspaceState') workspaceState: WorkspaceState = new WorkspaceState();
   @Provide('dataState') dataState: DataState = new DataState();
   @Provide('qaState') qaState: QaState = new QaState();
+  @StorageLink('themeFlag') @Watch('onThemeFlag') themeFlag: boolean = false;
+  @State uiDark: boolean = true;
 
   aboutToAppear(): void {
     Settings.load().then((lang: Language) => {
       this.workspaceState.language = lang;
     });
     Settings.applyTheme();
+  }
+
+  /** Theme tokens are read at build time — flip the branch to remount the tree. */
+  onThemeFlag(): void {
+    this.uiDark = !this.uiDark;
   }
 
   /** Global shortcut: Ctrl+K (web commandPalette). */
@@ -57,46 +64,27 @@ struct Index {
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      Column() {
-        TitleBar()
-
-        Row() {
-          LeftActivityBar()
-
-          if (!this.workspaceState.leftCollapsed) {
-            LeftPanel()
-              .width('20%')
-            this.resizeHandle()
-          }
-
-          CenterArea()
-            .layoutWeight(1)
-
-          if (!this.workspaceState.rightCollapsed) {
-            this.resizeHandle()
-            RightPanel()
-              .width('25%')
-          }
-
-          RightActivityBar()
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .alignItems(VerticalAlign.Top)
-
-        StatusBar()
-
-        if (this.workspaceState.settingsOpen) {
-          SettingsDialog()
-        }
+      // Theme remount branch: toggling uiDark destroys & recreates the whole
+      // tree so every Theme token re-resolves after a light/dark switch.
+      if (this.uiDark) {
+        this.appContent()
+      } else {
+        this.appContent()
       }
-      .width('100%')
-      .height('100%')
-      .backgroundColor(Theme.background)
+
+      // TitleBar floats above the workspace so its hover tooltips can extend
+      // downward without being covered.
+      TitleBar()
+        .width('100%')
+        .position({ x: 0, y: 0 })
 
       if (this.dataState.hasData) {
         AICommandBar()
           .margin({ bottom: 10 })
+      }
+
+      if (this.workspaceState.settingsOpen) {
+        SettingsDialog()
       }
 
       if (this.workspaceState.chartConfigOpen) {
@@ -140,6 +128,41 @@ struct Index {
         .keyboardShortcut('S', [ModifierKey.CTRL], () => {
           this.saveProjectNow();
         })
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(Theme.background)
+  }
+
+  @Builder
+  appContent() {
+    Column() {
+      Row() {
+        LeftActivityBar()
+
+        if (!this.workspaceState.leftCollapsed) {
+          LeftPanel()
+            .width('20%')
+          this.resizeHandle()
+        }
+
+        CenterArea()
+          .layoutWeight(1)
+
+        if (!this.workspaceState.rightCollapsed) {
+          this.resizeHandle()
+          RightPanel()
+            .width('25%')
+        }
+
+        RightActivityBar()
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .padding({ top: Theme.titleBarHeight })
+      .alignItems(VerticalAlign.Top)
+
+      StatusBar()
     }
     .width('100%')
     .height('100%')

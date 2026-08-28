@@ -33,6 +33,7 @@ export struct TitleBar {
           icon: $r('sys.symbol.folder'),
           iconSize: 16,
           tip: l10n(this.workspaceState.language, '打开项目', 'Open project'),
+          tipBelow: true,
           action: () => {
             // Open project: restore persisted charts/preferences
             const json = Settings.loadProject();
@@ -51,6 +52,7 @@ export struct TitleBar {
           icon: $r('sys.symbol.save'),
           iconSize: 16,
           tip: l10n(this.workspaceState.language, '保存项目', 'Save project'),
+          tipBelow: true,
           action: () => {
             // Save project: persist charts + preferences
             Settings.saveProject(this.workspaceState.exportJson());
@@ -61,6 +63,7 @@ export struct TitleBar {
           icon: $r('sys.symbol.doc_plaintext'),
           iconSize: 16,
           tip: l10n(this.workspaceState.language, '导入数据', 'Import data'),
+          tipBelow: true,
           action: () => {
             // Import: expand the left panel and show the explorer (import entries)
             this.workspaceState.openLeftSection(PanelSection.None);
@@ -71,6 +74,7 @@ export struct TitleBar {
           icon: $r('sys.symbol.wand_and_stars'),
           iconSize: 16,
           tip: l10n(this.workspaceState.language, '命令面板', 'Command palette'),
+          tipBelow: true,
           action: () => {
             this.workspaceState.setPaletteOpen(true);
           }
@@ -79,6 +83,7 @@ export struct TitleBar {
           icon: $r('sys.symbol.line_3_horizontal'),
           iconSize: 16,
           tip: l10n(this.workspaceState.language, '设置', 'Settings'),
+          tipBelow: true,
           action: () => {
             this.workspaceState.setSettingsOpen(true);
           }

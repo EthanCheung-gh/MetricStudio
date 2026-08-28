@@ -1,17 +1,54 @@
 /**
  * Design tokens, pixel-aligned with the web app (main branch, src/index.css +
- * tailwind.config.ts). Dark theme is the default; light theme is available via
- * Theme.setMode(true) — component code should read colors through the getters
- * (e.g. Theme.colorBackground()) so both themes apply consistently.
+ * tailwind.config.ts). Dark theme is the default; light theme via
+ * Theme.setMode(true). Tokens are exposed as static GETTERS so every call
+ * site (Theme.background / Theme.colorBackground() / ...) resolves against
+ * the active mode; switching mode requires a tree rebuild (Index remounts
+ * appContent on themeFlag).
  */
 export class Theme {
-  // Colors (CSS vars from index.css, primary from tailwind.config.ts)
-  static readonly background: string = '#0d0d0d';
-  static readonly foreground: string = '#f5f5f5';
-  static readonly surface: string = '#1a1a1a';
-  static readonly surfaceElevated: string = '#262626';
-  static readonly borderColor: string = '#333333';
-  static readonly muted: string = '#9ca3af';
+  // Dark tokens (CSS vars from index.css, primary from tailwind.config.ts)
+  private static readonly backgroundDark: string = '#0d0d0d';
+  private static readonly foregroundDark: string = '#f5f5f5';
+  private static readonly surfaceDark: string = '#1a1a1a';
+  private static readonly surfaceElevatedDark: string = '#262626';
+  private static readonly borderDark: string = '#333333';
+  private static readonly mutedDark: string = '#9ca3af';
+
+  // Light tokens (index.css .light overrides)
+  private static readonly backgroundLight: string = '#f7f7f8';
+  private static readonly foregroundLight: string = '#1a1a1a';
+  private static readonly surfaceLight: string = '#ffffff';
+  private static readonly surfaceElevatedLight: string = '#f0f0f2';
+  private static readonly borderLight: string = '#d9d9de';
+  private static readonly mutedLight: string = '#71717a';
+
+  /** true = light mode, false = dark mode (default). */
+  static lightMode: boolean = false;
+
+  static setMode(light: boolean): void {
+    Theme.lightMode = light;
+  }
+
+  static get background(): string {
+    return Theme.lightMode ? Theme.backgroundLight : Theme.backgroundDark;
+  }
+  static get foreground(): string {
+    return Theme.lightMode ? Theme.foregroundLight : Theme.foregroundDark;
+  }
+  static get surface(): string {
+    return Theme.lightMode ? Theme.surfaceLight : Theme.surfaceDark;
+  }
+  static get surfaceElevated(): string {
+    return Theme.lightMode ? Theme.surfaceElevatedLight : Theme.surfaceElevatedDark;
+  }
+  static get borderColor(): string {
+    return Theme.lightMode ? Theme.borderLight : Theme.borderDark;
+  }
+  static get muted(): string {
+    return Theme.lightMode ? Theme.mutedLight : Theme.mutedDark;
+  }
+
   static readonly primary: string = '#3b82f6';
   static readonly primaryDim: string = 'rgba(59, 130, 246, 0.2)';
   static readonly danger: string = '#ef4444';
@@ -21,43 +58,28 @@ export class Theme {
   static readonly scrollbarTrack: string = '#1a1a1a';
   static readonly scrollbarThumb: string = '#4b5563';
 
-  // Light mode tokens (index.css .light overrides)
-  static readonly backgroundLight: string = '#f7f7f8';
-  static readonly foregroundLight: string = '#1a1a1a';
-  static readonly surfaceLight: string = '#ffffff';
-  static readonly surfaceElevatedLight: string = '#f0f0f2';
-  static readonly borderLight: string = '#d9d9de';
-  static readonly mutedLight: string = '#71717a';
-
-  /** true = light mode, false = dark mode (default). */
-  static lightMode: boolean = false;
-
-  static setMode(light: boolean): void {
-    Theme.lightMode = light;
-  }
-
   static colorBackground(): string {
-    return Theme.lightMode ? Theme.backgroundLight : Theme.background;
+    return Theme.background;
   }
 
   static colorForeground(): string {
-    return Theme.lightMode ? Theme.foregroundLight : Theme.foreground;
+    return Theme.foreground;
   }
 
   static colorSurface(): string {
-    return Theme.lightMode ? Theme.surfaceLight : Theme.surface;
+    return Theme.surface;
   }
 
   static colorSurfaceElevated(): string {
-    return Theme.lightMode ? Theme.surfaceElevatedLight : Theme.surfaceElevated;
+    return Theme.surfaceElevated;
   }
 
   static colorBorder(): string {
-    return Theme.lightMode ? Theme.borderLight : Theme.borderColor;
+    return Theme.borderColor;
   }
 
   static colorMuted(): string {
-    return Theme.lightMode ? Theme.mutedLight : Theme.muted;
+    return Theme.muted;
   }
 
   // Dimensions (Tailwind spacing: h-10=40, h-9=36, h-6=24, w-10=40, p-2=8, pb-16=64)

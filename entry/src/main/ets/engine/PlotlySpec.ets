@@ -1,5 +1,6 @@
 import { DataFrame } from '../model/DataFrame';
 import { ChartEncoding, ChartLayout, defaultColors } from '../model/ChartConfig';
+import { Theme } from '../common/Theme';
 import {
   buildCandle, buildChartData, buildGantt, buildHierarchy, buildNominalDims,
   buildNumericDims, buildSankey, buildScatter3D, buildStages, buildTable,
@@ -197,7 +198,14 @@ export interface PlotlyFigure {
   config: PlotlyConfig;
 }
 
-const FONT: PlotlyFont = { color: '#f5f5f5' };
+function baseFont(): PlotlyFont {
+  // Follows the app theme so light mode charts stay readable in the WebView.
+  return { color: Theme.colorForeground() };
+}
+
+function baseGrid(): string {
+  return Theme.lightMode ? '#d9d9de' : '#333333';
+}
 
 function baseLayout(title: string): PlotlyLayout {
   return {
@@ -206,9 +214,9 @@ function baseLayout(title: string): PlotlyLayout {
     margin: { t: 40, r: 20, b: 60, l: 60 },
     paper_bgcolor: 'rgba(0,0,0,0)',
     plot_bgcolor: 'rgba(0,0,0,0)',
-    font: FONT,
-    xaxis: { title: '', gridcolor: '#333333' },
-    yaxis: { title: null, gridcolor: '#333333' },
+    font: baseFont(),
+    xaxis: { title: '', gridcolor: baseGrid() },
+    yaxis: { title: null, gridcolor: baseGrid() },
     showlegend: false,
   };
 }
@@ -233,7 +241,7 @@ function hintNote(layout: PlotlyLayout, text: string): void {
     x: 0.5,
     y: 0.5,
     showarrow: false,
-    font: { color: '#9ca3af', size: 12 },
+    font: { color: Theme.colorMuted(), size: 12 },
   };
   layout.annotations = [ann];
 }
@@ -280,7 +288,7 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
       side: 'right',
       overlaying: 'y',
       anchor: 'x',
-      gridcolor: '#333333',
+      gridcolor: baseGrid(),
     };
     layout.yaxis2 = y2;
   }
@@ -753,13 +761,13 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
       }
       const header: PlotlyTableHeader = {
         values: tb.columns,
-        fill: { color: '#1f2937' },
-        font: { color: '#f5f5f5' },
+        fill: { color: Theme.colorSurfaceElevated() },
+        font: { color: Theme.colorForeground() },
       };
       const cells: PlotlyTableCells = {
         values: tb.cells,
-        fill: { color: '#111827' },
-        font: { color: '#d1d5db' },
+        fill: { color: Theme.colorBackground() },
+        font: { color: Theme.colorForeground() },
       };
       const tr: PlotlyTrace = {
         type: 'table',
@@ -810,7 +818,7 @@ export function buildFigureJson(df: DataFrame, encoding: ChartEncoding, title: s
         x: 0.5,
         y: 1.02,
         showarrow: false,
-        font: { color: '#f5f5f5', size: 12 },
+        font: { color: Theme.colorForeground(), size: 12 },
       };
       userAnns.push(ann);
     }

@@ -159,6 +159,22 @@ export struct CleaningPanel {
     this.rescan();
   }
 
+  /** One-tap fixes for a single issue (web applyRecipe on suggested ids). */
+  private applyIssueFixes(issue: Insight): void {
+    let applied = 0;
+    for (let i = 0; i < issue.fixes.length; i++) {
+      if (this.dataState.applyTransform(issue.fixes[i])) {
+        applied++;
+      }
+    }
+    promptAction.showToast({
+      message: applied > 0
+        ? l10n(this.workspaceState.language, '已应用 ' + applied + ' 个修复', applied + ' fixes applied')
+        : l10n(this.workspaceState.language, '应用失败', 'Apply failed'),
+    });
+    this.rescan();
+  }
+
   private loadRecipes(): void {
     try {
       const raw = Settings.loadRecipes();
@@ -383,6 +399,26 @@ export struct CleaningPanel {
               .fontSize(11)
               .fontColor(Theme.colorMuted())
               .width('100%')
+            // One-tap fixes (web: clickable suggested recipes)
+            if (issue.fixes.length > 0) {
+              Button() {
+                Text(l10n(this.workspaceState.language,
+                  issue.fixes.length > 1 ? '一键修复（' + issue.fixes.length + ' 步）' : '一键修复',
+                  issue.fixes.length > 1 ? 'Fix (' + issue.fixes.length + ' ops)' : 'Apply fix'))
+                  .fontSize(10)
+                  .fontColor(issue.severity === 'warning' ? Theme.warning : Theme.primary)
+              }
+              .type(ButtonType.Normal)
+              .height(24)
+              .margin({ top: 3 })
+              .padding({ left: 10, right: 10 })
+              .backgroundColor(Theme.colorBackground())
+              .borderRadius(8)
+              .border({ width: 1, color: Theme.colorBorder() })
+              .onClick(() => {
+                this.applyIssueFixes(issue);
+              })
+            }
           }
           .width('100%')
           .padding(8)

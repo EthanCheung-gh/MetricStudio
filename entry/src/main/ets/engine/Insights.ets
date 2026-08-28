@@ -1,4 +1,4 @@
-import { DataFrame } from '../model/DataFrame';
+import { DataFrame, TransformOp } from '../model/DataFrame';
 import { computeAllColumnStats, computeQualityMetrics, findOutliers, ColumnStats } from './ColumnStats';
 import { pearson } from './StatsTools';
 import { toNumber } from './Numeric';
@@ -9,6 +9,8 @@ export class Insight {
   title: string;
   detail: string;
   suggestions: string[];
+  /** Local one-tap fixes for this issue (web: suggested recipe ids). */
+  fixes: TransformOp[] = [];
 
   constructor(severity: string, title: string, detail: string, suggestions: string[]) {
     this.severity = severity;
@@ -36,18 +38,27 @@ export function computeInsights(df: DataFrame): Insight[] {
   const metrics = computeQualityMetrics(df);
   const stats = computeAllColumnStats(df);
 
-  // Missing values
+  // Missing values — one-tap: fill every numeric column having gaps with 0
   if (metrics.missingCells > 0) {
-    out.push(new Insight('warning', '缺失值',
+    const issue = new Insight('warning', '缺失值',
       `共 ${metrics.missingCells} 个缺失单元格（${metrics.totalCells > 0 ? Math.round(metrics.missingCells / metrics.totalCells * 100) : 0}%）`,
-      ['可使用填充缺失值算子处理']));
+      ['可使用填充缺失值算子处理']);
+    for (let i = 0; i < stats.length; i++) {
+      if (stats[i].dtype === 'number' && stats[i].missing > 0) {
+        issue.fixes.push(new TransformOp('fillMissing',
+          JSON.stringify({ column: stats[i].column, value: '0' })));
+      }
+    }
+    out.push(issue);
   }
 
-  // Duplicate rows
+  // Duplicate rows — one-tap dedupe
   if (metrics.duplicateRows > 0) {
-    out.push(new Insight('warning', '重复行',
+    const issue = new Insight('warning', '重复行',
       `发现 ${metrics.duplicateRows} 行完全重复数据`,
-      ['可使用去重算子移除']));
+      ['可使用去重算子移除']);
+    issue.fixes.push(new TransformOp('dedupe', JSON.stringify({ columns: null })));
+    out.push(issue);
   }
 
   // Outliers per numeric column
@@ -63,14 +74,19 @@ export function computeInsights(df: DataFrame): Insight[] {
   for (let i = 0; i < stats.length; i++) {
     const s: ColumnStats = stats[i];
     if (s.dtype === 'number' && s.missing > 0) {
-      out.push(new Insight('info', '缺失列',
+      const issue = new Insight('info', '缺失列',
         `${s.column} 有 ${s.missing} 个空值`,
-        ['填充或过滤该列空值']));
+        ['填充或过滤该列空值']);
+      issue.fixes.push(new TransformOp('fillMissing',
+        JSON.stringify({ column: s.column, value: '0' })));
+      out.push(issue);
     }
     if (s.uniqueCount <= 1 && s.count > 1) {
-      out.push(new Insight('info', '常量列',
+      const issue = new Insight('info', '常量列',
         `${s.column} 所有值相同（${s.uniqueCount} 个唯一值）`,
-        ['可删除该列']));
+        ['可删除该列']);
+      issue.fixes.push(new TransformOp('dropCol', JSON.stringify({ columns: [s.column] })));
+      out.push(issue);
     }
   }
   return out;

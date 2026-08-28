@@ -92,6 +92,10 @@ export class WorkspaceState {
   setTheme(theme: AppTheme): void {
     this.theme = theme;
     Theme.setMode(theme === AppTheme.Light);
+    // Force a full appContent remount so every Theme token re-resolves
+    // (colors are read at build time; nothing else re-renders the tree).
+    const prev = AppStorage.get<boolean>('themeFlag');
+    AppStorage.setOrCreate('themeFlag', !(prev !== undefined && prev));
   }
 
   applyLlmConfig(config: LlmConfig): void {

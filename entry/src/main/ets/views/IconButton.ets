@@ -18,8 +18,10 @@ export struct IconButton {
   @Prop activeColor: string = Theme.primary;
   @Prop activeBg: string = Theme.primaryDim;
   @Prop tip: string = '';
+  @Prop tipBelow: boolean = false;
   action: () => void = () => {};
   @State hovered: boolean = false;
+  @State tipOn: boolean = false; // long-press (touch) trigger
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
@@ -33,15 +35,18 @@ export struct IconButton {
       .type(ButtonType.Normal)
       .backgroundColor(this.active ? this.activeBg : (this.hovered ? Theme.surfaceElevated : Color.Transparent))
       .borderRadius(this.radius)
-      if (this.hovered && this.tip.length > 0) {
-        // hover tooltip rendered as overlay (bindPopup flickers with hover)
+      if (this.tip.length > 0 && (this.hovered || this.tipOn)) {
+        // hover / long-press tooltip rendered as overlay (bindPopup flickers with hover)
         Text(this.tip)
           .fontSize(10)
           .fontColor('#ffffff')
           .backgroundColor('#262626F2')
           .padding({ left: 8, right: 8, top: 4, bottom: 4 })
           .borderRadius(4)
-          .position({ x: 0, y: -26 })
+          .position({
+            x: 0,
+            y: this.tipBelow ? this.btnHeight + 4 : -26
+          })
       }
     }
     .onClick(() => {
@@ -50,5 +55,15 @@ export struct IconButton {
     .onHover((isHover: boolean) => {
       this.hovered = isHover;
     })
+    .gesture(LongPressGesture({ repeat: false })
+      .onAction(() => {
+        this.tipOn = true;
+      })
+      .onActionEnd(() => {
+        this.tipOn = false;
+      })
+      .onActionCancel(() => {
+        this.tipOn = false;
+      }))
   }
 }
