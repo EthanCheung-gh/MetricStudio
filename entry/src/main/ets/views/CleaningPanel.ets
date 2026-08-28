@@ -3,12 +3,12 @@ import { Theme } from '../common/Theme';
 import { l10n, t } from '../common/Locale';
 import { Settings } from '../common/Settings';
 import { fmt } from '../common/Format';
-import { CellValue, DataFrame, TransformOp } from '../model/DataFrame';
+import { DataFrame, TransformOp } from '../model/DataFrame';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { Insight, QualityReport, computeQualityReport } from '../engine/Insights';
 import { ColumnStats, computeAllColumnStats } from '../engine/ColumnStats';
-import { FillMissingParams } from '../engine/TransformOps';
+import { applyTransformOp } from '../engine/TransformOps';
 
 /**
  * Cleaning panel (web: src/components/data/CleaningPanel.tsx). Quality scan,
@@ -47,6 +47,7 @@ export struct CleaningPanel {
   @State saveName: string = '';
   @State recipes: RecipeShim[] = [];
   @State showColStats: boolean = false;
+  @State sampleOpen: Record<string, boolean> = {};
   @State tick: number = 0;
 
   aboutToAppear(): void {
@@ -73,52 +74,48 @@ export struct CleaningPanel {
     if (rep === null) {
       return false;
     }
-    return rep.summary.missingCells > 0 || rep.summary.duplicateRows > 0;
+    for (let i = 0; i < rep.issues.length; i++) {
+      if (rep.issues[i].fixes.length > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
-  /** Derive a safe fix plan (web /quality-fix/preview): fill numeric missing with 0, dedupe. */
+  /**
+   * Safe fix plan (web build_quality_fix_plan): duplicates → missing (median
+   * fill) → outliers (1.5×IQR clip) → numeric-like strings → whitespace trim.
+   * Fixes come precomputed on each issue; simulated on a clone for the
+   * rows×cols preview delta.
+   */
   private buildPlan(): void {
     const df = this.dataState.activeDataFrame;
     if (df === null) {
       return;
     }
     const rep = computeQualityReport(df);
+    const order: string[] = ['重复行', '缺失值', '异常值', '数字字符串列', '格式问题'];
     const ops: TransformOp[] = [];
-    for (let c = 0; c < df.columns.length; c++) {
-      const col = df.columns[c];
-      if (col.dtype !== 'number') {
-        continue;
-      }
-      let missing = 0;
-      for (let r = 0; r < df.rows.length; r++) {
-        const v = df.rows[r][c];
-        if (v === null || v === undefined) {
-          missing++;
+    for (let k = 0; k < order.length; k++) {
+      for (let i = 0; i < rep.issues.length; i++) {
+        if (rep.issues[i].title !== order[k]) {
+          continue;
+        }
+        for (let f = 0; f < rep.issues[i].fixes.length; f++) {
+          ops.push(rep.issues[i].fixes[f]);
         }
       }
-      if (missing > 0) {
-        ops.push(new TransformOp('fillMissing', JSON.stringify({ column: col.name, value: '0' })));
-      }
-    }
-    if (rep.summary.duplicateRows > 0) {
-      ops.push(new TransformOp('dedupe', JSON.stringify({ columns: null })));
     }
     this.fixOps = ops;
     if (ops.length === 0) {
       promptAction.showToast({ message: l10n(this.workspaceState.language, '没有安全的自动修复项', 'No safe auto fixes') });
       return;
     }
-    // Simulate on a clone to show the row/col delta (web fix plan diff).
+    // Simulate on a clone (web scratch replay) for the row/col delta.
     let sim = df.clone();
     for (let i = 0; i < ops.length; i++) {
       try {
-        const op = ops[i];
-        if (op.type === 'fillMissing') {
-          const p = JSON.parse(op.params) as FillMissingParams;
-          sim = applyFill(sim, p.column, p.value);
-        } else if (op.type === 'dedupe') {
-          sim = applyDedupe(sim);
-        }
+        sim = applyTransformOp(sim, ops[i]);
       } catch (e) {
         // skip broken step in preview
       }
@@ -399,6 +396,36 @@ export struct CleaningPanel {
               .fontSize(11)
               .fontColor(Theme.colorMuted())
               .width('100%')
+            // Sample rows (web issue.samples, collapsed <details> parity)
+            if (issue.samples.length > 0) {
+              Button() {
+                Text(l10n(this.workspaceState.language,
+                  (this.sampleOpen[idx.toString()] === true ? '▾ ' : '▸ ') + '查看样本（' + issue.samples.length + '）',
+                  (this.sampleOpen[idx.toString()] === true ? '▾ ' : '▸ ') + 'Samples (' + issue.samples.length + ')'))
+                  .fontSize(10)
+                  .fontColor(Theme.colorMuted())
+              }
+              .type(ButtonType.Normal)
+              .height(22)
+              .margin({ top: 2 })
+              .padding({ left: 0, right: 0 })
+              .backgroundColor(Color.Transparent)
+              .onClick(() => {
+                const key = idx.toString();
+                this.sampleOpen[key] = !(this.sampleOpen[key] === true);
+                this.tick++;
+              })
+              if (this.sampleOpen[idx.toString()] === true) {
+                ForEach(issue.samples, (line: string, sIdx: number) => {
+                  Text(line)
+                    .fontSize(9)
+                    .fontColor(Theme.colorMuted())
+                    .maxLines(2)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                }, (line: string, sIdx: number) => sIdx.toString() + '_' + this.tick.toString())
+              }
+            }
             // One-tap fixes (web: clickable suggested recipes)
             if (issue.fixes.length > 0) {
               Button() {
@@ -595,38 +622,4 @@ export struct CleaningPanel {
     }
     return '—';
   }
-}
-
-// local safe-fix appliers mirroring TransformOps behaviour for the preview
-function applyFill(df: DataFrame, column: string, value: string): DataFrame {
-  const next = df.clone();
-  const idx = next.columnIndex(column);
-  const meta = next.columns[idx];
-  const v: CellValue = meta.dtype === 'number' ? (Number(value) || 0) : value;
-  for (let r = 0; r < next.rows.length; r++) {
-    if (next.rows[r][idx] === null || next.rows[r][idx] === undefined) {
-      next.rows[r][idx] = v;
-    }
-  }
-  return next;
-}
-
-function applyDedupe(df: DataFrame): DataFrame {
-  const next = df.clone();
-  const seen = new Set<string>();
-  const out: CellValue[][] = [];
-  for (let r = 0; r < next.rows.length; r++) {
-    const parts: string[] = [];
-    for (let c = 0; c < next.columns.length; c++) {
-      const v = next.rows[r][c];
-      parts.push(v === null || v === undefined ? '' : String(v));
-    }
-    const key = parts.join('\u0001');
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(next.rows[r]);
-    }
-  }
-  next.rows = out;
-  return next;
 }

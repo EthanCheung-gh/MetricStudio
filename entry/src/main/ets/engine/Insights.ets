@@ -1,7 +1,7 @@
 import { DataFrame, TransformOp } from '../model/DataFrame';
-import { computeAllColumnStats, computeQualityMetrics, findOutliers, ColumnStats } from './ColumnStats';
+import { computeAllColumnStats, computeQualityMetrics, ColumnStats } from './ColumnStats';
 import { pearson } from './StatsTools';
-import { toNumber } from './Numeric';
+import { toNumber, parseNumericLike } from './Numeric';
 
 /** A single insight / quality issue row (web: QualityIssue). */
 export class Insight {
@@ -11,6 +11,8 @@ export class Insight {
   suggestions: string[];
   /** Local one-tap fixes for this issue (web: suggested recipe ids). */
   fixes: TransformOp[] = [];
+  /** Sample rows for collapsed display (web issue.samples, ≤3). */
+  samples: string[] = [];
 
   constructor(severity: string, title: string, detail: string, suggestions: string[]) {
     this.severity = severity;
@@ -32,60 +34,183 @@ export class QualityReport {
   summary: QualitySummary = new QualitySummary();
 }
 
-/** Compute insights + quality report from local statistics (no backend). */
+/** Linear-interpolated quantile over sorted values (pandas quantile parity). */
+function quantileSorted(sorted: number[], q: number): number {
+  if (sorted.length === 0) {
+    return NaN;
+  }
+  const pos = (sorted.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  if (lo === hi) {
+    return sorted[lo];
+  }
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+/** Numeric values of a column (non-parsable cells skipped). */
+function numericValues(df: DataFrame, idx: number): number[] {
+  const vals: number[] = [];
+  for (let r = 0; r < df.rows.length; r++) {
+    const n = toNumber(df.rows[r][idx]);
+    if (n !== null) {
+      vals.push(n);
+    }
+  }
+  return vals;
+}
+
+/** Median of numeric values (web fillna-median-numeric). */
+function medianOf(vals: number[]): number {
+  const sorted = vals.slice().sort((a: number, b: number) => a - b);
+  return quantileSorted(sorted, 0.5);
+}
+
+/**
+ * Quality issues (web backend/core/quality.py detect_quality, 6 checks):
+ * missing / duplicates / outliers (1.5×IQR) / constant / numeric-like string
+ * columns / whitespace format. Fix ops follow build_steps + SAFE_QUALITY_RECIPES.
+ */
 export function computeInsights(df: DataFrame): Insight[] {
   const out: Insight[] = [];
   const metrics = computeQualityMetrics(df);
   const stats = computeAllColumnStats(df);
 
-  // Missing values — one-tap: fill every numeric column having gaps with 0
+  // 1. missing — per-column pct detail; fix = median-fill numeric columns
   if (metrics.missingCells > 0) {
-    const issue = new Insight('warning', '缺失值',
-      `共 ${metrics.missingCells} 个缺失单元格（${metrics.totalCells > 0 ? Math.round(metrics.missingCells / metrics.totalCells * 100) : 0}%）`,
-      ['可使用填充缺失值算子处理']);
+    const parts: string[] = [];
+    const issue = new Insight('warning', '缺失值', '', ['数值列中位数填充']);
     for (let i = 0; i < stats.length; i++) {
-      if (stats[i].dtype === 'number' && stats[i].missing > 0) {
-        issue.fixes.push(new TransformOp('fillMissing',
-          JSON.stringify({ column: stats[i].column, value: '0' })));
+      if (stats[i].missing > 0) {
+        const denom = stats[i].count + stats[i].missing;
+        const pct = denom > 0 ? Math.round(stats[i].missing / denom * 100) : 0;
+        parts.push(stats[i].column + ': ' + pct + '%');
+        if (stats[i].dtype === 'number') {
+          const idx = df.columnIndex(stats[i].column);
+          const med = medianOf(numericValues(df, idx));
+          issue.fixes.push(new TransformOp('fillMissing',
+            JSON.stringify({ column: stats[i].column, value: String(med) })));
+        }
       }
     }
+    issue.detail = parts.join(', ');
     out.push(issue);
   }
 
-  // Duplicate rows — one-tap dedupe
+  // 2. duplicates — full-row duplicates with ≤3 samples
   if (metrics.duplicateRows > 0) {
     const issue = new Insight('warning', '重复行',
-      `发现 ${metrics.duplicateRows} 行完全重复数据`,
-      ['可使用去重算子移除']);
+      metrics.duplicateRows + ' 行完全重复', ['删除重复行']);
     issue.fixes.push(new TransformOp('dedupe', JSON.stringify({ columns: null })));
+    const seen = new Set<string>();
+    for (let r = 0; r < df.rows.length && issue.samples.length < 3; r++) {
+      const cells: string[] = [];
+      for (let c = 0; c < Math.min(4, df.colCount); c++) {
+        const v = df.rows[r][c];
+        cells.push(df.columns[c].name + '=' + (v === null || v === undefined ? '' : String(v)));
+      }
+      const key = cells.join('|');
+      if (seen.has(key)) {
+        issue.samples.push('#' + r.toString() + ': ' + cells.join(', '));
+      }
+      seen.add(key);
+    }
     out.push(issue);
   }
 
-  // Outliers per numeric column
-  const outliers = findOutliers(df);
-  for (let i = 0; i < outliers.length; i++) {
-    const o = outliers[i];
-    out.push(new Insight('info', '离群值',
-      `${o.column} 列检出 ${o.count} 个离群值（均值±2σ 之外）`,
-      ['检查离群值是否合理，必要时过滤']));
-  }
-
-  // Distribution / type notes
+  // 3. outliers — per numeric column, 1.5×IQR clip bounds (web clip-outliers)
   for (let i = 0; i < stats.length; i++) {
-    const s: ColumnStats = stats[i];
-    if (s.dtype === 'number' && s.missing > 0) {
-      const issue = new Insight('info', '缺失列',
-        `${s.column} 有 ${s.missing} 个空值`,
-        ['填充或过滤该列空值']);
-      issue.fixes.push(new TransformOp('fillMissing',
-        JSON.stringify({ column: s.column, value: '0' })));
+    if (stats[i].dtype !== 'number') {
+      continue;
+    }
+    const idx = df.columnIndex(stats[i].column);
+    const vals = numericValues(df, idx);
+    if (vals.length < 4) {
+      continue;
+    }
+    const sorted = vals.slice().sort((a: number, b: number) => a - b);
+    const q1 = quantileSorted(sorted, 0.25);
+    const q3 = quantileSorted(sorted, 0.75);
+    const iqr = q3 - q1;
+    if (iqr === 0) {
+      continue;
+    }
+    const lo = q1 - 1.5 * iqr;
+    const hi = q3 + 1.5 * iqr;
+    let count = 0;
+    for (let k = 0; k < vals.length; k++) {
+      if (vals[k] < lo || vals[k] > hi) {
+        count++;
+      }
+    }
+    if (count > 0) {
+      const issue = new Insight('info', '异常值',
+        stats[i].column + ': ' + count + ' 个值超出 1.5×IQR', ['裁剪到边界']);
+      issue.fixes.push(new TransformOp('clip',
+        JSON.stringify({ column: stats[i].column, min: lo, max: hi })));
       out.push(issue);
     }
+  }
+
+  // 4. constant columns (web: nunique<=1, no suggestions)
+  for (let i = 0; i < stats.length; i++) {
+    const s: ColumnStats = stats[i];
     if (s.uniqueCount <= 1 && s.count > 1) {
-      const issue = new Insight('info', '常量列',
-        `${s.column} 所有值相同（${s.uniqueCount} 个唯一值）`,
-        ['可删除该列']);
-      issue.fixes.push(new TransformOp('dropCol', JSON.stringify({ columns: [s.column] })));
+      out.push(new Insight('info', '常量列',
+        s.column + ' 所有值相同（' + s.uniqueCount + ' 个唯一值）', []));
+    }
+  }
+
+  // 5. numeric-like string columns — ≥80% parseable and ≥1 non-empty
+  for (let c = 0; c < df.columns.length; c++) {
+    const col = df.columns[c];
+    if (col.dtype !== 'string') {
+      continue;
+    }
+    let nonEmpty = 0;
+    let parseable = 0;
+    for (let r = 0; r < df.rows.length; r++) {
+      const v = df.rows[r][c];
+      if (v === null || v === undefined || String(v).trim().length === 0) {
+        continue;
+      }
+      nonEmpty++;
+      if (parseNumericLike(String(v)) !== null) {
+        parseable++;
+      }
+    }
+    if (nonEmpty >= 1 && parseable / nonEmpty >= 0.8) {
+      const pct = Math.round(parseable / nonEmpty * 100);
+      const issue = new Insight('info', '数字字符串列',
+        col.name + ' 有 ' + pct + '% 的值可解析为数字', ['转为数值列']);
+      issue.fixes.push(new TransformOp('parse_numeric',
+        JSON.stringify({ column: col.name })));
+      out.push(issue);
+    }
+  }
+
+  // 6. whitespace format — leading/trailing or repeated inner spaces
+  for (let c = 0; c < df.columns.length; c++) {
+    const col = df.columns[c];
+    if (col.dtype !== 'string') {
+      continue;
+    }
+    let hits = 0;
+    for (let r = 0; r < df.rows.length; r++) {
+      const v = df.rows[r][c];
+      if (v === null || v === undefined) {
+        continue;
+      }
+      const s = String(v);
+      if (s !== s.trim() || /\s{2,}/.test(s)) {
+        hits++;
+      }
+    }
+    if (hits > 0) {
+      const issue = new Insight('warning', '格式问题',
+        col.name + ': ' + hits + ' 个值含首尾或连续空格', ['清理字符串空格']);
+      issue.fixes.push(new TransformOp('strClean',
+        JSON.stringify({ column: col.name, action: 'trim' })));
       out.push(issue);
     }
   }
