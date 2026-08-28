@@ -1,9 +1,19 @@
 import { webview } from '@kit.ArkWeb';
 import { Theme } from '../common/Theme';
 import { CellValue, DataFrame } from '../model/DataFrame';
+import { applyDashboardFilters, DashboardFilter } from '../model/DashboardState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { DataState } from '../model/DataState';
 import { buildFigureJson } from '../engine/PlotlySpec';
+
+/** Filter wire format (DashboardView DashFilterSpec subset). */
+interface ChartFilterSpec {
+  field: string;
+  kind: string;
+  values: string[];
+  lo: string;
+  hi: string;
+}
 
 /**
  * Chart canvas (web: src/components/chart/ChartCanvas.tsx, port of the old
@@ -11,6 +21,8 @@ import { buildFigureJson } from '../engine/PlotlySpec';
  * figures injected via runJavaScript('renderFigure(json)'). Re-rendering is
  * driven by an AppStorage 'chartTick' counter (@StorageLink + @Watch) — a plain
  * number, so the watcher reliably fires whenever encoding/state changes.
+ * Dashboard usage passes filterJson (dashboard filter set) for card-scoped
+ * filtering (web previewChart filters).
  */
 @Component
 export struct ChartView {
@@ -18,34 +30,34 @@ export struct ChartView {
   @Consume('workspaceState') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
   @Prop chartId: string = '';
-  @Prop filterField: string = '';
-  @Prop filterValue: string = '';
+  @Prop filterJson: string = '';
 
   private controller: webview.WebviewController = new webview.WebviewController();
   private pageReady: boolean = false;
 
-  /** Return the active frame, filtered when a dashboard global filter is set. */
+  /** Return the active frame with dashboard filters applied when provided. */
   private filteredFrame(): DataFrame | null {
     const df = this.dataState.activeDataFrame;
     if (df === null) {
       return null;
     }
-    if (this.filterField.length === 0 || this.filterValue.length === 0) {
+    if (this.filterJson.length === 0) {
       return df;
     }
-    const idx = df.columnIndex(this.filterField);
-    if (idx < 0) {
-      return df;
-    }
-    const clone = df.clone();
-    const kept: CellValue[][] = [];
-    for (let r = 0; r < clone.rows.length; r++) {
-      if (String(clone.rows[r][idx]) === this.filterValue) {
-        kept.push(clone.rows[r]);
+    try {
+      const specs = JSON.parse(this.filterJson) as ChartFilterSpec[];
+      const filters: DashboardFilter[] = [];
+      for (let i = 0; i < specs.length; i++) {
+        const f = new DashboardFilter(specs[i].field, specs[i].kind);
+        f.values = specs[i].values !== undefined ? specs[i].values : [];
+        f.lo = specs[i].lo !== undefined ? specs[i].lo : '';
+        f.hi = specs[i].hi !== undefined ? specs[i].hi : '';
+        filters.push(f);
       }
+      return applyDashboardFilters(df, filters);
+    } catch (e) {
+      return df;
     }
-    clone.rows = kept;
-    return clone;
   }
 
   private figureJson(): string {
