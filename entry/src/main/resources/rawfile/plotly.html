@@ -12,12 +12,55 @@
 <body>
   <div id="chart"></div>
   <script>
-    window.renderFigure = function (jsonStr) {
+    // Dashboard brush bridge (web PlotlyRenderer plotly_selected parity):
+    // renderFigure(figureJson, metaJson) — meta {chartId,xField,yField} enables
+    // selection reporting back to ArkTS via window.arkBridge.onBrush(json).
+    var msMeta = null;
+    function msHookSelection(el) {
+      try { el.removeAllListeners('plotly_selected'); } catch (e) {}
+      try { el.removeAllListeners('plotly_deselect'); } catch (e) {}
+      el.on('plotly_selected', function (evt) {
+        if (!window.arkBridge || !msMeta) { return; }
+        var r = (evt && (evt.range || evt.ranges)) || {};
+        var xr = r.xrange || r.x || null;
+        var yr = r.yrange || r.y || null;
+        var okX = xr && xr.length === 2;
+        var okY = yr && yr.length === 2;
+        if (!okX && !okY) { return; }
+        window.arkBridge.onBrush(JSON.stringify({
+          chartId: msMeta.chartId,
+          xField: msMeta.xField,
+          yField: msMeta.yField,
+          xRange: okX ? xr : null,
+          yRange: okY ? yr : null
+        }));
+      });
+      el.on('plotly_deselect', function () {
+        if (!window.arkBridge || !msMeta) { return; }
+        window.arkBridge.onBrush(JSON.stringify({
+          chartId: msMeta.chartId,
+          xField: msMeta.xField,
+          yField: msMeta.yField,
+          xRange: null,
+          yRange: null
+        }));
+      });
+    }
+    window.renderFigure = function (jsonStr, metaStr) {
       var el = document.getElementById('chart');
       try {
         var fig = JSON.parse(jsonStr);
+        msMeta = null;
+        if (metaStr) {
+          try { msMeta = JSON.parse(metaStr); } catch (e) { msMeta = null; }
+        }
+        if (msMeta && msMeta.chartId) {
+          fig.layout = fig.layout || {};
+          fig.layout.dragmode = 'select'; // enable rectangle selection for brush
+        }
         var config = fig.config || { responsive: true, displaylogo: false, displayModeBar: false };
         Plotly.react(el, fig.data, fig.layout, config);
+        if (msMeta && msMeta.chartId) { msHookSelection(el); }
       } catch (e) {
         el.innerHTML = '<pre style="color:#ef4444;font-size:12px;padding:8px;font-family:monospace">' + String(e) + '</pre>';
       }
@@ -26,6 +69,7 @@
       var el = document.getElementById('chart');
       try { Plotly.purge(el); } catch (e) {}
       el.innerHTML = '';
+      msMeta = null;
     };
   </script>
 </body>

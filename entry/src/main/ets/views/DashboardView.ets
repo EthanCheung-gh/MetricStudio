@@ -8,12 +8,7 @@ import { applyDashboardFilters, DASH_COLS, DASH_GAP, DASH_ROW_H,
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { toNumber } from '../engine/Numeric';
-import { ChartView } from './ChartView';
-
-/** Column shim for the filter field picker. */
-interface DashboardColumnShim {
-  name: string;
-}
+import { ChartView, BrushSelectionSpec } from './ChartView';
 
 /** Wire format handed to chart cards (web DashboardDataFilter subset). */
 interface DashFilterSpec {
@@ -44,10 +39,56 @@ export struct DashboardView {
   @State editingId: string = '';
   @State editText: string = '';
   @State newFilterField: string = '';
+  // brush 联动（web brushSelections，会话级）：chartItemId → selection JSON
+  @State brushVersion: number = 0;
+  private brushes: Record<string, string> = {};
   // drag/resize transient state
   @State dragId: string = '';
   private dragStartX: number = 0;
   private dragStartY: number = 0;
+
+  private brushCount(): number {
+    const keys = Object.keys(this.brushes);
+    let n = 0;
+    for (let i = 0; i < keys.length; i++) {
+      if (this.brushes[keys[i]].length > 0) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** Other cards' selections for one chart card (web externalBrushes). */
+  private externalBrushes(itemId: string): string {
+    const out: object[] = [];
+    const keys = Object.keys(this.brushes);
+    for (let i = 0; i < keys.length; i++) {
+      if (keys[i] === itemId || this.brushes[keys[i]].length === 0) {
+        continue;
+      }
+      try {
+        out.push(JSON.parse(this.brushes[keys[i]]) as object);
+      } catch (e) {
+        // skip malformed entry
+      }
+    }
+    return JSON.stringify(out);
+  }
+
+  private handleBrush(itemId: string, json: string): void {
+    try {
+      const sel = JSON.parse(json) as BrushSelectionSpec;
+      if (sel.xRange === null && sel.yRange === null) {
+        // ArkTS has no delete operator — store empty marker, skipped on read.
+        this.brushes[itemId] = '';
+      } else {
+        this.brushes[itemId] = json;
+      }
+      this.brushVersion++;
+    } catch (e) {
+      // ignore malformed bridge payloads
+    }
+  }
 
   onDashboardTick(): void {
     this.renderTick++;
@@ -409,6 +450,12 @@ export struct DashboardView {
                   promptAction.showToast({ message: t(this.workspaceState.language, 'transform.nothingToRedo') });
                 }
               }, false)
+              if (this.brushCount() > 0) {
+                this.toolChip('Clear brushes (' + this.brushCount().toString() + ')', () => {
+                  this.brushes = {};
+                  this.brushVersion++;
+                }, false)
+              }
               this.toolChip(t(this.workspaceState.language, 'dashboard.alignLeft'), () => {
                 this.workspaceState.dashboard.alignItems('x');
               }, false)
@@ -459,7 +506,7 @@ export struct DashboardView {
           }
           .width('100%')
           .height(this.gridHeightTotal() + 24)
-          .opacity(this.renderTick >= 0 ? 1 : 1)
+          .opacity((this.renderTick >= 0 && this.brushVersion >= 0) ? 1 : 1)
           .onAreaChange((_o: Area, n: Area) => {
             const w = Number(n.width);
             if (!Number.isNaN(w) && Math.abs(w - this.containerW) > 1) {
@@ -903,7 +950,14 @@ export struct DashboardView {
           this.kpiCard(item)
         } else if (item.kind === DashboardItemKind.Chart) {
           this.cardHeader(item, this.chartName(item.chartId))
-          ChartView({ chartId: item.chartId, filterJson: this.dragFiltersJson() })
+          ChartView({
+            chartId: item.chartId,
+            filterJson: this.dragFiltersJson(),
+            brushJson: this.externalBrushes(item.id),
+            onBrush: (cid: string, bj: string): void => {
+              this.handleBrush(item.id, bj);
+            }
+          })
             .width('100%')
             .layoutWeight(1)
         } else {
