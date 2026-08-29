@@ -462,16 +462,22 @@ export class DashboardState {
   }
 
   hasActiveFilters(): boolean {
+    return this.activeFilterCount() > 0;
+  }
+
+  /** Number of currently effective filters (web dashboardFiltersForDataset). */
+  activeFilterCount(): number {
+    let n = 0;
     for (let i = 0; i < this.filters.length; i++) {
       const f = this.filters[i];
       if (f.kind === 'category' && f.values.length > 0) {
-        return true;
+        n++;
       }
       if (f.kind !== 'category' && (f.lo.length > 0 || f.hi.length > 0)) {
-        return true;
+        n++;
       }
     }
-    return false;
+    return n;
   }
 
   /** Bump the tick and mirror it to AppStorage so @StorageLink watchers fire. */

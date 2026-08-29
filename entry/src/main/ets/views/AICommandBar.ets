@@ -1,9 +1,11 @@
-import { promptAction } from '@kit.ArkUI';
+import { promptAction, LengthMetrics } from '@kit.ArkUI';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { Theme } from '../common/Theme';
 import { fmt } from '../common/Format';
 import { t } from '../common/Locale';
+import { Settings } from '../common/Settings';
 import { DataFrame, TransformOp } from '../model/DataFrame';
+import { applyDashboardFilters, DashboardState } from '../model/DashboardState';
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { QaState, conversationToMarkdown } from '../model/QaState';
@@ -19,8 +21,10 @@ import {
  * floating pill: 清洗 (transform) / 提问 (ask) modes. 清洗 parses the phrase
  * into transform ops shown in a result card (apply/cancel); 提问 answers from
  * the configured LLM (OpenAI-compatible, web /api/v1/nl) and falls back to
- * local dataframe statistics when unconfigured or unreachable. Answers are
- * kept as a per-dataset conversation (web qaStore) and exportable as Markdown.
+ * local dataframe statistics when unconfigured or unreachable. Answers carry
+ * 添加到 Dashboard / 添加到报告 actions, and ask respects QA context bindings
+ * (snapshot via SnapshotView selection + active Dashboard filters), each shown
+ * as a binding chip (web snapshotBound / dashboardFiltersBound).
  */
 @Component
 export struct AICommandBar {
@@ -32,8 +36,10 @@ export struct AICommandBar {
   @State operations: TransformOp[] = [];
   @State opsModel: string = '';
   @State answer: string = '';
+  @State answerQuestion: string = '';
   @State answerModel: string = '';
   @State busy: boolean = false;
+  @StorageLink('qaTick') qaTickLink: number = 0;
 
   private columns(): string[] {
     const df = this.dataState.activeDataFrame;
@@ -85,11 +91,7 @@ export struct AICommandBar {
     return '';
   }
 
-  private buildAnswer(): string {
-    const df = this.dataState.activeDataFrame;
-    if (df === null) {
-      return '请先导入数据集';
-    }
+  private buildAnswer(df: DataFrame): string {
     const q = this.input.toLowerCase();
     const m = computeQualityMetrics(df);
     let text = `该数据集「${df.name}」共 ${fmt(df.rowCount)} 行 × ${fmt(df.colCount)} 列。`;
@@ -145,6 +147,48 @@ export struct AICommandBar {
     return text;
   }
 
+  /**
+   * ask 上下文帧（web boundSnapshotId + dashboardFiltersForDataset）：绑定的
+   * 快照优先（失效自动解除），再叠加 Dashboard 生效筛选。
+   */
+  private contextFrame(): DataFrame | null {
+    let base = this.dataState.activeDataFrame;
+    const sid = this.qaState.snapshotId;
+    if (sid.length > 0) {
+      const snap = this.dataState.findSnapshot(sid);
+      if (snap !== null) {
+        base = snap.frame;
+      } else {
+        this.qaState.setSnapshotId('');
+      }
+    }
+    if (base === null) {
+      return null;
+    }
+    return applyDashboardFilters(base, this.workspaceState.dashboard.filters);
+  }
+
+  /** 回答写入 Dashboard 文本卡（web addAnswerToDashboard）。 */
+  private addAnswerToDashboard(): void {
+    if (this.answer.length === 0) {
+      return;
+    }
+    this.workspaceState.dashboard.addText(this.answerQuestion + '\n\n' + this.answer);
+    promptAction.showToast({ message: t(this.workspaceState.language, 'ai.addedToDashboard') });
+  }
+
+  /** 回答追加到报告备注草稿并打开报告（web addAnswerToReport）。 */
+  private addAnswerToReport(): void {
+    if (this.answer.length === 0) {
+      return;
+    }
+    const paragraph = '## ' + this.answerQuestion + '\n\n' + this.answer;
+    const draft = Settings.loadNotesDraft();
+    Settings.saveNotesDraft(draft.length > 0 ? draft + '\n\n' + paragraph : paragraph);
+    this.workspaceState.setReportOpen(true);
+    promptAction.showToast({ message: t(this.workspaceState.language, 'ai.addedToReport') });
+  }
+
   private async submit(): Promise<void> {
     if (this.busy || this.input.trim().length === 0) {
       return;
@@ -194,12 +238,19 @@ export struct AICommandBar {
     }
   }
 
-  /** 提问 mode: LLM answer with conversation history, local statistics fallback. */
+  /** 提问 mode: LLM answer with conversation history, local statistics fallback.
+    * 数据上下文尊重 QA 绑定（快照 + Dashboard 筛选，web ask request scope）。 */
   private async submitAsk(df: DataFrame, question: string): Promise<void> {
     this.busy = true;
     this.answer = '';
+    this.answerQuestion = '';
     this.answerModel = '';
     this.operations = [];
+    const ctx = this.contextFrame();
+    if (ctx === null) {
+      this.busy = false;
+      return;
+    }
     let text = '';
     let model = '';
     if (llmConfigured(this.workspaceState.llmConfig)) {
@@ -215,7 +266,7 @@ export struct AICommandBar {
           const am: ChatMessage = { role: 'assistant', content: recent[i].answer };
           messages.push(am);
         }
-        const usr: ChatMessage = { role: 'user', content: buildDataContext(df) + '\n\n问题: ' + question };
+        const usr: ChatMessage = { role: 'user', content: buildDataContext(ctx) + '\n\n问题: ' + question };
         messages.push(usr);
         const reply = await chatCompletion(this.workspaceState.llmConfig, messages, 512);
         if (reply.trim().length > 0) {
@@ -227,13 +278,14 @@ export struct AICommandBar {
       }
     }
     if (text.trim().length === 0) {
-      text = this.buildAnswer();
+      text = this.buildAnswer(ctx);
       model = '';
     }
     this.qaState.ensureForDataset(df.name, df.name);
     this.qaState.appendTurn(question, text, model);
     this.busy = false;
     this.answer = text;
+    this.answerQuestion = question;
     this.answerModel = model;
   }
 
@@ -409,6 +461,34 @@ export struct AICommandBar {
               .backgroundColor(Theme.colorSurface())
             Blank()
             Button() {
+              Text(t(this.workspaceState.language, 'ai.addToDashboard'))
+                .fontSize(11)
+                .fontColor(Theme.colorMuted())
+            }
+            .type(ButtonType.Normal)
+            .height(24)
+            .padding({ left: 10, right: 10 })
+            .backgroundColor(Color.Transparent)
+            .borderRadius(6)
+            .border({ width: 1, color: Theme.colorBorder() })
+            .onClick(() => {
+              this.addAnswerToDashboard();
+            })
+            Button() {
+              Text(t(this.workspaceState.language, 'ai.addToReport'))
+                .fontSize(11)
+                .fontColor(Theme.colorMuted())
+            }
+            .type(ButtonType.Normal)
+            .height(24)
+            .padding({ left: 10, right: 10 })
+            .backgroundColor(Color.Transparent)
+            .borderRadius(6)
+            .border({ width: 1, color: Theme.colorBorder() })
+            .onClick(() => {
+              this.addAnswerToReport();
+            })
+            Button() {
               Row({ space: 4 }) {
                 SymbolGlyph($r('sys.symbol.doc_plaintext'))
                   .fontSize(11)
@@ -437,6 +517,43 @@ export struct AICommandBar {
         .backgroundColor(Theme.colorSurfaceElevated())
         .alignItems(HorizontalAlign.Start)
         .margin({ bottom: 8 })
+      }
+
+      // ask 上下文绑定胶囊（web snapshotBound / dashboardFiltersBound）
+      if (this.mode === 'ask' && (this.qaState.snapshotId.length > 0
+        || this.workspaceState.dashboard.activeFilterCount() > 0)) {
+        Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
+          if (this.qaState.snapshotId.length > 0) {
+            Row({ space: 4 }) {
+              Text(t(this.workspaceState.language, 'ai.snapshotBound')
+                .replace('{{id}}', this.qaState.snapshotId.slice(0, 8)))
+                .fontSize(10)
+                .fontColor(Theme.colorMuted())
+              Text('×')
+                .fontSize(11)
+                .fontColor(Theme.colorMuted())
+                .onClick(() => {
+                  this.qaState.setSnapshotId('');
+                })
+            }
+            .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+            .borderRadius(10)
+            .border({ width: 1, color: Theme.colorBorder() })
+            .backgroundColor(Theme.colorSurfaceElevated())
+          }
+          if (this.workspaceState.dashboard.activeFilterCount() > 0) {
+            Text(t(this.workspaceState.language, 'ai.dashboardFiltersBound')
+              .replace('{{count}}', this.workspaceState.dashboard.activeFilterCount().toString()))
+              .fontSize(10)
+              .fontColor(Theme.colorMuted())
+              .padding({ left: 8, right: 8, top: 3, bottom: 3 })
+              .borderRadius(10)
+              .border({ width: 1, color: Theme.colorBorder() })
+              .backgroundColor(Theme.colorSurfaceElevated())
+          }
+        }
+        .width('100%')
+        .margin({ bottom: 6 })
       }
 
       // Pill input bar

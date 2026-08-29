@@ -41,7 +41,14 @@ export class QaConversation {
 export class QaState {
   conversations: QaConversation[] = [];
   activeId: string = '';
+  // QA 上下文绑定的快照（web qaStore.snapshotId，会话级；快照选中即绑定）
+  snapshotId: string = '';
   tick: number = 0;
+
+  setSnapshotId(id: string): void {
+    this.snapshotId = id;
+    this.bump();
+  }
 
   /** Return the conversation bound to a dataset, creating it on first use (web setDataset). */
   ensureForDataset(datasetKey: string, name: string): QaConversation {

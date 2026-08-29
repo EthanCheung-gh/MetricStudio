@@ -1,23 +1,28 @@
 import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
 import { fmt } from '../common/Format';
+import { l10n } from '../common/Locale';
 import { DataSnapshot, DiffResult } from '../model/DataState';
 import { DataState } from '../model/DataState';
+import { QaState } from '../model/QaState';
 import { WorkspaceState } from '../model/WorkspaceState';
 
 /**
  * Snapshot view (web: src/components/data/SnapshotView.tsx). Create named
  * snapshots of the current dataframe; compare any snapshot to the current
- * state (row-key diff + numeric mean deltas), restore, or delete.
+ * state (row-key diff + numeric mean deltas), restore, or delete. Selecting
+ * a snapshot card binds it as QA context (web setSnapshotId).
  */
 @Component
 export struct SnapshotView {
   @Consume('dataState') dataState: DataState;
   @Consume('workspaceState') workspaceState: WorkspaceState;
+  @Consume('qaState') qaState: QaState;
   @State snapName: string = '';
   @State snapDesc: string = '';
   @State diffResult: DiffResult | null = null;
   @State diffLabel: string = '';
+  @StorageLink('qaTick') qaTickLink: number = 0;
 
   private create(): void {
     const ok = this.dataState.createSnapshot(this.snapName, this.snapDesc);
@@ -39,6 +44,14 @@ export struct SnapshotView {
     if (this.dataState.restoreSnapshot(snap.id)) {
       promptAction.showToast({ message: '已恢复到快照: ' + snap.name });
     }
+  }
+
+  /** 选中快照卡 → 绑定为问答上下文（web select → setSnapshotId）。 */
+  private bindQaContext(snap: DataSnapshot): void {
+    this.qaState.setSnapshotId(snap.id);
+    promptAction.showToast({ message: l10n(this.workspaceState.language,
+      '已绑定快照 ' + snap.id.slice(0, 8) + '，提问将基于该快照数据',
+      'Snapshot ' + snap.id.slice(0, 8) + ' bound for Q&A') });
   }
 
   build() {
@@ -192,6 +205,9 @@ export struct SnapshotView {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
+        .onClick(() => {
+          this.bindQaContext(snap);
+        })
 
         Row({ space: 2 }) {
           SymbolGlyph($r('sys.symbol.arrow_triangle_merge'))
@@ -222,7 +238,7 @@ export struct SnapshotView {
     .width('100%')
     .padding(10)
     .borderRadius(8)
-    .border({ width: 1, color: Theme.colorBorder() })
+    .border({ width: 1, color: this.qaState.snapshotId === snap.id ? Theme.primary : Theme.colorBorder() })
     .backgroundColor(Theme.colorSurface())
     .alignItems(HorizontalAlign.Start)
   }
