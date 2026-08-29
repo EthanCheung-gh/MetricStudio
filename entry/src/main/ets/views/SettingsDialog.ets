@@ -49,7 +49,8 @@ export struct SettingsDialog {
     if (!this.positioned && w > 0) {
       this.positioned = true;
       this.posX = Math.max(0, Math.floor((w - 480) / 2));
-      this.posY = Math.max(0, Math.floor((h - 420) / 2) - 20);
+      // 面板高度为视口 84%：按实际高度垂直居中，避免底部按钮越出屏幕
+      this.posY = Math.max(0, Math.floor(h * 0.08));
     }
   }
 
@@ -181,7 +182,9 @@ export struct SettingsDialog {
             this.onHeaderTouch(event);
           })
 
-          Column({ space: 16 }) {
+          // 内容区可滚动：设置项少时不留超长空白，多时不把底部按钮顶出屏幕
+          Scroll() {
+            Column({ space: 16 }) {
             // Section 1: appearance and preferences
             Column({ space: 8 }) {
               Text(l10n(this.workspaceState.language, '外观与偏好', 'Appearance and preferences'))
@@ -344,7 +347,10 @@ export struct SettingsDialog {
           .width('100%')
           .padding({ left: 16, right: 16, bottom: 16 })
           .alignItems(HorizontalAlign.Start)
+          }
           .layoutWeight(1)
+          .scrollBar(BarState.Auto)
+          .align(Alignment.TopStart)
 
           // ModalFooter: cancel / save
           Row({ space: 8 }) {
@@ -390,7 +396,7 @@ export struct SettingsDialog {
         }
         .width('92%')
         .constraintSize({ maxWidth: 480 })
-        .height('auto')
+        .height('84%')
         .borderRadius(8)
         .border({ width: 1, color: Theme.borderColor })
         .backgroundColor(Theme.surface)

@@ -54,8 +54,8 @@ export struct ChartTypeSelector {
   }
 
   private typeLabel(type: string): string {
-    const spec = chartTypeSpecs[type];
-    return spec !== undefined ? spec.label : type;
+    // i18n 类型名（web chart.type.*），跟随界面语言切换
+    return t(this.workspaceState.language, 'chart.type.' + type);
   }
 
   @Builder

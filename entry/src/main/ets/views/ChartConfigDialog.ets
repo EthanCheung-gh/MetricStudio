@@ -124,8 +124,7 @@ export struct ChartConfigDialog {
     if (c === null) {
       return '';
     }
-    const spec = chartTypeSpecs[c.encoding.chartType];
-    return spec !== undefined ? spec.label : c.encoding.chartType;
+    return t(this.workspaceState.language, 'chart.type.' + c.encoding.chartType);
   }
 
   private typeDesc(): string {

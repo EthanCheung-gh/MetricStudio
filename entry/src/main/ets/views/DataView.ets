@@ -43,6 +43,10 @@ export struct DataView {
   @State hoveredPanel: string = '';
   private colFilters: Map<string, string> = new Map();
   private colWidths: Map<string, number> = new Map();
+  // 表格双向滚动控制器（水平 PanGesture 手动驱动 + 垂直内层 Scroll）
+  private hScroller: Scroller = new Scroller();
+  private vScroller: Scroller = new Scroller();
+  private panBaseX: number = 0;
   private resizeCol: string = '';
   private resizeStartX: number = 0;
   private resizeStartW: number = 0;
@@ -593,10 +597,9 @@ export struct DataView {
         .padding({ left: 10, right: 10, bottom: 6 })
       }
 
-      // Single free-direction scroll hosts header AND body (web DataTable
-      // overflow:auto): horizontal pan works regardless of nested vertical
-      // gesture capture.
-      Scroll() {
+      // 嵌套滚动：外层水平（触摸横滑由 PanGesture 手动驱动，绕过手势截获），
+      // 内层垂直承接滚轮/触摸纵滚——两个方向都可靠（web DataTable overflow）。
+      Scroll(this.hScroller) {
         Column() {
           // Header row (sort cycle + per-column filter + resize handle)
           Row() {
@@ -609,30 +612,47 @@ export struct DataView {
           }
           .width(this.tableWidth())
 
-          if (this.pageRows().length === 0) {
-            Text(l10n(this.lang(), '没有匹配的行', 'No matching rows'))
-              .fontSize(12)
-              .fontColor(Theme.colorMuted())
-              .width(this.tableWidth())
-              .textAlign(TextAlign.Center)
-              .padding(24)
-          } else {
-            ForEach(this.pageRows(), (row: CellValue[], rIdx: number) => {
-              this.bodyRow(row, rIdx)
-            }, (row: CellValue[], rIdx: number) => rIdx.toString() + '_' + this.copiedCell + '_' + this.widthTick.toString())
+          // Body (vertical scroll; wheel/touch both handled here)
+          Scroll(this.vScroller) {
+            Column() {
+              if (this.pageRows().length === 0) {
+                Text(l10n(this.lang(), '没有匹配的行', 'No matching rows'))
+                  .fontSize(12)
+                  .fontColor(Theme.colorMuted())
+                  .width(this.tableWidth())
+                  .textAlign(TextAlign.Center)
+                  .padding(24)
+              } else {
+                ForEach(this.pageRows(), (row: CellValue[], rIdx: number) => {
+                  this.bodyRow(row, rIdx)
+                }, (row: CellValue[], rIdx: number) => rIdx.toString() + '_' + this.copiedCell + '_' + this.widthTick.toString())
+              }
+            }
+            .width(this.tableWidth())
+            // Keep the last rows clear of the floating AI capsule
+            .padding({ bottom: 56 })
           }
+          .layoutWeight(1)
+          .scrollBar(BarState.Auto)
+          .align(Alignment.TopStart)
         }
         .width(this.tableWidth())
-        // Keep the last rows clear of the floating AI capsule
-        .padding({ bottom: 56 })
+        .height('100%')
       }
       .layoutWeight(1)
-      .scrollable(ScrollDirection.Free)
+      .scrollable(ScrollDirection.Horizontal)
       .scrollBar(BarState.Auto)
-      .edgeEffect(EdgeEffect.None)
       .align(Alignment.TopStart)
       .backgroundColor(Theme.colorSurface())
       .border({ width: { top: 1, bottom: 1 }, color: Theme.colorBorder() })
+      .gesture(PanGesture({ fingers: 1, direction: PanDirection.Horizontal, distance: 8 })
+        .onActionStart((_e: GestureEvent) => {
+          this.panBaseX = this.hScroller.currentOffset().xOffset;
+        })
+        .onActionUpdate((e: GestureEvent) => {
+          // 触摸横滑：手动驱动水平偏移（滚轮纵向仍由内层 Scroll 处理）
+          this.hScroller.scrollTo({ xOffset: Math.max(0, this.panBaseX - e.offsetX), yOffset: 0 });
+        }))
     }
     .width('100%')
     .height('100%')
