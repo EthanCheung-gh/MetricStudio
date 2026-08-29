@@ -130,6 +130,12 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
     assert "a=10" in captured["prompt"] or "name=a" in captured["prompt"]
     assert resp.json()["evidence"]
     assert any(item["kind"] == "statistics" for item in resp.json()["evidence"])
+    # v1.0.1: overview line + count/missing are available for scale questions
+    assert "Dataset overview: 3 rows × 2 columns" in captured["prompt"]
+    assert "count=3" in captured["prompt"] and "missing=0" in captured["prompt"]
+    overview = next(item for item in resp.json()["evidence"] if item["id"] == "overview")
+    assert overview["kind"] == "overview"
+    assert "3 rows × 2 columns" in overview["detail"]
 
 
 def test_ask_endpoint_uses_bound_snapshot_and_filters(client, monkeypatch):

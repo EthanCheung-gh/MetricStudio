@@ -151,7 +151,8 @@ def _build_data_context(dataset: Any, df: Any) -> str:
     from backend.core.insights import generate_insights
 
     df, _ = prepare_for_llm(df, load_config())
-    lines = ["Columns: " + ", ".join(f"{name}({dtype})" for name, dtype in df.dtypes.items())]
+    lines = [f"Dataset overview: {len(df)} rows × {len(df.columns)} columns"]
+    lines.append("Columns: " + ", ".join(f"{name}({dtype})" for name, dtype in df.dtypes.items()))
     if df.empty:
         lines.append("No rows matched the selected context.")
         return "\n".join(lines)
@@ -161,7 +162,8 @@ def _build_data_context(dataset: Any, df: Any) -> str:
         for col in desc.index:
             row = desc.loc[col]
             lines.append(
-                f"{col}: min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, median={df[col].median():.2f}"
+                f"{col}: count={int(row['count'])}, missing={int(df[col].isna().sum())}, "
+                f"min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, median={df[col].median():.2f}"
             )
     lines.append("Sample rows:")
     for _, row in df.head(5).iterrows():
@@ -182,6 +184,7 @@ def _build_data_evidence(dataset: Any, df: Any, snapshot_id: str | None) -> list
         source["snapshotId"] = snapshot_id
     evidence: list[dict[str, Any]] = [
         {"id": "schema", "kind": "schema", "detail": ", ".join(f"{name} ({dtype})" for name, dtype in df.dtypes.items()), "source": source},
+        {"id": "overview", "kind": "overview", "detail": f"{len(df)} rows × {len(df.columns)} columns", "source": source},
     ]
     if df.empty:
         return evidence
@@ -195,7 +198,8 @@ def _build_data_evidence(dataset: Any, df: Any, snapshot_id: str | None) -> list
                     "id": f"statistics:{col}",
                     "kind": "statistics",
                     "detail": (
-                        f"{col}: min={row['min']}, max={row['max']}, "
+                        f"{col}: count={int(row['count'])}, missing={int(df[col].isna().sum())}, "
+                        f"min={row['min']}, max={row['max']}, "
                         f"mean={row['mean']:.2f}, median={df[col].median():.2f}"
                     ),
                     "source": {**source, "field": str(col)},
