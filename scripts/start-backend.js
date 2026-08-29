@@ -6,6 +6,8 @@ import process from 'node:process'
 const root = path.resolve(import.meta.dirname, '..')
 const isTest = process.argv.includes('--test')
 const port = process.env.METRICSTUDIO_BACKEND_PORT ?? '8123'
+// Loopback by default; set METRICSTUDIO_BACKEND_HOST=0.0.0.0 for LAN access.
+const host = process.env.METRICSTUDIO_BACKEND_HOST ?? '127.0.0.1'
 
 if (!isTest) {
   try {
@@ -50,7 +52,7 @@ if (!isTest) {
 
 const args = isTest
   ? ['-m', 'pytest', 'backend/tests', '-q']
-  : ['-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', port]
+  : ['-m', 'uvicorn', 'backend.main:app', '--host', host, '--port', port]
 if (process.argv.includes('--reload')) args.push('--reload')
 
 console.log(`Starting MetricStudio backend with ${python}`)
