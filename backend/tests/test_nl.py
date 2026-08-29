@@ -222,6 +222,106 @@ def test_ask_llm_unavailable(client, monkeypatch):
     assert resp.status_code == 502
 
 
+# --- v1.1.0 tool calling -----------------------------------------------------
+
+def test_ask_tool_call_feeds_exact_facts(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,region,value\na,North,10\nb,South,20\nc,North,30\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    calls = {"n": 0}
+    captured = {}
+
+    def fake_chat(messages):
+        calls["n"] += 1
+        content = messages[0]["content"]
+        if calls["n"] == 1:
+            assert "Available tools" in content
+            return '{"tools": [{"name": "row_count", "args": {}}, {"name": "distinct_count", "args": {"column": "region"}}]}'
+        captured["prompt"] = content
+        return "该数据集共 3 行，region 有 2 个不同取值。"
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "这个数据集有多少行？"})
+    assert resp.status_code == 200, resp.text
+    assert calls["n"] == 2
+    assert "Computed facts (exact, may be cited directly):" in captured["prompt"]
+    assert "row_count = 3" in captured["prompt"]
+    assert "distinct_count(region) = 2" in captured["prompt"]
+    evidence = resp.json()["evidence"]
+    tool_ids = [item["id"] for item in evidence if item["kind"] == "tool"]
+    assert tool_ids == ["tool:row_count", "tool:distinct_count"]
+
+
+def test_ask_tool_router_failure_falls_back_to_static_overview(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,value\na,10\nb,20\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    calls = {"n": 0}
+
+    def flaky_chat(messages):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("router unavailable")
+        return "静态概览回答。"
+
+    monkeypatch.setattr(nl_module, "chat", flaky_chat)
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "有多少行？"})
+    assert resp.status_code == 200, resp.text
+    assert calls["n"] == 2
+    # Router failed silently: no tool facts attached, static overview path used.
+    assert all(item["kind"] != "tool" for item in resp.json()["evidence"])
+    assert resp.json()["answer"] == "静态概览回答。"
+
+
+def test_ask_tool_router_garbage_json_is_ignored(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,value\na,10\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    calls = {"n": 0}
+    captured = {}
+
+    def fake_chat(messages):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "我觉得不需要工具。"
+        captured["prompt"] = messages[0]["content"]
+        return "回答。"
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "test"})
+    assert resp.status_code == 200
+    assert "Computed facts" not in captured["prompt"]
+
+
+def test_ask_tool_invalid_column_is_skipped(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "name,value\na,10\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    calls = {"n": 0}
+    captured = {}
+
+    def fake_chat(messages):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return '{"tools": [{"name": "column_stats", "args": {"column": "name"}}, {"name": "distinct_count", "args": {"column": "missing_col"}}]}'
+        captured["prompt"] = messages[0]["content"]
+        return "回答。"
+
+    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "test"})
+    assert resp.status_code == 200
+    # column_stats on a non-numeric column and an unknown column are both skipped.
+    assert "Computed facts" not in captured["prompt"]
+
+
 def test_narrate_endpoint(client, monkeypatch):
     import backend.api.nl as nl_module
 

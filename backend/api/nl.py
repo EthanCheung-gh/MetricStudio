@@ -10,6 +10,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+import pandas as pd
+
 from backend.api.chart import _filter_by_filters
 from backend.core.llm import chat, load_config, save_config
 from backend.core.privacy import prepare_for_llm, sensitive_columns
@@ -229,6 +231,91 @@ def _ask_dataframe(dataset: Any, request: NLAskRequest) -> Any:
     return _filter_by_filters(df, request.filters) if request.filters else df
 
 
+# --- v1.1.0 tool calling -----------------------------------------------------
+# A lightweight, provider-agnostic tool protocol: a short "router" call asks
+# the LLM which deterministic tools it needs; the backend executes them and
+# feeds the exact results into the main prompt. Any failure degrades silently
+# to the static-overview path (v1.0.1 behavior).
+
+_TOOL_SPEC = """Available tools (deterministic, executed on the real data):
+- {"name": "row_count", "args": {}}
+- {"name": "column_stats", "args": {"column": "<numeric column>"}}
+- {"name": "distinct_count", "args": {"column": "<column>"}}
+
+Question: """
+
+_TOOL_LIMIT = 3
+
+
+def _extract_json_object(text: str) -> dict[str, Any] | None:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _run_tool(df: Any, name: str, args: dict[str, Any]) -> str | None:
+    if name == "row_count":
+        return f"row_count = {len(df)}"
+    if name == "column_stats":
+        column = str(args.get("column", ""))
+        if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
+            return None
+        series = df[column].dropna()
+        if series.empty:
+            return f"column_stats({column}): all values missing"
+        return (
+            f"column_stats({column}): count={len(series)}, missing={int(df[column].isna().sum())}, "
+            f"min={series.min()}, max={series.max()}, mean={series.mean():.4f}, median={series.median()}"
+        )
+    if name == "distinct_count":
+        column = str(args.get("column", ""))
+        if column not in df.columns:
+            return None
+        return f"distinct_count({column}) = {int(df[column].nunique(dropna=True))}"
+    return None
+
+
+def _route_and_run_tools(question: str, df: Any) -> list[dict[str, Any]]:
+    """Ask the LLM which tools the question needs, execute them, return facts.
+
+    Never raises: any routing/parsing/execution failure yields an empty list
+    so the ask flow falls back to the static data context.
+    """
+    try:
+        raw = chat([
+            {"role": "user", "content": (
+                "You are a router for a data-analysis assistant. Decide which tools are "
+                "needed to answer the question factually. Respond with ONLY a JSON object: "
+                '{"tools": [<tool objects>]} with an empty array when none apply. No prose.\n\n'
+                + _TOOL_SPEC + question
+            )}
+        ])
+    except Exception:
+        return []
+    parsed = _extract_json_object(raw)
+    if not parsed or not isinstance(parsed.get("tools"), list):
+        return []
+    facts: list[dict[str, Any]] = []
+    for tool in parsed["tools"][:_TOOL_LIMIT]:
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name", ""))
+        args = tool.get("args") if isinstance(tool.get("args"), dict) else {}
+        try:
+            detail = _run_tool(df, name, args)
+        except Exception:
+            detail = None
+        if detail:
+            facts.append({"id": f"tool:{name}", "kind": "tool", "detail": detail})
+    return facts
+
+
 @router.post("/ask")
 async def nl_ask(request: NLAskRequest):
     try:
@@ -237,6 +324,11 @@ async def nl_ask(request: NLAskRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     df = _ask_dataframe(dataset, request)
     context = _build_data_context(dataset, df)
+    tool_facts = _route_and_run_tools(request.question, df)
+    facts_block = ""
+    if tool_facts:
+        lines = "\n".join(f"- {fact['detail']}" for fact in tool_facts)
+        facts_block = f"Computed facts (exact, may be cited directly):\n{lines}\n\n"
     history = request.history[-8:]
     conversation = "\n".join(
         f"User: {turn.question}\nAssistant: {turn.answer}" for turn in history
@@ -251,6 +343,7 @@ async def nl_ask(request: NLAskRequest):
         "You are analyzing a dataset. Use ONLY the data context below; never invent numbers. "
         "Treat previous answers as conversation context, not as evidence.\n\n"
         f"Data context:\n{context}\n\n"
+        f"{facts_block}"
         f"{history_block}"
         f"Question: {request.question}\n\n"
         "请用简体中文简洁回答，引用上下文中的具体数字；如果数据不足，请明确说明。"
@@ -260,9 +353,11 @@ async def nl_ask(request: NLAskRequest):
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
     config = load_config()
+    evidence = _build_data_evidence(dataset, df, request.snapshot_id)
+    evidence.extend(tool_facts)
     return {
         "answer": answer,
-        "evidence": _build_data_evidence(dataset, df, request.snapshot_id),
+        "evidence": evidence[:15],
         "model": config.get("model", "unknown"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
