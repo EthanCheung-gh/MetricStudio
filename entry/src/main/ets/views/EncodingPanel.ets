@@ -14,6 +14,7 @@ import { WorkspaceState } from '../model/WorkspaceState';
 export struct EncodingPanel {
   @Consume('workspaceState') @Watch('onChartTick') workspaceState: WorkspaceState;
   @Consume('dataState') dataState: DataState;
+  @Prop @Watch('onSyncTick') syncTick: number = 0; // chart template applied
   @State selX: string = '';
   @State selY: string = '';
   @State selZ: string = '';
@@ -27,6 +28,11 @@ export struct EncodingPanel {
 
   onChartTick(): void {
     this.syncFromChart();
+  }
+
+  onSyncTick(): void {
+    this.syncFromChart();
+    this.yMetaTick++;
   }
 
   private syncFromChart(): void {

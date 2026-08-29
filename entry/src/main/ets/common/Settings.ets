@@ -15,6 +15,7 @@ const KEY_SHORTCUTS = 'shortcut_overrides';
 const KEY_REPORT_TEMPLATES = 'report_templates';
 const KEY_NOTES_DRAFT = 'report_notes_draft';
 const KEY_DASH_TEMPLATES = 'dashboard_layout_templates';
+const KEY_CHART_TEMPLATES = 'chart_templates';
 const PROJECT_FILE = 'project.json';
 
 /**
@@ -312,6 +313,34 @@ export class Settings {
     }
     try {
       store.putSync(KEY_DASH_TEMPLATES, json);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load chart templates JSON (web ~/.metricstudio/templates). */
+  static loadChartTemplates(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_CHART_TEMPLATES, '') as string;
+    } catch (e) {
+      v = '';
+    }
+    return v;
+  }
+
+  /** Persist chart templates as a JSON document. */
+  static async saveChartTemplates(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_CHART_TEMPLATES, json);
       await store.flush();
     } catch (e) {
       // ignore persistence errors

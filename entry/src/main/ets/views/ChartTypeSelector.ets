@@ -11,6 +11,7 @@ import { chartTypeSpecs, chartTypeList } from '../model/ChartConfig';
 @Component
 export struct ChartTypeSelector {
   @Consume('workspaceState') workspaceState: WorkspaceState;
+  @Prop tplTick: number = 0; // template applied → refresh highlight
 
   private currentType(): string {
     const c = this.workspaceState.activeChart();

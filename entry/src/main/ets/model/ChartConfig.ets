@@ -126,6 +126,157 @@ export class ChartEncoding {
     }
     return e;
   }
+
+  /** Serialize the encoding for a saved chart template. */
+  toTemplateJson(): string {
+    const out: TemplateJson = { chartType: this.chartType };
+    if (this.x !== null) {
+      out.x = channelToJson(this.x);
+    }
+    const ys: TemplateYJson[] = [];
+    for (let i = 0; i < this.yFields.length; i++) {
+      const y = this.yFields[i];
+      ys.push({ field: y.field, type: y.type, aggregate: y.aggregate, axis: y.axis, normalize: y.normalize });
+    }
+    out.yFields = ys;
+    if (this.color !== null) {
+      out.color = channelToJson(this.color);
+    }
+    if (this.size !== null) {
+      out.size = channelToJson(this.size);
+    }
+    if (this.facet !== null) {
+      out.facet = channelToJson(this.facet);
+    }
+    if (this.z !== null) {
+      out.z = channelToJson(this.z);
+    }
+    if (this.options !== null) {
+      out.options = this.options;
+    }
+    if (this.path.length > 0) {
+      out.path = this.path.slice();
+    }
+    if (this.source !== null) {
+      out.source = channelToJson(this.source);
+    }
+    if (this.target !== null) {
+      out.target = channelToJson(this.target);
+    }
+    return JSON.stringify(out);
+  }
+
+  /** Apply a template JSON onto this encoding (missing keys keep current). */
+  applyTemplateJson(json: string): boolean {
+    try {
+      const tpl = JSON.parse(json) as TemplateJson;
+      const fresh = new ChartEncoding();
+      fresh.chartType = tpl.chartType !== undefined ? tpl.chartType : this.chartType;
+      if (tpl.x !== undefined) {
+        fresh.x = channelFromJson(tpl.x);
+      }
+      if (tpl.yFields !== undefined) {
+        for (let i = 0; i < tpl.yFields.length; i++) {
+          const y = tpl.yFields[i];
+          fresh.yFields.push(new YFieldConfig(y.field, y.type as FieldType,
+            y.aggregate as AggregateType, y.axis !== undefined ? y.axis : 'left',
+            y.normalize !== undefined ? y.normalize : 'none'));
+        }
+      }
+      if (tpl.color !== undefined) {
+        fresh.color = channelFromJson(tpl.color);
+      }
+      if (tpl.size !== undefined) {
+        fresh.size = channelFromJson(tpl.size);
+      }
+      if (tpl.facet !== undefined) {
+        fresh.facet = channelFromJson(tpl.facet);
+      }
+      if (tpl.z !== undefined) {
+        fresh.z = channelFromJson(tpl.z);
+      }
+      if (tpl.options !== undefined) {
+        const o = new ChartOptions();
+        o.orientation = tpl.options.orientation;
+        o.barmode = tpl.options.barmode;
+        o.histnorm = tpl.options.histnorm;
+        o.cumulative = tpl.options.cumulative;
+        o.boxPoints = tpl.options.boxPoints;
+        o.startField = tpl.options.startField;
+        o.endField = tpl.options.endField;
+        o.openField = tpl.options.openField;
+        o.highField = tpl.options.highField;
+        o.lowField = tpl.options.lowField;
+        o.closeField = tpl.options.closeField;
+        o.marginalX = tpl.options.marginalX;
+        o.marginalY = tpl.options.marginalY;
+        o.corrMatrix = tpl.options.corrMatrix;
+        o.annotateCells = tpl.options.annotateCells;
+        fresh.options = o;
+      }
+      if (tpl.path !== undefined) {
+        for (let i = 0; i < tpl.path.length; i++) {
+          fresh.path.push(tpl.path[i]);
+        }
+      }
+      if (tpl.source !== undefined) {
+        fresh.source = channelFromJson(tpl.source);
+      }
+      if (tpl.target !== undefined) {
+        fresh.target = channelFromJson(tpl.target);
+      }
+      this.chartType = fresh.chartType;
+      this.x = fresh.x;
+      this.yFields = fresh.yFields;
+      this.color = fresh.color;
+      this.size = fresh.size;
+      this.facet = fresh.facet;
+      this.z = fresh.z;
+      this.options = fresh.options;
+      this.path = fresh.path;
+      this.source = fresh.source;
+      this.target = fresh.target;
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+}
+
+interface TemplateChannelJson {
+  field: string;
+  type: string;
+  aggregate: string | null;
+}
+
+interface TemplateYJson {
+  field: string;
+  type: string;
+  aggregate: string | null;
+  axis?: string;
+  normalize?: string;
+}
+
+interface TemplateJson {
+  chartType?: string;
+  x?: TemplateChannelJson;
+  yFields?: TemplateYJson[];
+  color?: TemplateChannelJson;
+  size?: TemplateChannelJson;
+  facet?: TemplateChannelJson;
+  z?: TemplateChannelJson;
+  options?: ChartOptions;
+  path?: string[];
+  source?: TemplateChannelJson;
+  target?: TemplateChannelJson;
+}
+
+function channelToJson(c: EncodingChannel): TemplateChannelJson {
+  return { field: c.field, type: c.type, aggregate: c.aggregate };
+}
+
+function channelFromJson(j: TemplateChannelJson): EncodingChannel {
+  return new EncodingChannel(j.field, j.type as FieldType, j.aggregate as AggregateType);
 }
 
 /** User text annotation placed at paper coords (web PropertyEditor addTextAnnotation). */

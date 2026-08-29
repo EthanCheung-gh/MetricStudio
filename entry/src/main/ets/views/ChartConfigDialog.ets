@@ -1,5 +1,7 @@
+import { promptAction } from '@kit.ArkUI';
 import { Theme } from '../common/Theme';
-import { t } from '../common/Locale';
+import { l10n, t } from '../common/Locale';
+import { Settings } from '../common/Settings';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { chartTypeSpecs } from '../model/ChartConfig';
 import { ChartTypeSelector } from './ChartTypeSelector';
@@ -9,16 +11,28 @@ import { AnnotationPanel } from './AnnotationPanel';
 const PANEL_W = 680;
 const PANEL_H = 560;
 
+/** Persisted chart template (web ~/.metricstudio/templates). */
+interface ChartTemplateDoc {
+  id: string;
+  name: string;
+  encoding: string; // ChartEncoding.toTemplateJson()
+}
+
 /**
  * Chart config dialog (web: src/components/chart/ChartConfigDialog.tsx).
  * Draggable floating panel (drag on the header) so it never blocks other
- * components; left chart-type column + right config column + Done footer.
+ * components; left chart-type column + right config column (type summary,
+ * 模板 templates, encoding, annotations) + Done footer.
  */
 @Component
 export struct ChartConfigDialog {
   @Consume('workspaceState') workspaceState: WorkspaceState;
   @State posX: number = 0;
   @State posY: number = 0;
+  @State templates: ChartTemplateDoc[] = [];
+  @State tplName: string = '';
+  @State tplPickIdx: number = -1;
+  @State tplTick: number = 0;
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   private dragBaseX: number = 0;
@@ -29,7 +43,80 @@ export struct ChartConfigDialog {
   private positioned: boolean = false;
 
   aboutToAppear(): void {
+    this.loadTemplates();
     // position initialized via onAreaChange of the full-screen Stack
+  }
+
+  private loadTemplates(): void {
+    try {
+      const raw = Settings.loadChartTemplates();
+      if (raw.length > 0) {
+        this.templates = JSON.parse(raw) as ChartTemplateDoc[];
+        return;
+      }
+    } catch (e) {
+      // fall through
+    }
+    this.templates = [];
+  }
+
+  private persistTemplates(): void {
+    Settings.saveChartTemplates(JSON.stringify(this.templates));
+  }
+
+  private saveTemplate(): void {
+    const chart = this.workspaceState.activeChart();
+    if (chart === null) {
+      return;
+    }
+    const name = this.tplName.trim().length > 0 ? this.tplName.trim()
+      : l10n(this.workspaceState.language, '模板 ' + (this.templates.length + 1).toString(),
+        'Template ' + (this.templates.length + 1).toString());
+    this.templates.push({
+      id: 'ctpl_' + Date.now().toString(),
+      name: name,
+      encoding: chart.encoding.toTemplateJson(),
+    });
+    this.persistTemplates();
+    this.tplName = '';
+    this.tplTick++;
+    promptAction.showToast({ message: t(this.workspaceState.language, 'chart.tplSaved') });
+  }
+
+  private applyTemplateByIndex(index: number): void {
+    const chart = this.workspaceState.activeChart();
+    if (chart === null || index < 0 || index >= this.templates.length) {
+      return;
+    }
+    if (chart.encoding.applyTemplateJson(this.templates[index].encoding)) {
+      this.tplTick++;
+      this.workspaceState.refreshChart();
+      promptAction.showToast({ message: l10n(this.workspaceState.language,
+        '模板已应用', 'Template applied') });
+    }
+  }
+
+  private deleteTemplateByIndex(index: number): void {
+    if (index < 0 || index >= this.templates.length) {
+      return;
+    }
+    const next: ChartTemplateDoc[] = [];
+    for (let i = 0; i < this.templates.length; i++) {
+      if (i !== index) {
+        next.push(this.templates[i]);
+      }
+    }
+    this.templates = next;
+    this.tplPickIdx = -1;
+    this.persistTemplates();
+  }
+
+  private templateOptions(): SelectOption[] {
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < this.templates.length; i++) {
+      opts.push({ value: this.templates[i].name });
+    }
+    return opts;
   }
 
   private typeName(): string {
@@ -161,10 +248,102 @@ export struct ChartConfigDialog {
             .border({ width: 1, color: Theme.colorBorder() })
             .backgroundColor(Theme.colorSurface())
             .alignItems(HorizontalAlign.Start)
+            .opacity(this.tplTick >= 0 ? 1 : 1)
+
+            // 模板（web ChartConfigDialog 模板区：应用/删除 + 保存当前）
+            Column({ space: 8 }) {
+              Text(t(this.workspaceState.language, 'chart.tplSection'))
+                .fontSize(12)
+                .fontWeight(600)
+                .fontColor(Theme.colorForeground())
+                .alignSelf(ItemAlign.Start)
+              Text(t(this.workspaceState.language, 'chart.savedTemplates'))
+                .fontSize(11)
+                .fontColor(Theme.colorMuted())
+                .alignSelf(ItemAlign.Start)
+              Row({ space: 8 }) {
+                Select(this.templateOptions())
+                  .fontColor(Theme.colorForeground())
+                  .border({ width: 1, color: Theme.colorBorder() })
+                  .selected(this.tplPickIdx)
+                  .value(this.tplPickIdx >= 0 && this.tplPickIdx < this.templates.length
+                    ? this.templates[this.tplPickIdx].name : '')
+                  .font({ size: 12 })
+                  .height(32)
+                  .layoutWeight(1)
+                  .backgroundColor(Theme.colorSurface())
+                  .borderRadius(6)
+                  .onSelect((i: number, _v: string) => {
+                    this.tplPickIdx = i;
+                  })
+                Button() {
+                  Text(t(this.workspaceState.language, 'chart.tplApply'))
+                    .fontSize(12)
+                    .fontColor(Color.White)
+                }
+                .type(ButtonType.Normal)
+                .height(32)
+                .padding({ left: 14, right: 14 })
+                .backgroundColor(this.tplPickIdx >= 0 ? Theme.primary : Theme.colorBorder())
+                .borderRadius(6)
+                .onClick(() => {
+                  this.applyTemplateByIndex(this.tplPickIdx);
+                })
+                Text('🗑')
+                  .fontSize(14)
+                  .fontColor(Theme.danger)
+                  .padding(6)
+                  .onClick(() => {
+                    this.deleteTemplateByIndex(this.tplPickIdx);
+                  })
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+
+              Row({ space: 8 }) {
+                TextInput({ placeholder: t(this.workspaceState.language, 'chart.tplName'), text: this.tplName })
+                  .height(32)
+                  .padding({ top: 0, bottom: 0 })
+                  .fontSize(12)
+                  .fontColor(Theme.colorForeground())
+                  .placeholderColor(Theme.colorMuted())
+                  .placeholderFont({ size: 12 })
+                  .layoutWeight(1)
+                  .backgroundColor(Theme.colorSurface())
+                  .borderRadius(6)
+                  .onChange((v: string) => {
+                    this.tplName = v;
+                  })
+                Button() {
+                  Row({ space: 4 }) {
+                    Text('💾').fontSize(11)
+                    Text(t(this.workspaceState.language, 'chart.tplSaveCurrent'))
+                      .fontSize(12)
+                      .fontColor(Theme.primary)
+                  }
+                }
+                .type(ButtonType.Normal)
+                .height(32)
+                .padding({ left: 12, right: 12 })
+                .backgroundColor(Theme.primaryDim)
+                .borderRadius(6)
+                .onClick(() => {
+                  this.saveTemplate();
+                })
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+            }
+            .width('100%')
+            .padding(12)
+            .borderRadius(6)
+            .border({ width: 1, color: Theme.primary })
+            .backgroundColor(Theme.colorSurface())
+            .alignItems(HorizontalAlign.Start)
 
             Scroll() {
               Column({ space: 12 }) {
-                EncodingPanel()
+                EncodingPanel({ syncTick: this.tplTick })
                   .width('100%')
                 AnnotationPanel()
                   .width('100%')
