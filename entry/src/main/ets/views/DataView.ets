@@ -593,8 +593,9 @@ export struct DataView {
         .padding({ left: 10, right: 10, bottom: 6 })
       }
 
-      // Single horizontal scroll hosts BOTH header and body so column widths
-      // always stay perfectly aligned.
+      // Single free-direction scroll hosts header AND body (web DataTable
+      // overflow:auto): horizontal pan works regardless of nested vertical
+      // gesture capture.
       Scroll() {
         Column() {
           // Header row (sort cycle + per-column filter + resize handle)
@@ -608,36 +609,27 @@ export struct DataView {
           }
           .width(this.tableWidth())
 
-          // Body (vertical scroll inside the shared horizontal scroll)
-          Scroll() {
-            Column() {
-              if (this.pageRows().length === 0) {
-                Text(l10n(this.lang(), '没有匹配的行', 'No matching rows'))
-                  .fontSize(12)
-                  .fontColor(Theme.colorMuted())
-                  .width('100%')
-                  .textAlign(TextAlign.Center)
-                  .padding(24)
-              } else {
-                ForEach(this.pageRows(), (row: CellValue[], rIdx: number) => {
-                  this.bodyRow(row, rIdx)
-                }, (row: CellValue[], rIdx: number) => rIdx.toString() + '_' + this.copiedCell + '_' + this.widthTick.toString())
-              }
-            }
-            .width(this.tableWidth())
-            // Keep the last rows clear of the floating AI capsule
-            .padding({ bottom: 56 })
+          if (this.pageRows().length === 0) {
+            Text(l10n(this.lang(), '没有匹配的行', 'No matching rows'))
+              .fontSize(12)
+              .fontColor(Theme.colorMuted())
+              .width(this.tableWidth())
+              .textAlign(TextAlign.Center)
+              .padding(24)
+          } else {
+            ForEach(this.pageRows(), (row: CellValue[], rIdx: number) => {
+              this.bodyRow(row, rIdx)
+            }, (row: CellValue[], rIdx: number) => rIdx.toString() + '_' + this.copiedCell + '_' + this.widthTick.toString())
           }
-          .layoutWeight(1)
-          .scrollBar(BarState.Auto)
-          .align(Alignment.TopStart)
         }
         .width(this.tableWidth())
-        .height('100%')
+        // Keep the last rows clear of the floating AI capsule
+        .padding({ bottom: 56 })
       }
       .layoutWeight(1)
-      .scrollable(ScrollDirection.Horizontal)
+      .scrollable(ScrollDirection.Free)
       .scrollBar(BarState.Auto)
+      .edgeEffect(EdgeEffect.None)
       .align(Alignment.TopStart)
       .backgroundColor(Theme.colorSurface())
       .border({ width: { top: 1, bottom: 1 }, color: Theme.colorBorder() })

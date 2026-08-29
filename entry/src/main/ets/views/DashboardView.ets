@@ -746,6 +746,9 @@ export struct DashboardView {
         }
         .width('100%')
       }
+      // 一键「新建图表并添加」：数据集就绪但尚无图表时闭环（web 需先去图表
+      // 页新建；端侧补一个直达入口）
+      this.newChartButton()
     }
     .width('100%')
     .padding(10)
@@ -753,6 +756,35 @@ export struct DashboardView {
     .border({ width: 1, color: Theme.colorBorder() })
     .backgroundColor(Theme.colorSurface())
     .alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  newChartButton() {
+    Button() {
+      Row({ space: 4 }) {
+        SymbolGlyph($r('sys.symbol.plus'))
+          .fontSize(11)
+          .fontColor([Theme.primary])
+        Text(t(this.workspaceState.language, 'dashboard.newChartAndAdd'))
+          .fontSize(11)
+          .fontColor(Theme.primary)
+      }
+    }
+    .type(ButtonType.Normal)
+    .height(26)
+    .padding({ left: 10, right: 10 })
+    .backgroundColor(Theme.primaryDim)
+    .borderRadius(10)
+    .border({ width: 1, color: Theme.primary })
+    .onClick(() => {
+      const df = this.dataState.activeDataFrame;
+      if (df === null) {
+        return;
+      }
+      const chart = this.workspaceState.createChart(df.name);
+      this.workspaceState.dashboard.addChart(chart.id);
+      this.workspaceState.refreshChart();
+    })
   }
 
   @Builder
