@@ -78,6 +78,7 @@ function copyItems(items: DashboardItem[]): DashboardItem[] {
   for (let i = 0; i < items.length; i++) {
     const s = items[i];
     const c = new DashboardItem(s.kind, s.chartId, s.label, s.column, s.agg, s.text);
+    c.id = s.id; // keep stable ids (brush map + ForEach keys depend on them)
     c.x = s.x;
     c.y = s.y;
     c.w = s.w;

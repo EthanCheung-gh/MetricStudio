@@ -32,6 +32,11 @@ export struct DashboardView {
   @StorageLink('dashboardTick') @Watch('onDashboardTick') dashboardTick: number = 0;
   @State renderTick: number = 0;
   @State containerW: number = 0;
+  // ArkUI V1 无法观察 @Consume 对象的深层变更（items.push 等），用 @State
+  // 镜像驱动渲染：dashboardTick watcher 里整体快照。
+  @State dashItems: DashboardItem[] = [];
+  @State dashFilters: DashboardFilter[] = [];
+  @State dashEditMode: boolean = true;
   @State addMode: string = ''; // '' | 'chart' | 'kpi' | 'text'
   @State kpiCol: string = '';
   @State kpiAgg: string = 'sum';
@@ -46,6 +51,36 @@ export struct DashboardView {
   @State dragId: string = '';
   private dragStartX: number = 0;
   private dragStartY: number = 0;
+
+  aboutToAppear(): void {
+    this.syncFromDashboard();
+  }
+
+  /** Snapshot dashboard state into observable mirrors. */
+  private syncFromDashboard(): void {
+    this.dashItems = this.workspaceState.dashboard.items.slice();
+    this.dashFilters = this.workspaceState.dashboard.filters.slice();
+    this.dashEditMode = this.workspaceState.dashboard.editMode;
+  }
+
+  onDashboardTick(): void {
+    this.syncFromDashboard();
+    this.renderTick++;
+  }
+
+  private activeFilterCountOf(list: DashboardFilter[]): number {
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      if (f.kind === 'category' && f.values.length > 0) {
+        n++;
+      }
+      if (f.kind !== 'category' && (f.lo.length > 0 || f.hi.length > 0)) {
+        n++;
+      }
+    }
+    return n;
+  }
 
   private brushCount(): number {
     const keys = Object.keys(this.brushes);
@@ -90,10 +125,6 @@ export struct DashboardView {
     }
   }
 
-  onDashboardTick(): void {
-    this.renderTick++;
-  }
-
   private colW(): number {
     if (this.containerW <= 0) {
       return 100;
@@ -116,7 +147,7 @@ export struct DashboardView {
     if (df === null) {
       return null;
     }
-    return applyDashboardFilters(df, this.workspaceState.dashboard.filters);
+    return applyDashboardFilters(df, this.dashFilters);
   }
 
   private uniqueValues(field: string): string[] {
@@ -241,15 +272,24 @@ export struct DashboardView {
   // ---- item helpers ----
 
   private sortedItems(): DashboardItem[] {
-    return this.workspaceState.dashboard.items.slice().sort((a: DashboardItem, b: DashboardItem) =>
+    return this.dashItems.slice().sort((a: DashboardItem, b: DashboardItem) =>
       (a.y - b.y) !== 0 ? (a.y - b.y) : (a.x - b.x));
+  }
+
+  private hasChartItemLocal(chartId: string): boolean {
+    for (let i = 0; i < this.dashItems.length; i++) {
+      if (this.dashItems[i].kind === DashboardItemKind.Chart && this.dashItems[i].chartId === chartId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private pendingCharts(): ChartConfig[] {
     const charts = this.workspaceState.charts;
     const out: ChartConfig[] = [];
     for (let i = 0; i < charts.length; i++) {
-      if (!this.workspaceState.dashboard.hasChartItem(charts[i].id)) {
+      if (!this.hasChartItemLocal(charts[i].id)) {
         out.push(charts[i]);
       }
     }
@@ -287,7 +327,7 @@ export struct DashboardView {
   }
 
   private editable(item: DashboardItem): boolean {
-    return this.workspaceState.dashboard.editMode && !item.locked;
+    return this.dashEditMode && !item.locked;
   }
 
   private startDrag(item: DashboardItem, e: GestureEvent): void {
@@ -315,7 +355,7 @@ export struct DashboardView {
 
   private dragFiltersJson(): string {
     const out: DashFilterSpec[] = [];
-    const filters = this.workspaceState.dashboard.filters;
+    const filters = this.dashFilters;
     for (let i = 0; i < filters.length; i++) {
       out.push({ field: filters[i].field, kind: filters[i].kind, values: filters[i].values,
         lo: filters[i].lo, hi: filters[i].hi });
@@ -434,12 +474,12 @@ export struct DashboardView {
         if (this.dataState.hasData) {
           // Toolbar (web: edit toggle + undo/redo + align/space tools)
           Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-            this.toolChip(this.workspaceState.dashboard.editMode
+            this.toolChip(this.dashEditMode
               ? t(this.workspaceState.language, 'dashboard.editing')
               : t(this.workspaceState.language, 'dashboard.viewing'), () => {
-              this.workspaceState.dashboard.setEditMode(!this.workspaceState.dashboard.editMode);
-            }, this.workspaceState.dashboard.editMode)
-            if (this.workspaceState.dashboard.editMode) {
+              this.workspaceState.dashboard.setEditMode(!this.dashEditMode);
+            }, this.dashEditMode)
+            if (this.dashEditMode) {
               this.toolChip('↶', () => {
                 if (!this.workspaceState.dashboard.undo()) {
                   promptAction.showToast({ message: t(this.workspaceState.language, 'transform.nothingToUndo') });
@@ -487,7 +527,7 @@ export struct DashboardView {
         }
 
         // Absolute grid (12 cols × 80px rows, vertical compaction)
-        if (this.workspaceState.dashboard.items.length === 0) {
+        if (this.dashItems.length === 0) {
           Text(t(this.workspaceState.language, 'dashboard.empty'))
             .fontSize(12)
             .fontColor(Theme.colorMuted())
@@ -529,7 +569,7 @@ export struct DashboardView {
 
   private gridHeightTotal(): number {
     let maxBottom = 4;
-    const items = this.workspaceState.dashboard.items;
+    const items = this.dashItems;
     for (let i = 0; i < items.length; i++) {
       maxBottom = Math.max(maxBottom, items[i].y + items[i].h);
     }
@@ -583,7 +623,7 @@ export struct DashboardView {
           .fontWeight(600)
           .fontColor(Theme.colorMuted())
           .layoutWeight(1)
-        if (this.workspaceState.dashboard.hasActiveFilters()) {
+        if (this.activeFilterCountOf(this.dashFilters) > 0) {
           Text(t(this.workspaceState.language, 'dashboard.clearFilters'))
             .fontSize(10)
             .fontColor(Theme.primary)
@@ -614,7 +654,7 @@ export struct DashboardView {
         })
 
       Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-        ForEach(this.workspaceState.dashboard.filters, (f: DashboardFilter) => {
+        ForEach(this.dashFilters, (f: DashboardFilter) => {
           this.filterEditor(f)
         }, (f: DashboardFilter) => f.id + '_' + f.values.length.toString() + '_' + f.lo + '_' + f.hi
           + '_' + this.renderTick.toString())
@@ -890,7 +930,7 @@ export struct DashboardView {
         .maxLines(1)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
-      if (this.workspaceState.dashboard.editMode) {
+      if (this.dashEditMode) {
         SymbolGlyph(item.locked ? $r('sys.symbol.lock') : $r('sys.symbol.lock_open'))
           .fontSize(12)
           .fontColor([item.locked ? Theme.primary : Theme.colorMuted()])
@@ -941,7 +981,7 @@ export struct DashboardView {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
-        if (this.workspaceState.dashboard.editMode) {
+        if (this.dashEditMode) {
           SymbolGlyph(item.locked ? $r('sys.symbol.lock') : $r('sys.symbol.lock_open'))
             .fontSize(11)
             .fontColor([item.locked ? Theme.primary : Theme.colorMuted()])
