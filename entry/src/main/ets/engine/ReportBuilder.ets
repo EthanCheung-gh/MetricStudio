@@ -176,3 +176,74 @@ export function buildReportHtml(df: DataFrame, charts: ChartConfig[], history: T
   parts.push('</body>\n</html>\n');
   return parts.join('');
 }
+
+/** Prepared dashboard export payload (view computes KPI values/texts). */
+export class DashExportChart {
+  name: string = '';
+  figure: string = ''; // built figure JSON
+}
+
+export class DashExportKpi {
+  label: string = '';
+  valueText: string = '';
+}
+
+export class DashExportText {
+  text: string = '';
+}
+
+/**
+ * Dashboard export (web /api/report dashboard payload): KPI cards + text
+ * cards + chart figures as a self-contained HTML page.
+ */
+export function buildDashboardHtml(title: string, charts: DashExportChart[], kpis: DashExportKpi[],
+  texts: DashExportText[], plotlyJs: string): string {
+  const parts: string[] = [];
+  parts.push('<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="utf-8">\n');
+  parts.push('<title>' + escapeHtml(title) + '</title>\n');
+  parts.push('<script>');
+  parts.push(plotlyJs);
+  parts.push('</script>\n');
+  parts.push('<style>' + PAGE_CSS
+    + '.kpis{display:flex;flex-wrap:wrap;gap:12px}.kpi{border:1px solid #e5e7eb;border-radius:8px;padding:10px 14px;min-width:120px}'
+    + '.kpi .v{font-size:22px;font-weight:700;color:#4f46e5}.kpi .l{font-size:12px;color:#6b7280}'
+    + '.textcard{font-size:14px;line-height:1.7;white-space:pre-wrap;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin:8px 0}'
+    + '</style>\n</head>\n<body>\n');
+  parts.push('<h1>' + escapeHtml(title) + '</h1>\n');
+  parts.push('<p class="meta">' + escapeHtml(new Date().toISOString().slice(0, 16).replace('T', ' ')) + ' · MetricStudio</p>\n');
+
+  if (kpis.length > 0) {
+    parts.push('<div class="kpis">');
+    for (let i = 0; i < kpis.length; i++) {
+      parts.push('<div class="kpi"><div class="v">' + escapeHtml(kpis[i].valueText)
+        + '</div><div class="l">' + escapeHtml(kpis[i].label) + '</div></div>');
+    }
+    parts.push('</div>\n');
+  }
+  for (let i = 0; i < texts.length; i++) {
+    parts.push('<div class="textcard">' + escapeHtml(texts[i].text) + '</div>\n');
+  }
+  if (charts.length > 0) {
+    const figures: string[] = [];
+    for (let i = 0; i < charts.length; i++) {
+      if (charts[i].figure.length > 0) {
+        figures.push(charts[i].figure);
+      }
+    }
+    for (let i = 0; i < figures.length; i++) {
+      parts.push('<div id="chart-' + i.toString() + '" class="chart"></div>');
+    }
+    parts.push('<script>\n(function(){\n  var figures = [');
+    parts.push(figures.map((f: string): string => escapeScript(f)).join(','));
+    parts.push('];\n');
+    parts.push('  for (var i = 0; i < figures.length; i++) {\n');
+    parts.push('    var el = document.getElementById(\'chart-\' + i);\n');
+    parts.push('    if (!el || typeof Plotly === \'undefined\') { continue; }\n');
+    parts.push('    var f = figures[i];\n');
+    parts.push('    f.layout.font = { color: \'#111827\', size: 12 };\n');
+    parts.push('    Plotly.newPlot(el, f.data, f.layout, { responsive: true, displaylogo: false, displayModeBar: false });\n');
+    parts.push('  }\n})();\n</script>\n');
+  }
+  parts.push('</body>\n</html>\n');
+  return parts.join('');
+}

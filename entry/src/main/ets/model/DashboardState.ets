@@ -6,6 +6,7 @@
  */
 import { CellValue, DataFrame } from './DataFrame';
 import { toNumber } from '../engine/Numeric';
+import { Settings } from '../common/Settings';
 
 export enum DashboardItemKind {
   Chart = 0,
@@ -107,13 +108,329 @@ interface DashSnapshotJson {
   filters: object[];
 }
 
+/** One named dashboard (web DashboardConfig; 12-col grid doc). */
+@Observed
+export class DashboardDoc {
+  id: string;
+  name: string;
+  items: DashboardItem[] = [];
+  filters: DashboardFilter[] = [];
+  createdAt: string;
+  updatedAt: string;
+
+  constructor(id: string, name: string) {
+    this.id = id;
+    this.name = name;
+    this.createdAt = new Date().toISOString();
+    this.updatedAt = this.createdAt;
+  }
+}
+
+/** Saved layout (web LayoutTemplate — item positions only). */
+export class LayoutTemplateDoc {
+  id: string;
+  name: string;
+  layout: string; // JSON: [{chartId,x,y,w,h}]
+  createdAt: string;
+
+  constructor(id: string, name: string, layout: string) {
+    this.id = id;
+    this.name = name;
+    this.layout = layout;
+    this.createdAt = new Date().toISOString();
+  }
+}
+
+interface LayoutEntryJson {
+  chartId: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Import shape of one dashboard doc (project manifest dashboards[]). */
+export interface DashboardDocJson {
+  id?: string;
+  name?: string;
+  items?: DashboardItemJson2[];
+  filters?: DashboardFilterJson2[];
+}
+
+export interface DashboardItemJson2 {
+  kind: number;
+  chartId: string;
+  label?: string;
+  column?: string;
+  agg?: string;
+  text?: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  locked?: boolean;
+}
+
+export interface DashboardFilterJson2 {
+  id?: string;
+  field: string;
+  kind: string;
+  values?: string[];
+  lo?: string;
+  hi?: string;
+}
+
 export class DashboardState {
   items: DashboardItem[] = [];
   filters: DashboardFilter[] = [];
   editMode: boolean = true;
   tick: number = 0;
+  // 多 Dashboard（web dashboardStore dashboards + activeId）
+  dashboards: DashboardDoc[] = [];
+  activeId: string = '';
+  // 布局模板（web LayoutTemplate，Preferences 持久化）
+  layoutTemplates: LayoutTemplateDoc[] = [];
   private undoStack: string[] = [];
   private redoStack: string[] = [];
+
+  /** Keep the active doc's arrays pointing at the live fields. */
+  private syncActiveDoc(): void {
+    const doc = this.findDoc(this.activeId);
+    if (doc !== null) {
+      doc.items = this.items;
+      doc.filters = this.filters;
+      doc.updatedAt = new Date().toISOString();
+    }
+  }
+
+  findDoc(id: string): DashboardDoc | null {
+    for (let i = 0; i < this.dashboards.length; i++) {
+      if (this.dashboards[i].id === id) {
+        return this.dashboards[i];
+      }
+    }
+    return null;
+  }
+
+  activeDoc(): DashboardDoc | null {
+    return this.findDoc(this.activeId);
+  }
+
+  /** Public sync for export paths (no tick bump). */
+  syncForExport(): void {
+    this.syncActiveDoc();
+  }
+
+  /** Restore dashboards from a project payload (web manifest dashboards). */
+  importDocs(docs: DashboardDocJson[], activeId: string): void {
+    this.dashboards = [];
+    for (let i = 0; i < docs.length; i++) {
+      const d = docs[i];
+      const doc = new DashboardDoc(d.id !== undefined && d.id.length > 0 ? d.id : 'dashb_' + i.toString(),
+        d.name !== undefined && d.name.length > 0 ? d.name : 'Dashboard ' + (i + 1).toString());
+      if (d.items !== undefined) {
+        for (let k = 0; k < d.items.length; k++) {
+          const j = d.items[k];
+          const kind = j.kind === DashboardItemKind.Kpi ? DashboardItemKind.Kpi
+            : (j.kind === DashboardItemKind.Text ? DashboardItemKind.Text : DashboardItemKind.Chart);
+          const item = new DashboardItem(kind, j.chartId, j.label, j.column, j.agg, j.text);
+          if (j.x !== undefined) {
+            item.x = j.x;
+          }
+          if (j.y !== undefined) {
+            item.y = j.y;
+          }
+          if (j.w !== undefined) {
+            item.w = j.w;
+          }
+          if (j.h !== undefined) {
+            item.h = j.h;
+          }
+          item.locked = j.locked === true;
+          doc.items.push(item);
+        }
+      }
+      if (d.filters !== undefined) {
+        for (let k = 0; k < d.filters.length; k++) {
+          const jf = d.filters[k];
+          const f = new DashboardFilter(jf.field, jf.kind);
+          f.id = jf.id !== undefined ? jf.id : 'flt_' + Date.now().toString() + '_' + k.toString();
+          f.values = jf.values !== undefined ? jf.values : [];
+          f.lo = jf.lo !== undefined ? jf.lo : '';
+          f.hi = jf.hi !== undefined ? jf.hi : '';
+          doc.filters.push(f);
+        }
+      }
+      this.dashboards.push(doc);
+    }
+    if (this.dashboards.length === 0) {
+      this.ensureDefault();
+      return;
+    }
+    const target = this.findDoc(activeId) !== null ? activeId : this.dashboards[0].id;
+    const doc = this.findDoc(target) as DashboardDoc;
+    this.activeId = doc.id;
+    this.items = doc.items;
+    this.filters = doc.filters;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.bump();
+  }
+
+  /** Init single empty dashboard (constructor-time / after import fallback). */
+  ensureDefault(name: string = 'Dashboard 1'): void {
+    if (this.dashboards.length === 0) {
+      const doc = new DashboardDoc('dashb_' + Date.now().toString(), name);
+      doc.items = this.items;
+      doc.filters = this.filters;
+      this.dashboards.push(doc);
+      this.activeId = doc.id;
+    } else if (this.findDoc(this.activeId) === null) {
+      this.activeId = this.dashboards[0].id;
+      this.items = this.dashboards[0].items;
+      this.filters = this.dashboards[0].filters;
+    }
+  }
+
+  createDashboard(): DashboardDoc {
+    const doc = new DashboardDoc('dashb_' + Date.now().toString(),
+      'Dashboard ' + (this.dashboards.length + 1).toString());
+    this.dashboards.push(doc);
+    this.switchDashboard(doc.id);
+    this.bump();
+    return doc;
+  }
+
+  renameDashboard(id: string, name: string): void {
+    const doc = this.findDoc(id);
+    if (doc !== null && name.trim().length > 0) {
+      doc.name = name.trim();
+      doc.updatedAt = new Date().toISOString();
+      this.bump();
+    }
+  }
+
+  duplicateDashboard(id: string): void {
+    const src = this.findDoc(id);
+    if (src === null) {
+      return;
+    }
+    const idx = this.dashboards.indexOf(src);
+    const doc = new DashboardDoc('dashb_' + Date.now().toString(), src.name + ' copy');
+    doc.items = copyItems(src.items);
+    doc.filters = copyFilters(src.filters);
+    this.dashboards.splice(idx + 1, 0, doc);
+    this.switchDashboard(doc.id);
+    this.bump();
+  }
+
+  deleteDashboard(id: string): void {
+    const doc = this.findDoc(id);
+    if (doc === null) {
+      return;
+    }
+    const idx = this.dashboards.indexOf(doc);
+    this.dashboards.splice(idx, 1);
+    if (this.dashboards.length === 0) {
+      const fresh = new DashboardDoc('dashb_' + Date.now().toString(), 'Dashboard 1');
+      this.dashboards.push(fresh);
+    }
+    if (this.activeId === id || this.findDoc(this.activeId) === null) {
+      this.switchDashboard(this.dashboards[Math.max(0, idx - 1)].id);
+    }
+    this.bump();
+  }
+
+  switchDashboard(id: string): void {
+    const doc = this.findDoc(id);
+    if (doc === null || id === this.activeId) {
+      return;
+    }
+    this.syncActiveDoc();
+    this.activeId = id;
+    this.items = doc.items;
+    this.filters = doc.filters;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.bump();
+  }
+
+  // ---- layout templates (web Save layout / 选择布局… / 删除布局模板) ----
+
+  loadLayoutTemplates(): void {
+    try {
+      const raw = Settings.loadDashTemplates();
+      if (raw.length > 0) {
+        this.layoutTemplates = JSON.parse(raw) as LayoutTemplateDoc[];
+      }
+    } catch (e) {
+      this.layoutTemplates = [];
+    }
+  }
+
+  private persistLayoutTemplates(): void {
+    Settings.saveDashTemplates(JSON.stringify(this.layoutTemplates));
+  }
+
+  saveLayoutTemplate(): void {
+    const entries: LayoutEntryJson[] = [];
+    for (let i = 0; i < this.items.length; i++) {
+      const s = this.items[i];
+      entries.push({ chartId: s.chartId.length > 0 ? s.chartId : s.id, x: s.x, y: s.y, w: s.w, h: s.h });
+    }
+    this.layoutTemplates.unshift(new LayoutTemplateDoc('lay_' + Date.now().toString(),
+      '布局 ' + (this.layoutTemplates.length + 1).toString(), JSON.stringify(entries)));
+    this.persistLayoutTemplates();
+    this.bump();
+  }
+
+  applyLayoutTemplate(id: string): boolean {
+    let tpl: LayoutTemplateDoc | null = null;
+    for (let i = 0; i < this.layoutTemplates.length; i++) {
+      if (this.layoutTemplates[i].id === id) {
+        tpl = this.layoutTemplates[i];
+        break;
+      }
+    }
+    if (tpl === null) {
+      return false;
+    }
+    try {
+      const entries = JSON.parse(tpl.layout) as LayoutEntryJson[];
+      this.record();
+      for (let e = 0; e < entries.length; e++) {
+        const entry = entries[e];
+        for (let i = 0; i < this.items.length; i++) {
+          const item = this.items[i];
+          const key = item.chartId.length > 0 ? item.chartId : item.id;
+          if (key === entry.chartId) {
+            item.x = entry.x;
+            item.y = entry.y;
+            item.w = entry.w;
+            item.h = entry.h;
+            break;
+          }
+        }
+      }
+      this.compact();
+      this.bump();
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  deleteLayoutTemplate(id: string): void {
+    const next: LayoutTemplateDoc[] = [];
+    for (let i = 0; i < this.layoutTemplates.length; i++) {
+      if (this.layoutTemplates[i].id !== id) {
+        next.push(this.layoutTemplates[i]);
+      }
+    }
+    this.layoutTemplates = next;
+    this.persistLayoutTemplates();
+    this.bump();
+  }
 
   findItem(id: string): DashboardItem | null {
     for (let i = 0; i < this.items.length; i++) {
@@ -483,6 +800,7 @@ export class DashboardState {
 
   /** Bump the tick and mirror it to AppStorage so @StorageLink watchers fire. */
   bump(): void {
+    this.syncActiveDoc();
     this.tick++;
     AppStorage.setOrCreate('dashboardTick', this.tick);
   }

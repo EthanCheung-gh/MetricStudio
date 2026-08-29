@@ -14,6 +14,7 @@ const KEY_RECIPES = 'recipes';
 const KEY_SHORTCUTS = 'shortcut_overrides';
 const KEY_REPORT_TEMPLATES = 'report_templates';
 const KEY_NOTES_DRAFT = 'report_notes_draft';
+const KEY_DASH_TEMPLATES = 'dashboard_layout_templates';
 const PROJECT_FILE = 'project.json';
 
 /**
@@ -283,6 +284,34 @@ export class Settings {
     }
     try {
       store.putSync(KEY_NOTES_DRAFT, text);
+      await store.flush();
+    } catch (e) {
+      // ignore persistence errors
+    }
+  }
+
+  /** Load dashboard layout templates JSON (web LayoutTemplate store). */
+  static loadDashTemplates(): string {
+    let v = '';
+    try {
+      const ctx = getContext() as common.UIAbilityContext;
+      const options: preferences.Options = { name: STORE_NAME };
+      const store = preferences.getPreferencesSync(ctx, options);
+      v = store.getSync(KEY_DASH_TEMPLATES, '') as string;
+    } catch (e) {
+      v = '';
+    }
+    return v;
+  }
+
+  /** Persist dashboard layout templates as a JSON document. */
+  static async saveDashTemplates(json: string): Promise<void> {
+    const store = await Settings.getStore();
+    if (store === null) {
+      return;
+    }
+    try {
+      store.putSync(KEY_DASH_TEMPLATES, json);
       await store.flush();
     } catch (e) {
       // ignore persistence errors

@@ -360,17 +360,51 @@ export class WorkspaceState {
       items.push(item);
     }
     const dashItems: DashboardItemJson[] = [];
+    // 多 Dashboard 全量导出（web manifest dashboards）
+    const dashDocs: ProjectDashboardJson[] = [];
+    const dash = this.dashboard;
+    if (dash.dashboards.length === 0) {
+      dash.ensureDefault();
+    }
+    dash.syncForExport();
+    for (let i = 0; i < dash.dashboards.length; i++) {
+      const doc = dash.dashboards[i];
+      const docItems: DashboardItemJson[] = [];
+      for (let k = 0; k < doc.items.length; k++) {
+        const it = doc.items[k];
+        docItems.push({
+          kind: it.kind,
+          chartId: it.chartId,
+          label: it.label,
+          column: it.column,
+          agg: it.agg,
+          text: it.text,
+        });
+      }
+      const docFilters: DashboardFilterJson[] = [];
+      for (let k = 0; k < doc.filters.length; k++) {
+        const f = doc.filters[k];
+        docFilters.push({ id: f.id, field: f.field, kind: f.kind, values: f.values, lo: f.lo, hi: f.hi });
+      }
+      dashDocs.push({
+        id: doc.id,
+        name: doc.name,
+        items: docItems,
+        filters: docFilters,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      });
+    }
     for (let i = 0; i < this.dashboard.items.length; i++) {
       const it = this.dashboard.items[i];
-      const dj: DashboardItemJson = {
+      dashItems.push({
         kind: it.kind,
         chartId: it.chartId,
         label: it.label,
         column: it.column,
         agg: it.agg,
         text: it.text,
-      };
-      dashItems.push(dj);
+      });
     }
     // Datasets: current frames incl. rows (web zip data/{id} equivalent),
     // plus per-dataset lineage base + chain (web transforms/{id}.json).
@@ -418,6 +452,8 @@ export class WorkspaceState {
       theme: this.theme,
       activeChartId: this.activeChartId,
       dashboardItems: dashItems,
+      dashboards: dashDocs,
+      activeDashboardId: dash.activeId,
       datasets: datasets,
       snapshots: snaps,
       qaConversations: this.qaState !== null ? this.qaState.exportList() : [],
@@ -505,18 +541,40 @@ export class WorkspaceState {
       if (data.activeChartId !== undefined) {
         this.activeChartId = data.activeChartId;
       }
-      this.dashboard.items = [];
-      if (data.dashboardItems !== undefined) {
-        const restored: DashboardItem[] = [];
-        for (let i = 0; i < data.dashboardItems.length; i++) {
-          const d = data.dashboardItems[i];
-          const kind = (d.kind as number) === DashboardItemKind.Kpi ? DashboardItemKind.Kpi
-            : ((d.kind as number) === DashboardItemKind.Text ? DashboardItemKind.Text
-              : DashboardItemKind.Chart);
-          restored.push(new DashboardItem(kind, d.chartId, d.label, d.column, d.agg, d.text));
+      // 多 Dashboard 恢复（新 dashboards 字段优先，旧 dashboardItems 兼容）
+      if (data.dashboards !== undefined && data.dashboards.length > 0) {
+        this.dashboard.importDocs(data.dashboards,
+          data.activeDashboardId !== undefined ? data.activeDashboardId : '');
+      } else {
+        this.dashboard.items = [];
+        if (data.dashboardItems !== undefined) {
+          const restored: DashboardItem[] = [];
+          for (let i = 0; i < data.dashboardItems.length; i++) {
+            const d = data.dashboardItems[i];
+            const kind = (d.kind as number) === DashboardItemKind.Kpi ? DashboardItemKind.Kpi
+              : ((d.kind as number) === DashboardItemKind.Text ? DashboardItemKind.Text
+                : DashboardItemKind.Chart);
+            const di = new DashboardItem(kind, d.chartId, d.label, d.column, d.agg, d.text);
+            if (d.x !== undefined) {
+              di.x = d.x;
+            }
+            if (d.y !== undefined) {
+              di.y = d.y;
+            }
+            if (d.w !== undefined) {
+              di.w = d.w;
+            }
+            if (d.h !== undefined) {
+              di.h = d.h;
+            }
+            di.locked = d.locked === true;
+            restored.push(di);
+          }
+          this.dashboard.items = restored;
         }
-        this.dashboard.items = restored;
+        this.dashboard.ensureDefault();
       }
+      this.dashboard.loadLayoutTemplates();
       this.dashboard.bump();
       // Datasets + snapshots + QA conversations (web zip restore + hydrate).
       if (data.datasets !== undefined && this.dataState !== null) {
@@ -599,6 +657,8 @@ interface ProjectPayload {
   theme?: number;
   activeChartId?: string;
   dashboardItems?: DashboardItemJson[];
+  dashboards?: ProjectDashboardJson[];
+  activeDashboardId?: string;
   datasets?: ProjectDatasetJson[];
   snapshots?: ProjectSnapshotJson[];
   qaConversations?: QaConvJson[];
@@ -721,4 +781,27 @@ interface DashboardItemJson {
   column: string;
   agg: string;
   text: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  locked?: boolean;
+}
+
+interface DashboardFilterJson {
+  id: string;
+  field: string;
+  kind: string;
+  values: string[];
+  lo: string;
+  hi: string;
+}
+
+interface ProjectDashboardJson {
+  id: string;
+  name: string;
+  items: DashboardItemJson[];
+  filters: DashboardFilterJson[];
+  createdAt?: string;
+  updatedAt?: string;
 }

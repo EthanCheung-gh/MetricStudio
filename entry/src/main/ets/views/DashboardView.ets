@@ -1,6 +1,9 @@
 import { LengthMetrics, promptAction } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
+import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { Theme } from '../common/Theme';
-import { t } from '../common/Locale';
+import { l10n, t } from '../common/Locale';
 import { CellValue, DataFrame } from '../model/DataFrame';
 import { ChartConfig } from '../model/ChartConfig';
 import { applyDashboardFilters, DASH_COLS, DASH_GAP, DASH_ROW_H,
@@ -8,6 +11,8 @@ import { applyDashboardFilters, DASH_COLS, DASH_GAP, DASH_ROW_H,
 import { DataState } from '../model/DataState';
 import { WorkspaceState } from '../model/WorkspaceState';
 import { toNumber } from '../engine/Numeric';
+import { buildFigureJson } from '../engine/PlotlySpec';
+import { buildDashboardHtml, DashExportChart, DashExportKpi, DashExportText } from '../engine/ReportBuilder';
 import { ChartView, BrushSelectionSpec } from './ChartView';
 
 /** Wire format handed to chart cards (web DashboardDataFilter subset). */
@@ -44,6 +49,15 @@ export struct DashboardView {
   @State editingId: string = '';
   @State editText: string = '';
   @State newFilterField: string = '';
+  // 多 Dashboard 管理 / 布局模板 / 演示（web DashboardView 工具栏）
+  @State dashName: string = 'Dashboard';
+  @State dashId: string = '';
+  @State renameOpen: boolean = false;
+  @State renameDraft: string = '';
+  @State layoutPickIdx: number = -1;
+  @State presenting: boolean = false;
+  @State busyExport: boolean = false;
+  private presentTimer: number = -1;
   // brush 联动（web brushSelections，会话级）：chartItemId → selection JSON
   @State brushVersion: number = 0;
   private brushes: Record<string, string> = {};
@@ -53,6 +67,8 @@ export struct DashboardView {
   private dragStartY: number = 0;
 
   aboutToAppear(): void {
+    this.workspaceState.dashboard.ensureDefault();
+    this.workspaceState.dashboard.loadLayoutTemplates();
     this.syncFromDashboard();
   }
 
@@ -61,11 +77,193 @@ export struct DashboardView {
     this.dashItems = this.workspaceState.dashboard.items.slice();
     this.dashFilters = this.workspaceState.dashboard.filters.slice();
     this.dashEditMode = this.workspaceState.dashboard.editMode;
+    this.dashName = this.dashboardName();
+    this.dashId = this.workspaceState.dashboard.activeId;
+  }
+
+  private dashboardName(): string {
+    const doc = this.workspaceState.dashboard.activeDoc();
+    return doc !== null ? doc.name : 'Dashboard';
   }
 
   onDashboardTick(): void {
     this.syncFromDashboard();
     this.renderTick++;
+  }
+
+  // ---- 多 Dashboard 管理（web DashboardView 工具栏） ----
+
+  private dashOptions(): SelectOption[] {
+    const docs = this.workspaceState.dashboard.dashboards;
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < docs.length; i++) {
+      opts.push({ value: docs[i].name });
+    }
+    return opts;
+  }
+
+  private dashSelectedIndex(): number {
+    const docs = this.workspaceState.dashboard.dashboards;
+    for (let i = 0; i < docs.length; i++) {
+      if (docs[i].id === this.dashId) {
+        return i;
+      }
+    }
+    return 0;
+  }
+
+  private selectDashboard(id: string): void {
+    this.workspaceState.dashboard.switchDashboard(id);
+  }
+
+  private startRename(): void {
+    this.renameDraft = this.dashName;
+    this.renameOpen = true;
+  }
+
+  private confirmRename(): void {
+    if (this.renameDraft.trim().length > 0) {
+      this.workspaceState.dashboard.renameDashboard(this.dashId, this.renameDraft);
+    }
+    this.renameOpen = false;
+  }
+
+  private duplicateCurrent(): void {
+    this.workspaceState.dashboard.duplicateDashboard(this.dashId);
+    promptAction.showToast({ message: l10n(this.workspaceState.language,
+      '已复制为「' + this.dashboardName() + '」', 'Duplicated as "' + this.dashboardName() + '"') });
+  }
+
+  private deleteCurrent(): void {
+    this.workspaceState.dashboard.deleteDashboard(this.dashId);
+  }
+
+  // ---- 布局模板（web Save layout / 选择布局… / 删除布局模板） ----
+
+  private layoutOptions(): SelectOption[] {
+    const tpls = this.workspaceState.dashboard.layoutTemplates;
+    const opts: SelectOption[] = [];
+    for (let i = 0; i < tpls.length; i++) {
+      opts.push({ value: tpls[i].name });
+    }
+    return opts;
+  }
+
+  private saveLayout(): void {
+    this.workspaceState.dashboard.saveLayoutTemplate();
+    promptAction.showToast({ message: l10n(this.workspaceState.language, '布局已保存', 'Layout saved') });
+  }
+
+  private applyLayoutByIndex(index: number): void {
+    const tpls = this.workspaceState.dashboard.layoutTemplates;
+    if (index >= 0 && index < tpls.length) {
+      this.workspaceState.dashboard.applyLayoutTemplate(tpls[index].id);
+    }
+  }
+
+  private deleteLayoutByIndex(index: number): void {
+    const tpls = this.workspaceState.dashboard.layoutTemplates;
+    if (index >= 0 && index < tpls.length) {
+      this.workspaceState.dashboard.deleteLayoutTemplate(tpls[index].id);
+    }
+  }
+
+  // ---- 演示模式（web Present：全屏网格 + 每 8s 轮换下一个 Dashboard） ----
+
+  private startPresent(): void {
+    this.presenting = true;
+    this.presentTimer = setInterval(() => {
+      const docs = this.workspaceState.dashboard.dashboards;
+      if (docs.length < 1) {
+        return;
+      }
+      let next = 0;
+      for (let i = 0; i < docs.length; i++) {
+        if (docs[i].id === this.dashId) {
+          next = (i + 1) % docs.length;
+          break;
+        }
+      }
+      this.workspaceState.dashboard.switchDashboard(docs[next].id);
+    }, 8000);
+  }
+
+  private stopPresent(): void {
+    if (this.presentTimer >= 0) {
+      clearInterval(this.presentTimer);
+      this.presentTimer = -1;
+    }
+    this.presenting = false;
+  }
+
+  aboutToDisappear(): void {
+    this.stopPresent();
+  }
+
+  /** Dashboard 导出（web Export：图表 + KPI + 文本卡 → 自包含 HTML）。 */
+  private async exportDashboard(): Promise<void> {
+    const df = this.dataState.activeDataFrame;
+    if (df === null || this.busyExport) {
+      return;
+    }
+    this.busyExport = true;
+    try {
+      const ctx = getContext(this) as common.UIAbilityContext;
+      const raw = await ctx.resourceManager.getRawFileContent('plotly.min.js');
+      const decoder = util.TextDecoder.create('utf-8');
+      const plotlyJs = decoder.decodeToString(raw);
+      const charts: DashExportChart[] = [];
+      const kpis: DashExportKpi[] = [];
+      const texts: DashExportText[] = [];
+      for (let i = 0; i < this.dashItems.length; i++) {
+        const item = this.dashItems[i];
+        if (item.kind === DashboardItemKind.Chart) {
+          const chart = this.workspaceState.findChart(item.chartId);
+          if (chart === null) {
+            continue;
+          }
+          const ec = new DashExportChart();
+          ec.name = chart.name;
+          try {
+            ec.figure = buildFigureJson(df, chart.encoding, chart.title, chart.layout);
+          } catch (e) {
+            ec.figure = '';
+          }
+          charts.push(ec);
+        } else if (item.kind === DashboardItemKind.Kpi) {
+          const ek = new DashExportKpi();
+          ek.label = item.label;
+          ek.valueText = this.kpiValue(item);
+          kpis.push(ek);
+        } else {
+          const et = new DashExportText();
+          et.text = item.text;
+          if (et.text.trim().length > 0) {
+            texts.push(et);
+          }
+        }
+      }
+      const html = buildDashboardHtml(this.dashName, charts, kpis, texts, plotlyJs);
+      const documentPicker = new picker.DocumentViewPicker(getContext(this));
+      const saveOpts = new picker.DocumentSaveOptions();
+      saveOpts.newFileNames = [this.dashName + '.html'];
+      const uris = await documentPicker.save(saveOpts);
+      if (uris.length === 0) {
+        this.busyExport = false;
+        return;
+      }
+      const file = fs.openSync(uris[0], fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      fs.writeSync(file.fd, html);
+      fs.closeSync(file);
+      promptAction.showToast({ message: l10n(this.workspaceState.language,
+        'Dashboard 已导出：' + charts.length.toString() + ' 张图表、' + kpis.length.toString() + ' 个 KPI、'
+          + texts.length.toString() + ' 个文本卡片',
+        'Exported: ' + charts.length.toString() + ' charts, ' + kpis.length.toString() + ' KPIs, '
+          + texts.length.toString() + ' text cards') });
+    } catch (e) {
+      promptAction.showToast({ message: l10n(this.workspaceState.language, '导出失败', 'Export failed') });
+    }
+    this.busyExport = false;
   }
 
   private activeFilterCountOf(list: DashboardFilter[]): number {
@@ -463,23 +661,70 @@ export struct DashboardView {
   }
 
   build() {
-    Scroll() {
-      Column({ space: 12 }) {
-        Text(t(this.workspaceState.language, 'nav.dashboard'))
-          .fontSize(14)
-          .fontWeight(600)
-          .fontColor(Theme.colorForeground())
-          .alignSelf(ItemAlign.Start)
+    Stack() {
+      Scroll() {
+        Column({ space: 12 }) {
+          Text(t(this.workspaceState.language, 'nav.dashboard'))
+            .fontSize(14)
+            .fontWeight(600)
+            .fontColor(Theme.colorForeground())
+            .alignSelf(ItemAlign.Start)
 
         if (this.dataState.hasData) {
-          // Toolbar (web: edit toggle + undo/redo + align/space tools)
+          // Toolbar row 1（web DashboardView：Dashboard 选择器 + 管理 + 视图 + 布局/导出/演示）
           Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
-            this.toolChip(this.dashEditMode
-              ? t(this.workspaceState.language, 'dashboard.editing')
-              : t(this.workspaceState.language, 'dashboard.viewing'), () => {
-              this.workspaceState.dashboard.setEditMode(!this.dashEditMode);
-            }, this.dashEditMode)
+            Select(this.dashOptions())
+              .fontColor(Theme.colorForeground())
+              .border({ width: 1, color: Theme.colorBorder() })
+              .selected(this.dashSelectedIndex())
+              .value(this.dashName)
+              .font({ size: 12 })
+              .height(28)
+              .constraintSize({ minWidth: 120 })
+              .backgroundColor(Theme.colorSurface())
+              .borderRadius(6)
+              .onSelect((_i: number, _v: string) => {
+                const docs = this.workspaceState.dashboard.dashboards;
+                if (_i >= 0 && _i < docs.length) {
+                  this.selectDashboard(docs[_i].id);
+                }
+              })
             if (this.dashEditMode) {
+              this.iconTool('✏', () => {
+                this.startRename();
+              }, t(this.workspaceState.language, 'dashboard.rename'))
+              this.iconTool('⧉', () => {
+                this.duplicateCurrent();
+              }, t(this.workspaceState.language, 'dashboard.duplicate'))
+              this.iconTool('🗑', () => {
+                this.deleteCurrent();
+              }, t(this.workspaceState.language, 'dashboard.deleteDash'))
+            }
+            this.toolChip(this.dashEditMode
+              ? t(this.workspaceState.language, 'dashboard.viewing')
+              : t(this.workspaceState.language, 'dashboard.editing'), () => {
+              this.workspaceState.dashboard.setEditMode(!this.dashEditMode);
+            }, !this.dashEditMode)
+            if (this.dashEditMode) {
+              this.toolChip(t(this.workspaceState.language, 'dashboard.newDash'), () => {
+                this.workspaceState.dashboard.createDashboard();
+              }, false)
+              this.toolChip(t(this.workspaceState.language, 'dashboard.saveLayout'), () => {
+                this.saveLayout();
+              }, false)
+            }
+            this.toolChip(t(this.workspaceState.language, 'dashboard.export'), () => {
+              this.exportDashboard();
+            }, false)
+            this.toolChip(t(this.workspaceState.language, 'dashboard.present'), () => {
+              this.startPresent();
+            }, false)
+          }
+          .width('100%')
+
+          // Toolbar row 2（web：undo/redo + add chart/kpi/text；右侧对齐）
+          if (this.dashEditMode) {
+            Flex({ wrap: FlexWrap.Wrap, space: { main: LengthMetrics.vp(4), cross: LengthMetrics.vp(4) } }) {
               this.toolChip('↶', () => {
                 if (!this.workspaceState.dashboard.undo()) {
                   promptAction.showToast({ message: t(this.workspaceState.language, 'transform.nothingToUndo') });
@@ -496,6 +741,9 @@ export struct DashboardView {
                   this.brushVersion++;
                 }, false)
               }
+              this.modeChip('chart', t(this.workspaceState.language, 'dashboard.addChart'))
+              this.modeChip('kpi', t(this.workspaceState.language, 'dashboard.addKpi'))
+              this.modeChip('text', t(this.workspaceState.language, 'dashboard.addText'))
               this.toolChip(t(this.workspaceState.language, 'dashboard.alignLeft'), () => {
                 this.workspaceState.dashboard.alignItems('x');
               }, false)
@@ -508,19 +756,52 @@ export struct DashboardView {
               this.toolChip(t(this.workspaceState.language, 'dashboard.spaceY'), () => {
                 this.workspaceState.dashboard.spaceItemsEvenly('y');
               }, false)
-              this.modeChip('chart', t(this.workspaceState.language, 'dashboard.addChart'))
-              this.modeChip('kpi', t(this.workspaceState.language, 'dashboard.addKpi'))
-              this.modeChip('text', t(this.workspaceState.language, 'dashboard.addText'))
+            }
+            .width('100%')
+
+            if (this.addMode === 'chart') {
+              this.chartPicker()
+            } else if (this.addMode === 'kpi') {
+              this.kpiConfig()
+            } else if (this.addMode === 'text') {
+              this.textConfig()
             }
           }
-          .width('100%')
 
-          if (this.addMode === 'chart') {
-            this.chartPicker()
-          } else if (this.addMode === 'kpi') {
-            this.kpiConfig()
-          } else if (this.addMode === 'text') {
-            this.textConfig()
+          // 布局模板（web 选择布局… / 删除布局模板）
+          if (this.workspaceState.dashboard.layoutTemplates.length > 0 && this.dashEditMode) {
+            Row({ space: 6 }) {
+              Select(this.layoutOptions())
+                .fontColor(Theme.colorForeground())
+                .border({ width: 1, color: Theme.colorBorder() })
+                .selected(this.layoutPickIdx)
+                .value(t(this.workspaceState.language, 'dashboard.applyLayout'))
+                .font({ size: 11 })
+                .height(26)
+                .layoutWeight(1)
+                .backgroundColor(Theme.colorSurface())
+                .borderRadius(6)
+                .onSelect((i: number, _v: string) => {
+                  this.layoutPickIdx = i;
+                  this.applyLayoutByIndex(i);
+                })
+              Button() {
+                Text(t(this.workspaceState.language, 'dashboard.deleteTemplate'))
+                  .fontSize(10)
+                  .fontColor(Theme.danger)
+              }
+              .type(ButtonType.Normal)
+              .height(26)
+              .padding({ left: 8, right: 8 })
+              .backgroundColor(Theme.colorSurface())
+              .borderRadius(6)
+              .border({ width: 1, color: Theme.colorBorder() })
+              .onClick(() => {
+                this.deleteLayoutByIndex(this.layoutPickIdx);
+                this.layoutPickIdx = -1;
+              })
+            }
+            .width('100%')
           }
 
           this.filterBar()
@@ -559,12 +840,128 @@ export struct DashboardView {
       .width('100%')
       .padding(12)
       .alignItems(HorizontalAlign.Start)
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Theme.colorBackground())
+      .scrollBar(BarState.Auto)
+      .align(Alignment.TopStart)
+
+      // 重命名对话框（web prompt）
+      if (this.renameOpen) {
+        Column() {
+          Column({ space: 8 }) {
+            Text(t(this.workspaceState.language, 'dashboard.renameTitle'))
+              .fontSize(13)
+              .fontWeight(600)
+              .fontColor(Theme.colorForeground())
+            TextInput({ text: this.renameDraft })
+              .height(32)
+              .padding({ top: 0, bottom: 0 })
+              .fontSize(13)
+              .fontColor(Theme.colorForeground())
+              .backgroundColor(Theme.colorBackground())
+              .borderRadius(6)
+              .onChange((v: string) => {
+                this.renameDraft = v;
+              })
+            Row({ space: 8 }) {
+              Button() {
+                Text(t(this.workspaceState.language, 'common.confirm'))
+                  .fontSize(12)
+                  .fontColor(Color.White)
+              }
+              .type(ButtonType.Normal)
+              .layoutWeight(1)
+              .height(28)
+              .backgroundColor(Theme.primary)
+              .borderRadius(6)
+              .onClick(() => {
+                this.confirmRename();
+              })
+              Button() {
+                Text(t(this.workspaceState.language, 'layout.cancel'))
+                  .fontSize(12)
+                  .fontColor(Theme.colorForeground())
+              }
+              .type(ButtonType.Normal)
+              .layoutWeight(1)
+              .height(28)
+              .backgroundColor(Theme.colorSurface())
+              .borderRadius(6)
+              .onClick(() => {
+                this.renameOpen = false;
+              })
+            }
+            .width('100%')
+          }
+          .width(320)
+          .padding(14)
+          .borderRadius(10)
+          .border({ width: 1, color: Theme.colorBorder() })
+          .backgroundColor(Theme.colorSurfaceElevated())
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor('rgba(0,0,0,0.45)')
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+      }
+
+      // 演示模式覆盖层（web Present：仅网格 + 每 8s 轮换）
+      if (this.presenting) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Column({ space: 8 }) {
+            Text(this.dashName)
+              .fontSize(16)
+              .fontWeight(600)
+              .fontColor(Theme.colorForeground())
+            Text(t(this.workspaceState.language, 'dashboard.presentHint'))
+              .fontSize(10)
+              .fontColor(Theme.colorMuted())
+          }
+          .width('100%')
+          .alignItems(HorizontalAlign.Start)
+          Button() {
+            Text(t(this.workspaceState.language, 'dashboard.exitPresent'))
+              .fontSize(11)
+              .fontColor(Color.White)
+          }
+          .type(ButtonType.Normal)
+          .height(28)
+          .padding({ left: 12, right: 12 })
+          .backgroundColor('rgba(0,0,0,0.6)')
+          .borderRadius(6)
+          .onClick(() => {
+            this.stopPresent();
+          })
+        }
+        .width('100%')
+        .height('100%')
+        .padding(16)
+        .backgroundColor(Theme.colorBackground())
+      }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(Theme.colorBackground())
-    .scrollBar(BarState.Auto)
-    .align(Alignment.TopStart)
+    .alignContent(Alignment.TopStart)
+  }
+
+  @Builder
+  iconTool(glyph: string, action: () => void, tip: string) {
+    Button() {
+      Text(glyph)
+        .fontSize(13)
+        .fontColor(Theme.colorMuted())
+    }
+    .type(ButtonType.Normal)
+    .width(28)
+    .height(26)
+    .backgroundColor(Color.Transparent)
+    .borderRadius(6)
+    .onClick(() => {
+      action();
+    })
   }
 
   private gridHeightTotal(): number {
@@ -931,6 +1328,15 @@ export struct DashboardView {
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .layoutWeight(1)
       if (this.dashEditMode) {
+        Text('⚙')
+          .fontSize(12)
+          .fontColor(Theme.colorMuted())
+          .padding(2)
+          .onClick(() => {
+            // 编辑图表（web 卡头 ⚙ → ChartConfigDialog）
+            this.workspaceState.setActiveChart(item.chartId);
+            this.workspaceState.setChartConfigOpen(true);
+          })
         SymbolGlyph(item.locked ? $r('sys.symbol.lock') : $r('sys.symbol.lock_open'))
           .fontSize(12)
           .fontColor([item.locked ? Theme.primary : Theme.colorMuted()])
