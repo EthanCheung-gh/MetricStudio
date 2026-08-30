@@ -222,7 +222,7 @@ export function DataTable() {
           className="w-full border-collapse text-xs"
           style={{ width: table.getTotalSize() }}
         >
-          <thead className={freezeHeader ? 'sticky top-0 z-10 bg-surface-elevated' : 'bg-surface-elevated'}>
+          <thead className="bg-surface-elevated">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => {
@@ -230,7 +230,10 @@ export function DataTable() {
                   return (
                     <th
                       key={header.id}
-                      className="relative border-b border-r border-border px-3 py-1.5 text-left font-semibold text-muted"
+                      // Sticky must live on th: border-collapse breaks thead-level sticky.
+                      className={`relative border-b border-r border-border px-3 py-1.5 text-left font-semibold text-muted ${
+                        freezeHeader ? 'sticky top-0 z-10' : ''
+                      }`}
                       style={{ width: header.getSize() }}
                     >
                       <button

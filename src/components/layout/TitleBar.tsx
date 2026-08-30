@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Database, FileJson, FolderOpen, History, Menu, Minus, Save, Square, Upload, X } from 'lucide-react'
-import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input } from '@heroui/react'
+import { Button, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Tooltip } from '@heroui/react'
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
@@ -88,36 +88,50 @@ export function TitleBar() {
           <span className="font-semibold text-sm">MetricStudio</span>
         </div>
         <div className="flex items-center gap-1">
-          <Button isIconOnly size="sm" variant="light" aria-label={t('layout.openProject')} onPress={() => setLoadProjectModalOpen(true)}>
-            <FolderOpen className="h-4 w-4" />
-          </Button>
-          <Button isIconOnly size="sm" variant="light" aria-label={t('layout.saveProject')} onPress={() => setSaveProjectModalOpen(true)}>
-            <Save className="h-4 w-4" />
-          </Button>
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            aria-label={t('layout.importData')}
-            onPress={() => setImportModalOpen(true)}
-          >
-            <FileJson className="h-4 w-4" />
-          </Button>
-          <Button isIconOnly size="sm" variant="light" aria-label={t('settings.open')} onPress={() => setSettingsOpen(true)}>
-            <Menu className="h-4 w-4" />
-          </Button>
+          <Tooltip content={t('layout.openProject')} placement="bottom">
+            <Button isIconOnly size="sm" variant="light" aria-label={t('layout.openProject')} onPress={() => setLoadProjectModalOpen(true)}>
+              <FolderOpen className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('layout.saveProject')} placement="bottom">
+            <Button isIconOnly size="sm" variant="light" aria-label={t('layout.saveProject')} onPress={() => setSaveProjectModalOpen(true)}>
+              <Save className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('layout.importData')} placement="bottom">
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              aria-label={t('layout.importData')}
+              onPress={() => setImportModalOpen(true)}
+            >
+              <FileJson className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('settings.open')} placement="bottom">
+            <Button isIconOnly size="sm" variant="light" aria-label={t('settings.open')} onPress={() => setSettingsOpen(true)}>
+              <Menu className="h-4 w-4" />
+            </Button>
+          </Tooltip>
         </div>
         {isTauri && (
           <div className="ml-1 flex items-center gap-0.5 border-l border-border pl-1">
-            <button className="rounded p-1 hover:bg-surface-elevated" onClick={handleMinimize} aria-label="Minimize">
-              <Minus className="h-3.5 w-3.5 text-muted" />
-            </button>
-            <button className="rounded p-1 hover:bg-surface-elevated" onClick={handleToggleMaximize} aria-label="Maximize">
-              <Square className="h-3 w-3 text-muted" />
-            </button>
-            <button className="rounded p-1 hover:bg-danger/20 hover:text-danger" onClick={handleClose} aria-label="Close">
-              <X className="h-3.5 w-3.5 text-muted" />
-            </button>
+            <Tooltip content={t('window.minimize')} placement="bottom">
+              <button className="rounded p-1 hover:bg-surface-elevated" onClick={handleMinimize} aria-label={t('window.minimize')}>
+                <Minus className="h-3.5 w-3.5 text-muted" />
+              </button>
+            </Tooltip>
+            <Tooltip content={t('window.maximize')} placement="bottom">
+              <button className="rounded p-1 hover:bg-surface-elevated" onClick={handleToggleMaximize} aria-label={t('window.maximize')}>
+                <Square className="h-3 w-3 text-muted" />
+              </button>
+            </Tooltip>
+            <Tooltip content={t('window.close')} placement="bottom">
+              <button className="rounded p-1 hover:bg-danger/20 hover:text-danger" onClick={handleClose} aria-label={t('window.close')}>
+                <X className="h-3.5 w-3.5 text-muted" />
+              </button>
+            </Tooltip>
           </div>
         )}
       </div>
