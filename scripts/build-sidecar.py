@@ -15,7 +15,11 @@ def main() -> None:
         triple = next(line.split("host: ", 1)[1] for line in rust_info.splitlines() if line.startswith("host: "))
     except (FileNotFoundError, StopIteration, subprocess.CalledProcessError) as exc:
         raise SystemExit(f"error: rustc host triple unavailable: {exc}") from exc
-    candidates = [ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"), Path(sys.executable)]
+    candidates = [
+        ROOT / "backend" / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"),
+        ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python"),
+        Path(sys.executable),
+    ]
     python = str(next((path for path in candidates if path.exists()), Path(sys.executable)))
     try:
         subprocess.run([python, "-m", "PyInstaller", "--version"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
