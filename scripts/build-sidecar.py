@@ -25,6 +25,10 @@ def replace_file(src: Path, dst: Path) -> None:
         except PermissionError:
             if attempt == 4:
                 raise
+            if os.name == "nt":
+                # Belt-and-braces: kill any leftover sidecar still holding the
+                # exe (e.g. a smoke-test child that escaped cleanup).
+                subprocess.run(["taskkill", "/F", "/IM", dst.name], capture_output=True)
             time.sleep(1.5 * (attempt + 1))
 
 

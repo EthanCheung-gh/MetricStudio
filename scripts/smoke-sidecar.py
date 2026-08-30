@@ -54,6 +54,11 @@ def main() -> None:
             raise SystemExit(f"sample import returned invalid shape: {sample}")
         print(f"sidecar smoke OK: health=ok sample={sample['rows']}x{sample['cols']}")
     finally:
+        if os.name == "nt":
+            # PyInstaller onefile spawns a child process that actually runs the
+            # server and owns the exe handle; terminate() only signals the
+            # bootloader parent. Kill the whole process tree instead.
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True)
         process.terminate()
         try:
             process.wait(timeout=5)
