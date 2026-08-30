@@ -8,7 +8,7 @@ import {
   type ColumnFiltersState,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Download, Search } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Download, Pin, PinOff, Search } from 'lucide-react'
 import { Button, Spinner } from '@heroui/react'
 import { api } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
@@ -32,6 +32,8 @@ export function DataTable() {
   const [copiedCell, setCopiedCell] = useState<string | null>(null)
   const [pageSize, setPageSize] = useState(200)
   const [page, setPage] = useState(0)
+  /** Freeze the table header on scroll; on by default, user can toggle it off. */
+  const [freezeHeader, setFreezeHeader] = useState(true)
 
   const columns = useMemo(
     () =>
@@ -196,6 +198,15 @@ export function DataTable() {
           <Button
             size="sm"
             variant="light"
+            startContent={freezeHeader ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
+            onPress={() => setFreezeHeader((v) => !v)}
+            aria-label={freezeHeader ? t('table.unfreezeHeader') : t('table.freezeHeader')}
+          >
+            {freezeHeader ? t('table.freezeHeader') : t('table.unfreezeHeader')}
+          </Button>
+          <Button
+            size="sm"
+            variant="light"
             startContent={<Download className="h-3.5 w-3.5" />}
             onPress={exportCsv}
           >
@@ -211,7 +222,7 @@ export function DataTable() {
           className="w-full border-collapse text-xs"
           style={{ width: table.getTotalSize() }}
         >
-          <thead className="sticky top-0 z-10 bg-surface-elevated">
+          <thead className={freezeHeader ? 'sticky top-0 z-10 bg-surface-elevated' : 'bg-surface-elevated'}>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
                 {hg.headers.map((header) => {

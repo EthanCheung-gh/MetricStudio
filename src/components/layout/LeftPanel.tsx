@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Copy, Database, ListTree, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Database, ListTree, Pencil, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
 import { Button, Card, CardBody } from '@heroui/react'
 import { DataExplorer } from '@/components/data/DataExplorer'
 import { DatasetList } from '@/components/data/DatasetList'
@@ -24,7 +24,7 @@ export function LeftPanel() {
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
           {activeSection === 'charts' ? t('nav.charts') : activeSection === 'datasets' ? t('nav.datasets') : t('nav.explorer')}
         </span>
-        <Button isIconOnly size="sm" variant="light" onPress={() => toggle('left')} aria-label="Collapse left panel">
+        <Button isIconOnly size="sm" variant="light" onPress={() => toggle('left')} aria-label={t('layout.collapseSidebar')}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
       </div>
@@ -49,6 +49,7 @@ function ChartsSection() {
   const activeChartId = useChartStore((s) => s.activeChartId)
   const createChart = useChartStore((s) => s.createChart)
   const updateEncoding = useChartStore((s) => s.updateEncoding)
+  const updateName = useChartStore((s) => s.updateName)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
   const removeChart = useChartStore((s) => s.removeChart)
   const duplicateChart = useChartStore((s) => s.duplicateChart)
@@ -57,6 +58,19 @@ function ChartsSection() {
   const setChartConfigDialogOpen = useUIStore((s) => s.setChartConfigDialogOpen)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const [recs, setRecs] = useState<ChartRecommendation[] | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const startRename = (chartId: string, currentName: string) => {
+    setRenamingId(chartId)
+    setRenameValue(currentName)
+  }
+
+  const commitRename = (chartId: string) => {
+    const name = renameValue.trim()
+    if (name) updateName(chartId, name)
+    setRenamingId(null)
+  }
 
   // Load chart recommendations for the active dataset when no charts exist yet.
   useEffect(() => {
@@ -145,11 +159,47 @@ function ChartsSection() {
               }}
             >
               <ListTree className="h-3 w-3 shrink-0" />
-              <span className="truncate flex-1">{chart.name}</span>
+              {renamingId === chart.id ? (
+                <input
+                  autoFocus
+                  className="min-w-0 flex-1 rounded border border-primary/60 bg-surface px-1 py-0.5 text-xs outline-none"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitRename(chart.id)
+                    if (e.key === 'Escape') setRenamingId(null)
+                  }}
+                  onBlur={() => commitRename(chart.id)}
+                  aria-label={t('chart.rename')}
+                />
+              ) : (
+                <span
+                  className="truncate flex-1"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    startRename(chart.id, chart.name)
+                  }}
+                >
+                  {chart.name}
+                </span>
+              )}
               {chart.encoding.yFields?.length > 0 && (
                 <span className="text-[10px] text-muted shrink-0">
                   {chart.encoding.yFields.length}Y
                 </span>
+              )}
+              {renamingId !== chart.id && (
+                <button
+                  className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary/20 hover:text-primary shrink-0"
+                  aria-label={t('chart.rename')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startRename(chart.id, chart.name)
+                  }}
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
               )}
               <button
                 className="rounded p-0.5 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-primary/20 hover:text-primary shrink-0"
@@ -192,6 +242,7 @@ function ChartsSection() {
 }
 
 export function LeftPanelCollapsed() {
+  const { t } = useTranslation()
   const toggle = useWorkspaceStore((s) => s.togglePanel)
   const activateSection = useWorkspaceStore((s) => s.activatePanelSection)
   const setImportModalOpen = useUIStore((s) => s.setImportModalOpen)
@@ -201,29 +252,29 @@ export function LeftPanelCollapsed() {
     <div className="flex h-full w-10 flex-col items-center border-r border-border bg-surface py-2">
       <CollapsedIconBarItem
         icon={ChevronRight}
-        label="Expand"
+        label={t('layout.expandSidebar')}
         onClick={() => toggle('left')}
-        tooltip="Expand sidebar"
+        tooltip={t('layout.expandSidebar')}
       />
       <CollapsedIconBarItem
         icon={ListTree}
-        label="Charts"
+        label={t('nav.charts')}
         active={activeSection === 'charts'}
         onClick={() => activateSection('left', 'charts')}
-        tooltip="Charts list"
+        tooltip={t('layout.chartsList')}
       />
       <CollapsedIconBarItem
         icon={Database}
-        label="Datasets"
+        label={t('nav.datasets')}
         active={activeSection === 'datasets'}
         onClick={() => activateSection('left', 'datasets')}
-        tooltip="Datasets"
+        tooltip={t('nav.datasets')}
       />
       <CollapsedIconBarItem
         icon={Upload}
-        label="Import"
+        label={t('layout.importData')}
         onClick={() => setImportModalOpen(true)}
-        tooltip="Import data"
+        tooltip={t('layout.importData')}
       />
     </div>
   )

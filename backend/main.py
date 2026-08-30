@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MetricStudio Backend",
-    version="1.1.0",
+    version="1.1.1",
     lifespan=lifespan,
 )
 
