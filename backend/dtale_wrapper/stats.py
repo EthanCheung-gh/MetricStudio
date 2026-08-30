@@ -44,17 +44,19 @@ def describe_dataframe(df: pd.DataFrame) -> dict[str, Any]:
     """统计摘要：优先复用 D-Tale 的 describe，失败/未安装时回退到 Pandas。"""
     if HAS_DTALE:
         try:
-            desc = dtale.describe(df)
+            # dtale 3.x exposes per-column describe via load_describe (2.x's
+            # callable dtale.describe no longer exists).
+            from dtale.describe import load_describe
+
             result: dict[str, Any] = {"columns": [], "stats": {}}
             for col in df.select_dtypes(include=[np.number]).columns:
-                col_desc = desc[str(col)]
-                stats_df = col_desc.describe[["count", "mean", "std", "min", "25%", "50%", "75%", "max"]]
-                stats = stats_df.iloc[:, 0] if stats_df.ndim == 2 else stats_df
+                desc = load_describe(df[col])[0]
                 result["columns"].append(str(col))
                 result["stats"][str(col)] = {
-                    str(k): _safe_float(v) for k, v in stats.items()
+                    str(k): _safe_float(v) for k, v in desc.items()
                 }
-            return result
+            if result["columns"]:
+                return result
         except Exception as exc:
             logger.warning("dtale.describe failed, falling back to pandas: %s", exc)
     return _pandas_describe(df)
@@ -64,11 +66,9 @@ def column_stats(series: pd.Series) -> dict[str, Any]:
     """单列统计：D-Tale 优先，回退 Pandas。"""
     if HAS_DTALE:
         try:
-            desc = dtale.describe(series.to_frame())
-            col_desc = desc[str(series.name)]
-            stats_df = col_desc.describe
-            stats = stats_df.iloc[:, 0] if stats_df.ndim == 2 else stats_df
-            return {str(k): _safe_float(v) for k, v in stats.items()}
+            from dtale.describe import load_describe
+
+            return {str(k): _safe_float(v) for k, v in load_describe(series)[0].items()}
         except Exception as exc:
             logger.warning("dtale column stats failed, falling back to pandas: %s", exc)
 
