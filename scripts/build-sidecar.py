@@ -5,9 +5,28 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+def replace_file(src: Path, dst: Path) -> None:
+    """Copy src over dst, tolerating transient Windows locks.
+
+    The smoke test may have just executed the previous sidecar; on Windows a
+    recently-exited executable can stay locked for a moment (antivirus scan,
+    handle release), so unlink+copy is retried a few times before giving up.
+    """
+    for attempt in range(5):
+        try:
+            dst.unlink(missing_ok=True)
+            shutil.copy2(src, dst)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(1.5 * (attempt + 1))
+
 
 def main() -> None:
     try:
@@ -38,7 +57,7 @@ def main() -> None:
     target = out_dir / f"python-sidecar-{triple}{'.exe' if os.name == 'nt' else ''}"
     if not built.exists():
         raise SystemExit(f"error: PyInstaller output not found: {built}")
-    shutil.copy2(built, target)
+    replace_file(built, target)
     if os.name != "nt":
         target.chmod(0o755)
     print(f"sidecar ready: {target}")
