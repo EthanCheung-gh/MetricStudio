@@ -106,15 +106,32 @@ export function DataTable() {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const rows = table.getRowModel().rows
+  // When unfrozen, the header renders inside the scroll container above the
+  // rows; tell the virtualizer so visible-range math accounts for its height.
+  const inlineHeaderRef = useRef<HTMLDivElement>(null)
+  const [inlineHeaderHeight, setInlineHeaderHeight] = useState(0)
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 33,
     overscan: 10,
+    scrollMargin: freezeHeader ? 0 : inlineHeaderHeight,
   })
   // Frozen header lives OUTSIDE the scrolling body (Excel-style), so it needs
   // the body's horizontal scroll offset to keep columns aligned.
   const [headerOffset, setHeaderOffset] = useState(0)
+
+  // Measure the inline (unfrozen) header height for the virtualizer offset.
+  useEffect(() => {
+    if (freezeHeader) return
+    const el = inlineHeaderRef.current
+    if (!el) return
+    const update = () => setInlineHeaderHeight(el.offsetHeight)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [freezeHeader])
 
   const copyCell = async (cellId: string, value: unknown) => {
     const text = value === null || value === undefined ? '' : String(value)
@@ -287,7 +304,11 @@ export function DataTable() {
                 if (freezeHeader) setHeaderOffset(e.currentTarget.scrollLeft)
               }}
             >
-              {!freezeHeader && <div className="sticky top-0 z-10 bg-surface-elevated">{headerRow}</div>}
+              {!freezeHeader && (
+                <div ref={inlineHeaderRef} className="bg-surface-elevated">
+                  {headerRow}
+                </div>
+              )}
               {rows.length === 0 && (
                 <div className="px-3 py-8 text-center text-muted">{t('table.noMatchingRows')}</div>
               )}
