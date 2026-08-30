@@ -30,14 +30,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Enable pnpm BEFORE setup-node: the cache: pnpm lookup needs the
+      # pnpm shim on PATH (newer runner images no longer preinstall it).
+      - name: Enable pnpm
+        run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-
-      - name: Enable pnpm
-        run: corepack enable && corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Setup Python
         uses: actions/setup-python@v5
