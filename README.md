@@ -123,3 +123,19 @@ codegraph impact Dataset       # 修改某符号会影响什么
 - **v1.1.x**：编辑体验与健壮性打磨（进行中，详见 git log）
 
 后续方向（P3）：发现式分析首页、插件系统、轻量分享。
+
+## 许可证
+
+本项目基于 [Apache License 2.0](LICENSE) 开源。
+
+```
+Copyright 2026 The MetricStudio Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+欢迎提交 Issue 与 Pull Request；除非另有声明，贡献内容将默认按 Apache 2.0 授权并入本项目。
