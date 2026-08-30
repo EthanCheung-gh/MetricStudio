@@ -313,7 +313,13 @@ export function DataTable() {
                 <div className="px-3 py-8 text-center text-muted">{t('table.noMatchingRows')}</div>
               )}
               <div
-                style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: table.getTotalSize() }}
+                style={{
+                  // getTotalSize() includes scrollMargin; strip it so the rows
+                  // container starts right under the inline (unfrozen) header.
+                  height: rowVirtualizer.getTotalSize() - (freezeHeader ? 0 : inlineHeaderHeight),
+                  position: 'relative',
+                  width: table.getTotalSize(),
+                }}
               >
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const row = rows[virtualRow.index]
@@ -326,7 +332,9 @@ export function DataTable() {
                         left: 0,
                         width: '100%',
                         height: `${virtualRow.size}px`,
-                        transform: `translateY(${virtualRow.start}px)`,
+                        // virtualRow.start includes scrollMargin; strip it so the
+                        // first row sits flush under the unfrozen header.
+                        transform: `translateY(${virtualRow.start - (freezeHeader ? 0 : inlineHeaderHeight)}px)`,
                       }}
                       className="flex hover:bg-surface-elevated/50"
                     >
