@@ -15,6 +15,9 @@ import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { fmt } from '@/utils/format'
 
+// Backend Dataset.preview clamps limit to 1..1000.
+const MAX_PAGE_SIZE = 1000
+
 export function DataTable() {
   const { t } = useTranslation()
   const preview = useDataStore((s) => s.preview)
@@ -31,6 +34,7 @@ export function DataTable() {
   const [showColumnsPanel, setShowColumnsPanel] = useState(false)
   const [copiedCell, setCopiedCell] = useState<string | null>(null)
   const [pageSize, setPageSize] = useState(200)
+  const [pageSizeInput, setPageSizeInput] = useState('200')
   const [page, setPage] = useState(0)
   /** Freeze the table header on scroll; on by default, user can toggle it off. */
   const [freezeHeader, setFreezeHeader] = useState(true)
@@ -84,6 +88,22 @@ export function DataTable() {
     setColumnFilters([])
     setGlobalFilter('')
   }, [activeDataFrameId, preview?.totalRows])
+
+  // Keep the free-form input in sync with the effective page size.
+  useEffect(() => {
+    setPageSizeInput(String(pageSize))
+  }, [pageSize])
+
+  const commitPageSize = () => {
+    const parsed = Math.round(Number(pageSizeInput))
+    // Backend preview clamps limit to 1..1000.
+    const value = Number.isFinite(parsed) ? Math.min(MAX_PAGE_SIZE, Math.max(1, parsed)) : pageSize
+    if (value !== pageSize) {
+      setPageSize(value)
+      setPage(0)
+    }
+    setPageSizeInput(String(value))
+  }
 
   useEffect(() => {
     setPage(0)
@@ -365,16 +385,26 @@ export function DataTable() {
       <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted">
         <div className="flex items-center gap-2">
           <span>{t('table.pageSize')}</span>
-          <select
-            className="rounded border border-border bg-surface px-1.5 py-1"
-            value={pageSize}
-            onChange={(event) => {
-              setPageSize(Number(event.target.value))
-              setPage(0)
+          <input
+            list="page-size-options"
+            type="number"
+            min={1}
+            max={MAX_PAGE_SIZE}
+            value={pageSizeInput}
+            onChange={(e) => setPageSizeInput(e.target.value)}
+            onBlur={commitPageSize}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                commitPageSize()
+                e.currentTarget.blur()
+              }
             }}
-          >
-            {[100, 200, 500, 1000].map((size) => <option key={size} value={size}>{size}</option>)}
-          </select>
+            title={`${t('table.pageSize')}: 1 - ${MAX_PAGE_SIZE}`}
+            className="w-16 rounded border border-border bg-surface px-1.5 py-1 text-foreground outline-none focus:border-primary"
+          />
+          <datalist id="page-size-options">
+            {[100, 200, 500, MAX_PAGE_SIZE].map((size) => <option key={size} value={size} />)}
+          </datalist>
         </div>
         <div className="flex items-center gap-2">
           {loading && <Spinner size="sm" />}

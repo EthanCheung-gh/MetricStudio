@@ -18,7 +18,7 @@ export function WorkspaceLayout() {
     <div className="flex h-full w-full">
       {/* Activity bar is always visible (VS Code style); clicking the active icon collapses the panel */}
       <LeftPanelCollapsed />
-      <PanelGroup direction="horizontal" className="h-full flex-1">
+      <PanelGroup direction="horizontal" className="h-full flex-1" autoSaveId="metricstudio-workspace-layout">
         {!leftCollapsed && (
           <>
             <Panel id="left" defaultSize={20} minSize={15} maxSize={35} order={1}>
