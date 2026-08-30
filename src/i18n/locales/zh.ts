@@ -18,6 +18,8 @@ export default {
   'window.minimize': '最小化',
   'window.maximize': '最大化',
   'window.close': '关闭',
+  'status.showAiBar': '显示问答栏',
+  'status.hideAiBar': '隐藏问答栏',
   'layout.projectName': '项目名称',
   'layout.filePath': '文件路径',
   'layout.recent': '最近',

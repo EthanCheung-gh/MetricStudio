@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tooltip } from '@heroui/react'
-import { Activity, Cpu, PackageCheck, PackageX, Rows3 } from 'lucide-react'
+import { Activity, Cpu, MessageSquare, MessageSquareOff, PackageCheck, PackageX, Rows3 } from 'lucide-react'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { api, type DepsReport } from '@/api/client'
@@ -15,6 +15,8 @@ export function StatusBar() {
   const backendConnected = useUIStore((s) => s.backendConnected)
   const backendMessage = useUIStore((s) => s.backendStatusMessage)
   const language = useUIStore((s) => s.language)
+  const aiBarVisible = useUIStore((s) => s.aiBarVisible)
+  const setAiBarVisible = useUIStore((s) => s.setAiBarVisible)
   const [deps, setDeps] = useState<DepsReport | null>(null)
 
   // Dependency check once per backend (re)connection (spec §11)
@@ -82,6 +84,20 @@ export function StatusBar() {
         )}
       </div>
       <div className="flex items-center gap-2">
+        <Tooltip content={aiBarVisible ? t('status.hideAiBar') : t('status.showAiBar')} placement="top">
+          <button
+            className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+              aiBarVisible
+                ? 'border-primary/50 bg-primary/10 text-primary hover:bg-primary/20'
+                : 'border-border hover:bg-surface-elevated'
+            }`}
+            onClick={() => setAiBarVisible(!aiBarVisible)}
+            aria-label={aiBarVisible ? t('status.hideAiBar') : t('status.showAiBar')}
+          >
+            {aiBarVisible ? <MessageSquare className="h-3 w-3" /> : <MessageSquareOff className="h-3 w-3" />}
+            {t('panel.askData')}
+          </button>
+        </Tooltip>
         <button
           className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-surface-elevated"
           onClick={() => {

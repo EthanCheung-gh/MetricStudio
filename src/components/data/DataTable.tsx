@@ -112,6 +112,9 @@ export function DataTable() {
     estimateSize: () => 33,
     overscan: 10,
   })
+  // Frozen header lives OUTSIDE the scrolling body (Excel-style), so it needs
+  // the body's horizontal scroll offset to keep columns aligned.
+  const [headerOffset, setHeaderOffset] = useState(0)
 
   const copyCell = async (cellId: string, value: unknown) => {
     const text = value === null || value === undefined ? '' : String(value)
@@ -216,107 +219,120 @@ export function DataTable() {
       </div>
 
       {error && <div className="border-b border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger">{error}</div>}
-      {/* Table */}
-      <div ref={scrollRef} className="flex-1 overflow-auto">
-        <table
-          className="w-full border-collapse text-xs"
-          style={{ width: table.getTotalSize() }}
-        >
-          <thead className="bg-surface-elevated">
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
-                {hg.headers.map((header) => {
-                  const sortDir = header.column.getIsSorted()
+
+      {(() => {
+        const headerGroup = table.getHeaderGroups()[0]
+        const headerRow = (
+          <div className="flex text-xs" style={{ width: table.getTotalSize() }}>
+            {headerGroup?.headers.map((header) => {
+              const sortDir = header.column.getIsSorted()
+              return (
+                <div
+                  key={header.id}
+                  className="relative shrink-0 border-b border-r border-border px-3 py-1.5 text-left font-semibold text-muted"
+                  style={{ width: header.getSize() }}
+                >
+                  <button
+                    className="flex w-full items-center gap-1"
+                    onClick={header.column.getToggleSortingHandler()}
+                    title={t('table.clickToSort')}
+                  >
+                    <span className="truncate">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </span>
+                    {sortDir === 'asc' ? (
+                      <ChevronUp className="h-3 w-3 shrink-0 text-primary" />
+                    ) : sortDir === 'desc' ? (
+                      <ChevronDown className="h-3 w-3 shrink-0 text-primary" />
+                    ) : (
+                      <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
+                    )}
+                  </button>
+                  {header.column.getCanFilter() && (
+                    <input
+                      value={(header.column.getFilterValue() as string) ?? ''}
+                      onChange={(e) => header.column.setFilterValue(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder={t('table.filterPlaceholder')}
+                      className="mt-1 w-full rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] outline-none placeholder:text-muted focus:border-primary"
+                    />
+                  )}
+                  <div
+                    onMouseDown={header.getResizeHandler()}
+                    onTouchStart={header.getResizeHandler()}
+                    className={`absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none ${
+                      header.column.getIsResizing() ? 'bg-primary' : 'bg-transparent hover:bg-primary/50'
+                    }`}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )
+        // Frozen (default): the header sits OUTSIDE the scroll container, Excel-style,
+        // and mirrors the body's horizontal scroll. Unfrozen: it scrolls with the body.
+        return (
+          <>
+            {freezeHeader && (
+              <div className="shrink-0 overflow-hidden border-b border-border bg-surface-elevated">
+                <div style={{ transform: `translateX(-${headerOffset}px)` }}>
+                  {headerRow}
+                </div>
+              </div>
+            )}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-auto"
+              onScroll={(e) => {
+                if (freezeHeader) setHeaderOffset(e.currentTarget.scrollLeft)
+              }}
+            >
+              {!freezeHeader && <div className="sticky top-0 z-10 bg-surface-elevated">{headerRow}</div>}
+              {rows.length === 0 && (
+                <div className="px-3 py-8 text-center text-muted">{t('table.noMatchingRows')}</div>
+              )}
+              <div
+                style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: table.getTotalSize() }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                  const row = rows[virtualRow.index]
                   return (
-                    <th
-                      key={header.id}
-                      // Sticky must live on th: border-collapse breaks thead-level sticky.
-                      className={`relative border-b border-r border-border px-3 py-1.5 text-left font-semibold text-muted ${
-                        freezeHeader ? 'sticky top-0 z-10' : ''
-                      }`}
-                      style={{ width: header.getSize() }}
+                    <div
+                      key={row.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: `${virtualRow.size}px`,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="flex hover:bg-surface-elevated/50"
                     >
-                      <button
-                        className="flex w-full items-center gap-1"
-                        onClick={header.column.getToggleSortingHandler()}
-                        title={t('table.clickToSort')}
-                      >
-                        <span className="truncate">
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                        </span>
-                        {sortDir === 'asc' ? (
-                          <ChevronUp className="h-3 w-3 shrink-0 text-primary" />
-                        ) : sortDir === 'desc' ? (
-                          <ChevronDown className="h-3 w-3 shrink-0 text-primary" />
-                        ) : (
-                          <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-40" />
-                        )}
-                      </button>
-                      {header.column.getCanFilter() && (
-                        <input
-                          value={(header.column.getFilterValue() as string) ?? ''}
-                          onChange={(e) => header.column.setFilterValue(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          placeholder={t('table.filterPlaceholder')}
-                          className="mt-1 w-full rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] outline-none placeholder:text-muted focus:border-primary"
-                        />
-                      )}
-                      <div
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        className={`absolute right-0 top-0 h-full w-1 cursor-col-resize touch-none select-none ${
-                          header.column.getIsResizing() ? 'bg-primary' : 'bg-transparent hover:bg-primary/50'
-                        }`}
-                      />
-                    </th>
+                      {row.getVisibleCells().map((cell) => (
+                        <div
+                          key={cell.id}
+                          style={{ width: cell.column.getSize(), flexShrink: 0 }}
+                          className="group relative cursor-pointer whitespace-nowrap border-b border-r border-border px-3 py-1.5 text-foreground"
+                          onClick={() => copyCell(cell.id, cell.getValue())}
+                          title={t('table.clickToCopy')}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          {copiedCell === cell.id && (
+                            <span className="absolute right-1 top-1/2 -translate-y-1/2 text-success">
+                              <Check className="h-3 w-3" />
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )
                 })}
-              </tr>
-            ))}
-          </thead>
-        </table>
-        {rows.length === 0 && (
-          <div className="px-3 py-8 text-center text-muted">{t('table.noMatchingRows')}</div>
-        )}
-        <div
-          style={{ height: rowVirtualizer.getTotalSize(), position: 'relative', width: table.getTotalSize() }}
-        >
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const row = rows[virtualRow.index]
-            return (
-              <div
-                key={row.id}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: `${virtualRow.size}px`,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-                className="flex hover:bg-surface-elevated/50"
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <div
-                    key={cell.id}
-                    style={{ width: cell.column.getSize(), flexShrink: 0 }}
-                    className="group relative cursor-pointer whitespace-nowrap border-b border-r border-border px-3 py-1.5 text-foreground"
-                    onClick={() => copyCell(cell.id, cell.getValue())}
-                    title={t('table.clickToCopy')}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    {copiedCell === cell.id && (
-                      <span className="absolute right-1 top-1/2 -translate-y-1/2 text-success">
-                        <Check className="h-3 w-3" />
-                      </span>
-                    )}
-                  </div>
-                ))}
               </div>
-            )
-          })}
-        </div>
-      </div>
+            </div>
+          </>
+        )
+      })()}
       <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted">
         <div className="flex items-center gap-2">
           <span>{t('table.pageSize')}</span>

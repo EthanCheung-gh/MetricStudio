@@ -18,6 +18,8 @@ export default {
   'window.minimize': 'Minimize',
   'window.maximize': 'Maximize',
   'window.close': 'Close',
+  'status.showAiBar': 'Show Q&A bar',
+  'status.hideAiBar': 'Hide Q&A bar',
   'layout.projectName': 'Project Name',
   'layout.filePath': 'File Path',
   'layout.recent': 'Recent',

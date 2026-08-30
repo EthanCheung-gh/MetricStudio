@@ -33,6 +33,7 @@ export function AICommandBar() {
   const addNotification = useUIStore((s) => s.addNotification)
   const setReportNotesDraft = useUIStore((s) => s.setReportNotesDraft)
   const setReportDialogOpen = useUIStore((s) => s.setReportDialogOpen)
+  const aiBarVisible = useUIStore((s) => s.aiBarVisible)
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('query')
   const [input, setInput] = useState('')
@@ -116,6 +117,7 @@ export function AICommandBar() {
     }
   }
 
+  // Slide in/out instead of unmounting so the toggle from the status bar animates.
   if (!activeDataFrameId) return null
 
   const placeholder =
@@ -124,7 +126,11 @@ export function AICommandBar() {
       : t('ai.askPlaceholder')
 
   return (
-    <div className="fixed bottom-5 left-1/2 z-40 w-[680px] max-w-[92vw] -translate-x-1/2">
+    <div
+      className={`fixed bottom-5 left-1/2 z-40 w-[680px] max-w-[92vw] -translate-x-1/2 transition-all duration-300 ease-out ${
+        aiBarVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-24 opacity-0'
+      }`}
+    >
       {/* Result card */}
       {operations !== null && (
         <div className="mb-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">

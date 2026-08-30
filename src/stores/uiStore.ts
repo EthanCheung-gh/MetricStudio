@@ -48,9 +48,12 @@ interface UIState {
   shortcutOverrides: Record<string, ShortcutKey | null>;
   sampleWizardDismissed: boolean;
   autoSave: AutoSaveState;
+  /** Bottom AI command bar visibility; toggled from the status bar. */
+  aiBarVisible: boolean;
 
   setAutoSaveTarget: (path: string, name: string) => void;
   setAutoSaveTime: (savedAt: string) => void;
+  setAiBarVisible: (visible: boolean) => void;
 
   addNotification: (type: Notification['type'], message: string) => void;
   setShortcutOverride: (actionId: string, key: ShortcutKey | null) => void;
@@ -101,11 +104,13 @@ export const useUIStore = create<UIState>()(
   shortcutOverrides: {},
   sampleWizardDismissed: false,
   autoSave: { path: null, name: null, lastSavedAt: null },
+  aiBarVisible: true,
 
   setAutoSaveTarget: (path, name) =>
     set({ autoSave: { path, name, lastSavedAt: null } }),
   setAutoSaveTime: (lastSavedAt) =>
     set((state) => ({ autoSave: { ...state.autoSave, lastSavedAt } })),
+  setAiBarVisible: (aiBarVisible) => set({ aiBarVisible }),
 
   addNotification: (type, message) => {
     const id = `${++notificationId}`;
