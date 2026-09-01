@@ -24,8 +24,10 @@ jobs:
             artifact: linux
           - os: windows-2022
             artifact: windows
-          - os: macos-13
-            artifact: macos
+          # TEMP: macos-13 runner queue is heavily backlogged (queued 24h+).
+          # Re-enable once demand subsides, or switch to macos-14 (arm64).
+          # - os: macos-13
+          #   artifact: macos
     steps:
       - name: Checkout
         uses: actions/checkout@v4
