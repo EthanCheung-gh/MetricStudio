@@ -122,4 +122,7 @@ jobs:
         run: |
           FILES=$(find release-assets -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \))
           echo "uploading:"; echo "${FILES}"
-          gh release create "${GITHUB_REF_NAME}" ${FILES} --generate-notes --verify-tag
+          # A previous partially-failed run may have left the Release behind;
+          # fall back to uploading (overwriting) assets onto the existing one.
+          gh release create "${GITHUB_REF_NAME}" ${FILES} --generate-notes --verify-tag \
+            || gh release upload "${GITHUB_REF_NAME}" ${FILES} --clobber
