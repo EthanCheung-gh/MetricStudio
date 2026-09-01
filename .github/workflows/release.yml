@@ -103,6 +103,10 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
+      # gh needs a git checkout to resolve the repository and verify the tag.
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
