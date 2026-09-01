@@ -117,4 +117,9 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" release-assets/**/* --generate-notes --verify-tag
+        # Artifacts keep the bundle sub-directory layout (which also contains
+        # unpacked intermediates); pick only real installer files to upload.
+        run: |
+          FILES=$(find release-assets -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \))
+          echo "uploading:"; echo "${FILES}"
+          gh release create "${GITHUB_REF_NAME}" ${FILES} --generate-notes --verify-tag
