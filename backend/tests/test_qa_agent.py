@@ -255,3 +255,27 @@ def test_context_relevant_sample_rows():
     assert "apple pie" in sample_context
     default_context = nl_module._build_data_context(FakeDataset(), df)
     assert "banana" in default_context  # falls back to head rows
+
+
+def test_context_handles_mixed_dtypes_and_nan():
+    """Regression: pandas 3 made astype(str).agg(join, axis=1) raise
+    'expected str instance, float found' on real mixed-type datasets."""
+    import backend.api.nl as nl_module
+
+    df = pd.DataFrame(
+        {
+            "name": ["a", "b", None],
+            "value": [1.5, float("nan"), 3.7],
+            "when": ["2024-01-01", "2024-02-01", None],
+            "tag": pd.array(["x", None, "z"], dtype="string"),
+        }
+    )
+
+    class FakeDataset:
+        id = "ds"
+
+    sample = nl_module._relevant_sample_rows(df, "a 的 value")
+    assert len(sample) <= 5
+    context = nl_module._build_data_context(FakeDataset(), df, "a 的 value")
+    assert "Dataset overview: 3 rows × 4 columns" in context
+    assert "Sample rows" in context

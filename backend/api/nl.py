@@ -153,7 +153,7 @@ def _validate_ops(ops: list[dict[str, Any]]) -> None:
 
 
 @router.post("/transform")
-async def nl_transform(request: NLTransformRequest):
+def nl_transform(request: NLTransformRequest):
     dataset = session.get(request.dataset_id)
     prompt = _build_prompt(dataset, request.query)
     try:
@@ -191,8 +191,16 @@ def _relevant_sample_rows(df: Any, question: str, limit: int = 5) -> Any:
     if not tokens or df.empty:
         return df.head(limit)
     window = df.head(1000)
-    row_strings = window.astype(str).agg(" | ".join, axis=1)
-    scores = row_strings.apply(lambda text: sum(1 for token in tokens if token in text))
+    try:
+        # itertuples + explicit str(): pandas 3 string dtypes make
+        # astype(str).agg(join, axis=1) unsafe on mixed-type real data.
+        row_strings = pd.Series(
+            (" | ".join(map(str, values)) for values in window.itertuples(index=False, name=None)),
+            index=window.index,
+        )
+        scores = row_strings.map(lambda text: sum(1 for token in tokens if token in text))
+    except Exception:  # noqa: BLE001 - sampling must never break the ask flow
+        return df.head(limit)
     hits = scores[scores > 0].sort_values(ascending=False).head(limit).index
     if len(hits) == 0:
         return df.head(limit)
@@ -326,7 +334,10 @@ def _ask_dataframe(dataset: Any, request: NLAskRequest) -> Any:
 # numbered, citable facts. See qa_agent for the degradation ladder.
 
 @router.post("/ask")
-async def nl_ask(request: NLAskRequest):
+def nl_ask(request: NLAskRequest):
+    """Sync endpoint: the agent loop makes blocking LLM calls (up to 3
+    rounds x 60s). A sync def keeps them on FastAPI's threadpool so the
+    event loop (health checks, other LAN clients) stays responsive."""
     try:
         dataset = session.get(request.dataset_id)
     except KeyError as exc:
@@ -361,7 +372,7 @@ async def nl_ask(request: NLAskRequest):
 
 
 @router.post("/narrate")
-async def nl_narrate(payload: dict):
+def nl_narrate(payload: dict):
     """Generate a Chinese analysis narrative from the dataset insights."""
     dataset_id = payload.get("dataset_id")
     if not dataset_id:
@@ -408,7 +419,7 @@ def _describe_encoding(enc: dict[str, Any]) -> str:
 
 
 @router.post("/explain-chart")
-async def explain_chart(request: ExplainChartRequest):
+def explain_chart(request: ExplainChartRequest):
     """Generate a Chinese natural-language interpretation of a chart."""
     try:
         dataset = session.get(request.dataset_id)
@@ -510,7 +521,7 @@ async def activate_llm_profile(profile_id: str):
 
 
 @router.post("/test")
-async def test_llm_connection(request: LLMTestRequest):
+def test_llm_connection(request: LLMTestRequest):
     """Probe an endpoint with a tiny chat request (no config is written)."""
     active = load_config()
     base_url = (request.base_url or active.get("base_url", "")).strip()
