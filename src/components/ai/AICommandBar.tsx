@@ -74,6 +74,10 @@ export function AICommandBar() {
           evidence: res.evidence,
           generatedAt: res.generated_at,
           context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters, model: res.model },
+          facts: res.facts,
+          followups: res.followups,
+          clarify: res.clarify,
+          verifiedSteps: res.tool_call_count ?? 0,
         })
         setAnswer({ question: currentQuestion, text: res.answer })
         setInput('')

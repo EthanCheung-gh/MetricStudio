@@ -484,6 +484,11 @@ export const api = {
     fetchJson<{
       answer: string
       evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
+      facts?: { n: number; tool: string; detail: string }[]
+      followups?: string[]
+      clarify?: { question: string; options: string[] } | null
+      rounds_used?: number
+      tool_call_count?: number
       model?: string
       generated_at?: string
     }>('/api/v1/nl/ask', {

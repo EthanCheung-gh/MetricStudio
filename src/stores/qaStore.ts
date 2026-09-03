@@ -8,6 +8,17 @@ export interface QAEvidence {
   source?: { datasetId?: string; snapshotId?: string; field?: string; row?: string | number }
 }
 
+export interface QAFact {
+  n: number
+  tool: string
+  detail: string
+}
+
+export interface QAClarify {
+  question: string
+  options: string[]
+}
+
 export interface QAFilter {
   field: string
   op: 'range' | 'in'
@@ -28,6 +39,10 @@ export interface QATurn {
   evidence: QAEvidence[]
   context?: QAContext
   generatedAt?: string
+  facts?: QAFact[]
+  followups?: string[]
+  clarify?: QAClarify | null
+  verifiedSteps?: number
 }
 
 export interface QAConversation {

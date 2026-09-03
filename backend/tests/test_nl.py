@@ -109,7 +109,7 @@ def test_nl_transform_invalid_output(client, monkeypatch):
 
 
 def test_ask_endpoint_returns_answer(client, monkeypatch):
-    import backend.api.nl as nl_module
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,value\na,10\nb,20\nc,30\n"
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
@@ -118,40 +118,41 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
     captured = {}
 
     def fake_chat(messages):
-        captured["prompt"] = messages[0]["content"]
+        captured["system"] = messages[0]["content"]
         return "The max value is 30 (row c)."
 
-    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dsid, "question": "what is the max value?"})
     assert resp.status_code == 200, resp.text
-    assert resp.json()["answer"] == "The max value is 30 (row c)."
-    # prompt carries real data context
-    assert "value" in captured["prompt"]
-    assert "a=10" in captured["prompt"] or "name=a" in captured["prompt"]
-    assert resp.json()["evidence"]
-    assert any(item["kind"] == "statistics" for item in resp.json()["evidence"])
-    # v1.0.1: overview line + count/missing are available for scale questions
-    assert "Dataset overview: 3 rows × 2 columns" in captured["prompt"]
-    assert "count=3" in captured["prompt"] and "missing=0" in captured["prompt"]
-    overview = next(item for item in resp.json()["evidence"] if item["id"] == "overview")
+    body = resp.json()
+    assert body["answer"] == "The max value is 30 (row c)."
+    # The system prompt carries the adaptive data context.
+    assert "value" in captured["system"]
+    assert "Dataset overview: 3 rows × 2 columns" in captured["system"]
+    assert "count=3" in captured["system"] and "missing=0" in captured["system"]
+    assert "name=a" in captured["system"]
+    assert body["evidence"]
+    assert any(item["kind"] == "statistics" for item in body["evidence"])
+    overview = next(item for item in body["evidence"] if item["id"] == "overview")
     assert overview["kind"] == "overview"
     assert "3 rows × 2 columns" in overview["detail"]
+    # A plain-text reply is treated as the final answer in round 1.
+    assert body["rounds_used"] == 1
+    assert body["tool_call_count"] == 0
 
 
 def test_ask_endpoint_uses_bound_snapshot_and_filters(client, monkeypatch):
-    import backend.api.nl as nl_module
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,region,value\na,North,10\nb,South,20\nc,North,30\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
     snapshot = client.post(f"/api/v1/data/{dataset_id}/snapshots", json={"name": "Original"}).json()
     client.post(f"/api/v1/transform/{dataset_id}/filter", json={"column": "value", "operator": "gt", "value": 20})
-    captured = {}
 
     def fake_chat(messages):
-        captured["prompt"] = messages[0]["content"]
         return "North values are 10 and 30."
 
-    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
     response = client.post(
         "/api/v1/nl/ask",
         json={
@@ -162,10 +163,9 @@ def test_ask_endpoint_uses_bound_snapshot_and_filters(client, monkeypatch):
         },
     )
     assert response.status_code == 200, response.text
-    assert "name=a" in captured["prompt"]
-    assert "name=c" in captured["prompt"]
-    assert "name=b" not in captured["prompt"]
-    assert all(item["source"].get("snapshotId") == snapshot["id"] for item in response.json()["evidence"])
+    # The snapshot binding is reflected on every evidence item's source.
+    for item in response.json()["evidence"]:
+        assert item["source"].get("snapshotId") == snapshot["id"]
 
 
 def test_ask_endpoint_rejects_snapshot_from_other_dataset(client, monkeypatch):
@@ -184,7 +184,7 @@ def test_ask_endpoint_rejects_snapshot_from_other_dataset(client, monkeypatch):
 
 
 def test_ask_endpoint_includes_previous_conversation(client, monkeypatch):
-    import backend.api.nl as nl_module
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,value\na,10\nb,20\n"
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
@@ -192,10 +192,10 @@ def test_ask_endpoint_includes_previous_conversation(client, monkeypatch):
     captured = {}
 
     def fake_chat(messages):
-        captured["prompt"] = messages[0]["content"]
+        captured["messages"] = messages
         return "b 最高。"
 
-    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
     resp = client.post(
         "/api/v1/nl/ask",
         json={
@@ -205,27 +205,28 @@ def test_ask_endpoint_includes_previous_conversation(client, monkeypatch):
         },
     )
     assert resp.status_code == 200, resp.text
-    assert "Previous conversation:" in captured["prompt"]
-    assert "谁最高？" in captured["prompt"]
-    assert "b" in captured["prompt"]
+    user_content = captured["messages"][-1]["content"]
+    assert "Previous conversation:" in user_content
+    assert "谁最高？" in user_content
+    assert "b" in user_content
 
 
 def test_ask_llm_unavailable(client, monkeypatch):
-    import backend.api.nl as nl_module
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "a\n1\n2\n"
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
     dsid = resp.json()[0]["id"]
 
-    monkeypatch.setattr(nl_module, "chat", lambda messages: (_ for _ in ()).throw(RuntimeError("no llm")))
+    monkeypatch.setattr(qa_agent_module, "chat", lambda messages: (_ for _ in ()).throw(RuntimeError("no llm")))
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dsid, "question": "anything"})
     assert resp.status_code == 502
 
 
-# --- v1.1.0 tool calling -----------------------------------------------------
+# --- v1.2.0 iterative agent ---------------------------------------------------
 
 def test_ask_tool_call_feeds_exact_facts(client, monkeypatch):
-    import backend.api.nl as nl_module
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,region,value\na,North,10\nb,South,20\nc,North,30\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
@@ -235,27 +236,34 @@ def test_ask_tool_call_feeds_exact_facts(client, monkeypatch):
 
     def fake_chat(messages):
         calls["n"] += 1
-        content = messages[0]["content"]
         if calls["n"] == 1:
-            assert "Available tools" in content
+            assert "Available tools" in messages[0]["content"]
             return '{"tools": [{"name": "row_count", "args": {}}, {"name": "distinct_count", "args": {"column": "region"}}]}'
-        captured["prompt"] = content
-        return "该数据集共 3 行，region 有 2 个不同取值。"
+        captured["results"] = messages[-1]["content"]
+        return '{"answer": "共 3 行 [1]，region 有 2 个不同取值 [2]。", "followups": ["region 的分布是怎样的？"], "clarify": null}'
 
-    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "这个数据集有多少行？"})
     assert resp.status_code == 200, resp.text
     assert calls["n"] == 2
-    assert "Computed facts (exact, may be cited directly):" in captured["prompt"]
-    assert "row_count = 3" in captured["prompt"]
-    assert "distinct_count(region) = 2" in captured["prompt"]
-    evidence = resp.json()["evidence"]
-    tool_ids = [item["id"] for item in evidence if item["kind"] == "tool"]
-    assert tool_ids == ["tool:row_count", "tool:distinct_count"]
+    assert "[1] row_count (ok): row_count = 3" in captured["results"]
+    assert "[2] distinct_count (ok): distinct_count(region) = 2" in captured["results"]
+    body = resp.json()
+    assert body["answer"].startswith("共 3 行")
+    assert body["followups"] == ["region 的分布是怎样的？"]
+    assert body["clarify"] is None
+    assert body["rounds_used"] == 2
+    assert body["tool_call_count"] == 2
+    assert body["facts"] == [
+        {"n": 1, "tool": "row_count", "detail": "row_count = 3"},
+        {"n": 2, "tool": "distinct_count", "detail": "distinct_count(region) = 2"},
+    ]
+    tool_ids = [item["id"] for item in body["evidence"] if item["kind"] == "tool"]
+    assert tool_ids == ["fact:1", "fact:2"]
 
 
-def test_ask_tool_router_failure_falls_back_to_static_overview(client, monkeypatch):
-    import backend.api.nl as nl_module
+def test_ask_midloop_llm_failure_degrades_to_facts(client, monkeypatch):
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,value\na,10\nb,20\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
@@ -265,42 +273,42 @@ def test_ask_tool_router_failure_falls_back_to_static_overview(client, monkeypat
     def flaky_chat(messages):
         calls["n"] += 1
         if calls["n"] == 1:
-            raise RuntimeError("router unavailable")
-        return "静态概览回答。"
+            return '{"tools": [{"name": "row_count", "args": {}}]}'
+        raise RuntimeError("llm died mid-loop")
 
-    monkeypatch.setattr(nl_module, "chat", flaky_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", flaky_chat)
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "有多少行？"})
     assert resp.status_code == 200, resp.text
+    body = resp.json()
     assert calls["n"] == 2
-    # Router failed silently: no tool facts attached, static overview path used.
-    assert all(item["kind"] != "tool" for item in resp.json()["evidence"])
-    assert resp.json()["answer"] == "静态概览回答。"
+    assert "[1] row_count = 2" in body["answer"]
+    assert body["facts"][0]["detail"] == "row_count = 2"
 
 
-def test_ask_tool_router_garbage_json_is_ignored(client, monkeypatch):
-    import backend.api.nl as nl_module
+def test_ask_plain_text_reply_is_final_answer(client, monkeypatch):
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,value\na,10\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
     calls = {"n": 0}
-    captured = {}
 
     def fake_chat(messages):
         calls["n"] += 1
-        if calls["n"] == 1:
-            return "我觉得不需要工具。"
-        captured["prompt"] = messages[0]["content"]
-        return "回答。"
+        return "我觉得不需要工具，数据概览已足够。"
 
-    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "test"})
     assert resp.status_code == 200
-    assert "Computed facts" not in captured["prompt"]
+    assert calls["n"] == 1
+    body = resp.json()
+    assert body["answer"] == "我觉得不需要工具，数据概览已足够。"
+    assert body["facts"] == []
+    assert body["tool_call_count"] == 0
 
 
-def test_ask_tool_invalid_column_is_skipped(client, monkeypatch):
-    import backend.api.nl as nl_module
+def test_ask_tool_errors_are_fed_back(client, monkeypatch):
+    import backend.core.qa_agent as qa_agent_module
 
     csv = "name,value\na,10\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
@@ -312,14 +320,37 @@ def test_ask_tool_invalid_column_is_skipped(client, monkeypatch):
         calls["n"] += 1
         if calls["n"] == 1:
             return '{"tools": [{"name": "column_stats", "args": {"column": "name"}}, {"name": "distinct_count", "args": {"column": "missing_col"}}]}'
-        captured["prompt"] = messages[0]["content"]
-        return "回答。"
+        captured["results"] = messages[-1]["content"]
+        return '{"answer": "工具失败，基于概览回答。", "followups": [], "clarify": null}'
 
-    monkeypatch.setattr(nl_module, "chat", fake_chat)
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "test"})
     assert resp.status_code == 200
-    # column_stats on a non-numeric column and an unknown column are both skipped.
-    assert "Computed facts" not in captured["prompt"]
+    body = resp.json()
+    assert body["answer"] == "工具失败，基于概览回答。"
+    assert body["tool_call_count"] == 2
+    # Error details are fed back to the LLM so it can correct its arguments.
+    assert "[1] column_stats (error)" in captured["results"]
+    assert "[2] distinct_count (error)" in captured["results"]
+    assert "column 'missing_col' not found" in captured["results"]
+
+
+def test_ask_clarify_payload_passes_through(client, monkeypatch):
+    import backend.core.qa_agent as qa_agent_module
+
+    csv = "name,value\na,10\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    def fake_chat(messages):
+        return '{"answer": "", "followups": [], "clarify": {"question": "你指的是哪一列的平均值？", "options": ["value", "name"]}}'
+
+    monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
+    resp = client.post("/api/v1/nl/ask", json={"dataset_id": dataset_id, "question": "平均值是多少？"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["clarify"] == {"question": "你指的是哪一列的平均值？", "options": ["value", "name"]}
+    assert body["answer"] == ""
+
 
 
 def test_narrate_endpoint(client, monkeypatch):

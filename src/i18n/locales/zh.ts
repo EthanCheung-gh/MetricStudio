@@ -157,6 +157,7 @@ export default {
   'ai.askPlaceholder': '向数据提问，如：哪个地区 value 最高？',
   'ai.evidence': '证据来源',
   'ai.emptyHistory': '还没有问答，向当前数据集提一个问题吧。',
+  'ai.verified': '已查证 {{count}} 步',
   'ai.showEvidence': '查看证据',
   'ai.hideEvidence': '收起证据',
   'ai.copyAnswer': '复制回答',

@@ -25,6 +25,7 @@ from backend.core.llm import (
     update_profile,
 )
 from backend.core.privacy import prepare_for_llm, sensitive_columns
+from backend.core.qa_agent import run_agent
 from backend.core.session import session
 from backend.models.chart import FilterSpec
 
@@ -169,7 +170,65 @@ async def nl_transform(request: NLTransformRequest):
     return {"operations": ops, "raw": raw}
 
 
-def _build_data_context(dataset: Any, df: Any) -> str:
+def _question_tokens(question: str) -> list[str]:
+    """Cheap tokenizer: latin/number words plus Chinese character bigrams."""
+    text = (question or "").casefold()
+    tokens: set[str] = set()
+    for word in re.findall(r"[a-z0-9_]+", text):
+        if len(word) >= 2:
+            tokens.add(word)
+    for segment in re.findall(r"[\u4e00-\u9fff]{2,}", text):
+        if len(segment) <= 4:
+            tokens.add(segment)
+        else:
+            tokens.update(segment[i : i + 2] for i in range(len(segment) - 1))
+    return list(tokens)[:12]
+
+
+def _relevant_sample_rows(df: Any, question: str, limit: int = 5) -> Any:
+    """Pick sample rows whose text matches question keywords, else head(limit)."""
+    tokens = _question_tokens(question)
+    if not tokens or df.empty:
+        return df.head(limit)
+    window = df.head(1000)
+    row_strings = window.astype(str).agg(" | ".join, axis=1)
+    scores = row_strings.apply(lambda text: sum(1 for token in tokens if token in text))
+    hits = scores[scores > 0].sort_values(ascending=False).head(limit).index
+    if len(hits) == 0:
+        return df.head(limit)
+    return window.loc[sorted(hits)]
+
+
+def _categorical_line(df: Any, column: str) -> str | None:
+    """Adaptive summary line for one non-numeric column (D upgrade)."""
+    series = df[column].dropna()
+    if series.empty:
+        return f"{column}: all values missing"
+    cardinality = int(series.nunique())
+    if cardinality <= 50:
+        counts = series.value_counts().head(5)
+        total = len(series)
+        parts = ", ".join(f"{index}={int(value)}({value / total:.0%})" for index, value in counts.items())
+        return f"{column} (categorical, {cardinality} distinct): {parts}"
+    examples = ", ".join(str(value)[:40] for value in series.unique()[:3])
+    return f"{column} (high-cardinality, {cardinality} distinct): e.g. {examples}"
+
+
+def _datetime_range_line(df: Any, column: str) -> str | None:
+    """Return a range line when the column parses as datetime (>=80%)."""
+    series = df[column].dropna()
+    if series.empty:
+        return None
+    sample = series.head(100)
+    parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
+    if parsed.notna().mean() < 0.8:
+        return None
+    full = pd.to_datetime(series, errors="coerce", format="mixed")
+    return f"{column} (datetime): from={full.min()}, to={full.max()}"
+
+
+def _build_data_context(dataset: Any, df: Any, question: str = "") -> str:
+    """Adaptive overview: richer per-dtype facts and question-relevant samples."""
     from backend.core.insights import generate_insights
 
     df, _ = prepare_for_llm(df, load_config())
@@ -187,8 +246,19 @@ def _build_data_context(dataset: Any, df: Any) -> str:
                 f"{col}: count={int(row['count'])}, missing={int(df[col].isna().sum())}, "
                 f"min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, median={df[col].median():.2f}"
             )
-    lines.append("Sample rows:")
-    for _, row in df.head(5).iterrows():
+    for column in df.columns:
+        if column in numeric.columns:
+            continue
+        range_line = _datetime_range_line(df, str(column))
+        if range_line:
+            lines.append(range_line)
+            continue
+        line = _categorical_line(df, str(column))
+        if line:
+            lines.append(line)
+    sample = _relevant_sample_rows(df, question)
+    lines.append("Sample rows (closest to the question):" if question else "Sample rows:")
+    for _, row in sample.iterrows():
         lines.append("  " + ", ".join(f"{key}={value}" for key, value in row.items()))
     insights = generate_insights(df)
     if insights:
@@ -251,90 +321,9 @@ def _ask_dataframe(dataset: Any, request: NLAskRequest) -> Any:
     return _filter_by_filters(df, request.filters) if request.filters else df
 
 
-# --- v1.1.0 tool calling -----------------------------------------------------
-# A lightweight, provider-agnostic tool protocol: a short "router" call asks
-# the LLM which deterministic tools it needs; the backend executes them and
-# feeds the exact results into the main prompt. Any failure degrades silently
-# to the static-overview path (v1.0.1 behavior).
-
-_TOOL_SPEC = """Available tools (deterministic, executed on the real data):
-- {"name": "row_count", "args": {}}
-- {"name": "column_stats", "args": {"column": "<numeric column>"}}
-- {"name": "distinct_count", "args": {"column": "<column>"}}
-
-Question: """
-
-_TOOL_LIMIT = 3
-
-
-def _extract_json_object(text: str) -> dict[str, Any] | None:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end <= start:
-        return None
-    try:
-        parsed = json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
-
-
-def _run_tool(df: Any, name: str, args: dict[str, Any]) -> str | None:
-    if name == "row_count":
-        return f"row_count = {len(df)}"
-    if name == "column_stats":
-        column = str(args.get("column", ""))
-        if column not in df.columns or not pd.api.types.is_numeric_dtype(df[column]):
-            return None
-        series = df[column].dropna()
-        if series.empty:
-            return f"column_stats({column}): all values missing"
-        return (
-            f"column_stats({column}): count={len(series)}, missing={int(df[column].isna().sum())}, "
-            f"min={series.min()}, max={series.max()}, mean={series.mean():.4f}, median={series.median()}"
-        )
-    if name == "distinct_count":
-        column = str(args.get("column", ""))
-        if column not in df.columns:
-            return None
-        return f"distinct_count({column}) = {int(df[column].nunique(dropna=True))}"
-    return None
-
-
-def _route_and_run_tools(question: str, df: Any) -> list[dict[str, Any]]:
-    """Ask the LLM which tools the question needs, execute them, return facts.
-
-    Never raises: any routing/parsing/execution failure yields an empty list
-    so the ask flow falls back to the static data context.
-    """
-    try:
-        raw = chat([
-            {"role": "user", "content": (
-                "You are a router for a data-analysis assistant. Decide which tools are "
-                "needed to answer the question factually. Respond with ONLY a JSON object: "
-                '{"tools": [<tool objects>]} with an empty array when none apply. No prose.\n\n'
-                + _TOOL_SPEC + question
-            )}
-        ])
-    except Exception:
-        return []
-    parsed = _extract_json_object(raw)
-    if not parsed or not isinstance(parsed.get("tools"), list):
-        return []
-    facts: list[dict[str, Any]] = []
-    for tool in parsed["tools"][:_TOOL_LIMIT]:
-        if not isinstance(tool, dict):
-            continue
-        name = str(tool.get("name", ""))
-        args = tool.get("args") if isinstance(tool.get("args"), dict) else {}
-        try:
-            detail = _run_tool(df, name, args)
-        except Exception:
-            detail = None
-        if detail:
-            facts.append({"id": f"tool:{name}", "kind": "tool", "detail": detail})
-    return facts
-
+# --- v1.2.0 iterative agent ---------------------------------------------------
+# /ask is orchestrated by backend.core.qa_agent: an iterative tool loop with
+# numbered, citable facts. See qa_agent for the degradation ladder.
 
 @router.post("/ask")
 async def nl_ask(request: NLAskRequest):
@@ -343,41 +332,29 @@ async def nl_ask(request: NLAskRequest):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     df = _ask_dataframe(dataset, request)
-    context = _build_data_context(dataset, df)
-    tool_facts = _route_and_run_tools(request.question, df)
-    facts_block = ""
-    if tool_facts:
-        lines = "\n".join(f"- {fact['detail']}" for fact in tool_facts)
-        facts_block = f"Computed facts (exact, may be cited directly):\n{lines}\n\n"
-    history = request.history[-8:]
-    conversation = "\n".join(
-        f"User: {turn.question}\nAssistant: {turn.answer}" for turn in history
-    )
-    older = request.history[:-8]
-    summary_block = ""
-    if older:
-        summary = "\n".join(f"Q: {turn.question}\nA: {turn.answer}" for turn in older)
-        summary_block = f"Earlier conversation summary (truncated):\n{summary[:2000]}\n\n"
-    history_block = f"{summary_block}Previous conversation:\n{conversation}\n\n" if conversation or summary_block else ""
-    prompt = (
-        "You are analyzing a dataset. Use ONLY the data context below; never invent numbers. "
-        "Treat previous answers as conversation context, not as evidence.\n\n"
-        f"Data context:\n{context}\n\n"
-        f"{facts_block}"
-        f"{history_block}"
-        f"Question: {request.question}\n\n"
-        "请用简体中文简洁回答，引用上下文中的具体数字；如果数据不足，请明确说明。"
-    )
+    context = _build_data_context(dataset, df, request.question)
+    history = [turn.model_dump() for turn in request.history]
     try:
-        answer = chat([{"role": "user", "content": prompt}])
+        agent = run_agent(request.question, df, context, history)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
     config = load_config()
     evidence = _build_data_evidence(dataset, df, request.snapshot_id)
-    evidence.extend(tool_facts)
+    fact_source: dict[str, str] = {"datasetId": dataset.id}
+    if request.snapshot_id:
+        fact_source["snapshotId"] = request.snapshot_id
+    evidence.extend(
+        {"id": f"fact:{fact['n']}", "kind": "tool", "detail": f"[{fact['n']}] {fact['tool']}: {fact['detail']}", "source": dict(fact_source)}
+        for fact in agent["facts"]
+    )
     return {
-        "answer": answer,
-        "evidence": evidence[:15],
+        "answer": agent["answer"],
+        "evidence": evidence[:20],
+        "facts": agent["facts"],
+        "followups": agent["followups"],
+        "clarify": agent["clarify"],
+        "rounds_used": agent["rounds_used"],
+        "tool_call_count": agent["tool_call_count"],
         "model": config.get("model", "unknown"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

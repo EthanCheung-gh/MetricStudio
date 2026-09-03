@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
   Send,
+  ShieldCheck,
   Trash2,
   User,
   X,
@@ -26,6 +27,32 @@ import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
 import { dashboardFiltersForDataset } from '@/utils/qaContext'
 import { conversationToHtml, conversationToMarkdown, downloadText } from '@/utils/qaExport'
+
+/** Render answer text with clickable [n] citation chips. */
+function AnswerText({ text, onCite }: { text: string; onCite: (n: number) => void }) {
+  const parts = text.split(/(\[\d+\])/g)
+  return (
+    <div className="whitespace-pre-wrap text-[11px] leading-relaxed">
+      {parts.map((part, partIndex) => {
+        const match = part.match(/^\[(\d+)\]$/)
+        if (match) {
+          return (
+            <button
+              key={partIndex}
+              type="button"
+              title={`fact [${match[1]}]`}
+              onClick={() => onCite(Number(match[1]))}
+              className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 align-middle text-[9px] font-semibold text-primary hover:bg-primary/30"
+            >
+              {match[1]}
+            </button>
+          )
+        }
+        return <span key={partIndex}>{part}</span>
+      })}
+    </div>
+  )
+}
 
 export function AskPanel() {
   const { t } = useTranslation()
@@ -55,6 +82,7 @@ export function AskPanel() {
   const [renameValue, setRenameValue] = useState('')
   const [renaming, setRenaming] = useState(false)
   const [expandedEvidence, setExpandedEvidence] = useState<Set<number>>(new Set())
+  const [activeCitation, setActiveCitation] = useState<{ turn: number; n: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null)
 
@@ -94,6 +122,10 @@ export function AskPanel() {
         evidence: response.evidence,
         generatedAt: response.generated_at,
         context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters, model: response.model },
+        facts: response.facts,
+        followups: response.followups,
+        clarify: response.clarify,
+        verifiedSteps: response.tool_call_count ?? 0,
       })
       setQuestion('')
     } catch (err) {
@@ -125,6 +157,10 @@ export function AskPanel() {
         evidence: response.evidence,
         generatedAt: response.generated_at,
         context: { datasetId: requestDatasetId, ...context, model: response.model },
+        facts: response.facts,
+        followups: response.followups,
+        clarify: response.clarify,
+        verifiedSteps: response.tool_call_count ?? 0,
       })
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')
@@ -291,7 +327,46 @@ export function AskPanel() {
               <div className="flex items-start gap-1.5">
                 <Bot className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
                 <div className="min-w-0 max-w-[92%] flex-1 rounded-lg rounded-tl-sm border border-border/60 bg-surface-elevated/40 p-2">
-                  <div className="whitespace-pre-wrap text-[11px] leading-relaxed">{isRegenerating ? t('ai.regenerating') : turn.answer}</div>
+                  {!isRegenerating && !!turn.verifiedSteps && turn.verifiedSteps > 0 && (
+                    <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">
+                      <ShieldCheck className="h-3 w-3" />
+                      {t('ai.verified', { count: turn.verifiedSteps })}
+                    </div>
+                  )}
+                  {turn.clarify && (
+                    <div className="mb-1.5 rounded border border-warning/40 bg-warning/10 p-1.5">
+                      <div className="text-[11px] font-medium text-foreground">{turn.clarify.question}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {turn.clarify.options.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted hover:text-foreground"
+                            onClick={() => void ask(option)}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {isRegenerating ? (
+                    <div className="whitespace-pre-wrap text-[11px] leading-relaxed">{t('ai.regenerating')}</div>
+                  ) : (
+                    turn.answer && (
+                      <AnswerText
+                        text={turn.answer}
+                        onCite={(n) => {
+                          setActiveCitation({ turn: index, n })
+                          setExpandedEvidence((current) => {
+                            const next = new Set(current)
+                            next.add(index)
+                            return next
+                          })
+                        }}
+                      />
+                    )
+                  )}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1 border-t border-border/50 pt-1">
                     <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => copyAnswer(turn.answer)} startContent={<Copy className="h-3 w-3" />}>
                       {t('ai.copyAnswer')}
@@ -316,10 +391,31 @@ export function AskPanel() {
                   </div>
                   {isExpanded && (
                     <ul className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-[10px] text-muted">
-                      {turn.evidence.map((item, evidenceIndex) => <li key={`${item.kind}-${evidenceIndex}`} className="break-words">{item.detail}</li>)}
+                      {turn.evidence.map((item, evidenceIndex) => (
+                        <li
+                          key={`${item.kind}-${evidenceIndex}`}
+                          className={`break-words rounded px-1 ${activeCitation?.turn === index && activeCitation.n.toString() === item.id?.replace('fact:', '') ? 'bg-primary/15 text-foreground' : ''}`}
+                        >
+                          {item.detail}
+                        </li>
+                      ))}
                     </ul>
                   )}
-                  {!isRegenerating && index === turns.length - 1 && (
+                  {!isRegenerating && !!turn.followups?.length && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {turn.followups.map((followup) => (
+                        <button
+                          key={followup}
+                          type="button"
+                          className="rounded-full border border-primary/40 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+                          onClick={() => void ask(followup)}
+                        >
+                          {followup}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {!isRegenerating && index === turns.length - 1 && !turn.followups?.length && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {[t('ai.quickWhy'), t('ai.quickBreakdown'), t('ai.quickChart')].map((suggestion) => (
                         <button key={suggestion} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted hover:text-foreground" onClick={() => setQuestion(suggestion)}>
