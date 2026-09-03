@@ -390,10 +390,8 @@ def test_explain_chart_llm_unavailable(client, monkeypatch):
 def test_llm_config_round_trip(client, monkeypatch, tmp_path):
     import backend.core.llm as llm_module
 
-    config_path = tmp_path / "llm-config.json"
-    monkeypatch.setattr(llm_module, "CONFIG_PATH", config_path)
-    monkeypatch.setattr("backend.api.nl.load_config", llm_module.load_config)
-    monkeypatch.setattr("backend.api.nl.save_config", llm_module.save_config)
+    monkeypatch.setenv("METRICSTUDIO_CONFIG_DIR", str(tmp_path))
+    config_path = tmp_path / "llm-profiles.json"
 
     payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret", "provider": "cloud", "data_scope": "redact_sensitive"}
     response = client.post("/api/v1/nl/config", json=payload)

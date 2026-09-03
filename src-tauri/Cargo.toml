@@ -1,6 +1,6 @@
 [package]
 name = "metricstudio"
-version = "1.1.7"
+version = "1.1.8"
 description = "Personal data analysis desktop tool based on Plotly"
 authors = ["The MetricStudio Authors"]
 license = "Apache-2.0"

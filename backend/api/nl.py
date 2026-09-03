@@ -13,7 +13,17 @@ from pydantic import BaseModel, Field, field_validator
 import pandas as pd
 
 from backend.api.chart import _filter_by_filters
-from backend.core.llm import chat, load_config, save_config
+from backend.core.llm import (
+    activate_profile,
+    chat,
+    create_profile,
+    delete_profile,
+    list_profiles,
+    load_config,
+    probe_llm,
+    save_config,
+    update_profile,
+)
 from backend.core.privacy import prepare_for_llm, sensitive_columns
 from backend.core.session import session
 from backend.models.chart import FilterSpec
@@ -74,6 +84,16 @@ class LLMConfig(BaseModel):
         if not value:
             raise ValueError("value must not be empty")
         return value
+
+
+class LLMProfilePayload(LLMConfig):
+    name: str = ""
+
+
+class LLMTestRequest(BaseModel):
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
 
 
 class ExplainChartRequest(BaseModel):
@@ -450,3 +470,76 @@ async def set_llm_config(config: LLMConfig):
         data["api_key"] = load_config().get("api_key", "")
     save_config(data)
     return {**data, "api_key": ""}
+
+
+def _profile_view(profile: dict[str, Any]) -> dict[str, Any]:
+    api_key = profile.get("api_key", "")
+    return {
+        "id": profile["id"],
+        "name": profile["name"],
+        "base_url": profile["base_url"],
+        "model": profile["model"],
+        "provider": profile["provider"],
+        "data_scope": profile["data_scope"],
+        "has_api_key": bool(api_key),
+        "api_key_hint": api_key[-4:] if api_key else "",
+    }
+
+
+def _store_view(store: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "active_id": store["active"],
+        "profiles": [_profile_view(p) for p in store["profiles"]],
+    }
+
+
+@router.get("/profiles")
+async def get_llm_profiles():
+    return _store_view(list_profiles())
+
+
+@router.post("/profiles")
+async def create_llm_profile(payload: LLMProfilePayload):
+    store = create_profile(payload.model_dump())
+    store_view = _store_view(store)
+    return {**store_view, "created_id": store_view["active_id"]}
+
+
+@router.put("/profiles/{profile_id}")
+async def update_llm_profile(profile_id: str, payload: LLMProfilePayload):
+    try:
+        store = update_profile(profile_id, payload.model_dump(), clear_api_key=payload.clear_api_key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _store_view(store)
+
+
+@router.delete("/profiles/{profile_id}")
+async def delete_llm_profile(profile_id: str):
+    try:
+        store = delete_profile(profile_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _store_view(store)
+
+
+@router.post("/profiles/{profile_id}/activate")
+async def activate_llm_profile(profile_id: str):
+    try:
+        store = activate_profile(profile_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _store_view(store)
+
+
+@router.post("/test")
+async def test_llm_connection(request: LLMTestRequest):
+    """Probe an endpoint with a tiny chat request (no config is written)."""
+    active = load_config()
+    base_url = (request.base_url or active.get("base_url", "")).strip()
+    model = (request.model or active.get("model", "")).strip()
+    api_key = request.api_key.strip() if request.api_key else active.get("api_key", "")
+    if not base_url or not model:
+        raise HTTPException(status_code=422, detail="base_url and model are required")
+    ok, latency_ms, error = probe_llm(base_url, model, api_key)
+    return {"ok": ok, "latency_ms": latency_ms, "error": error}

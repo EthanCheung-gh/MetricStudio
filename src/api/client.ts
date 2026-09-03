@@ -36,6 +36,35 @@ export interface GlobalUndoResponse {
   preview: DataPreview;
 }
 
+export type LLMProviderKind = 'local' | 'cloud';
+export type LLMDataScope = 'all' | 'redact_sensitive' | 'exclude_sensitive';
+
+export interface LLMProfileView {
+  id: string;
+  name: string;
+  base_url: string;
+  model: string;
+  provider: LLMProviderKind;
+  data_scope: LLMDataScope;
+  has_api_key: boolean;
+  api_key_hint: string;
+}
+
+export interface LLMProfilesResponse {
+  active_id: string;
+  profiles: LLMProfileView[];
+}
+
+export interface LLMProfilePayload {
+  name: string;
+  base_url: string;
+  model: string;
+  api_key: string;
+  provider: LLMProviderKind;
+  data_scope: LLMDataScope;
+  clear_api_key?: boolean;
+}
+
 export interface LoadProjectResponse {
   project: {
     name?: string;
@@ -478,6 +507,26 @@ export const api = {
     fetchJson<{ base_url: string; model: string; api_key: string; provider: 'local' | 'cloud'; data_scope: 'all' | 'redact_sensitive' | 'exclude_sensitive' }>('/api/v1/nl/config', {
       method: 'POST',
       body: JSON.stringify(config),
+    }),
+  getLLMProfiles: () => fetchJson<LLMProfilesResponse>('/api/v1/nl/profiles'),
+  createLLMProfile: (payload: LLMProfilePayload) =>
+    fetchJson<LLMProfilesResponse & { created_id: string }>('/api/v1/nl/profiles', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateLLMProfile: (profileId: string, payload: LLMProfilePayload) =>
+    fetchJson<LLMProfilesResponse>(`/api/v1/nl/profiles/${profileId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteLLMProfile: (profileId: string) =>
+    fetchJson<LLMProfilesResponse>(`/api/v1/nl/profiles/${profileId}`, { method: 'DELETE' }),
+  activateLLMProfile: (profileId: string) =>
+    fetchJson<LLMProfilesResponse>(`/api/v1/nl/profiles/${profileId}/activate`, { method: 'POST' }),
+  testLLMConnection: (payload: { base_url?: string; model?: string; api_key?: string } = {}) =>
+    fetchJson<{ ok: boolean; latency_ms: number; error: string }>('/api/v1/nl/test', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
   applyBatch: (id: string, operations: { type: string; params: Record<string, unknown> }[]) =>
     fetchJson<DataPreview>(`/api/v1/transform/${id}/batch`, {
