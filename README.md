@@ -1,8 +1,20 @@
 # MetricStudio
 
+[English](README.en.md) | 简体中文
+
 基于 Plotly 的个人数据分析桌面工具。导入数据后即可完成清洗变换、可视化图表构建、交互式 Dashboard 编排，并借助 AI 完成数据问答、洞察叙述与统计解释——全程数据留在本机。
 
-当前版本：**1.1.7**
+当前版本：**1.2.0**
+
+## 界面预览
+
+| 数据表与质量中心 | 可视化图表 |
+|---|---|
+| ![数据表与质量中心](png/01-metricstudio-datasheet.png) | ![可视化图表](png/02-metricstudio-plot.png) |
+| **拖拽式图表配置** | **Dashboard 编排** |
+| ![拖拽式图表配置](png/03-metricstudio-config-properties-panel.png) | ![Dashboard 编排](png/04-metricstudio-dashboard.png) |
+| **命令面板** | **SQL 工作台** |
+| ![命令面板](png/05-metricstudio-command-panel.png) | ![SQL 工作台](png/06-metricstudio-sql-stat.png) |
 
 ## 功能特性
 
@@ -120,7 +132,8 @@ codegraph impact Dataset       # 修改某符号会影响什么
 - **v0.8.x**：时间序列工作台、统计工具箱
 - **v0.9.0**：SQL 查询工作台
 - **v1.0.0**：分析故事模式（P0–P2 全部完成）
-- **v1.1.x**：编辑体验与健壮性打磨（进行中，详见 git log）
+- **v1.1.x**：编辑体验与健壮性打磨
+- **v1.2.0**：数据问答智能化——迭代式工具调用（3 轮 × 11 个确定性工具）、[n] 引用闭环、自适应上下文、建议追问与澄清
 
 后续方向（P3）：发现式分析首页、插件系统、轻量分享。
 
