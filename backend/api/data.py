@@ -85,6 +85,7 @@ async def import_sample():
             sample_path = Path(getattr(sys, "_MEIPASS", "")) / "sample_data.csv"
         dataset = session.import_file(sample_path, name="MetricStudio Sample")[0]
         session.sources[dataset.id]["kind"] = "sample"
+        dataset.set_source_type("sample")
         session._persist(dataset)
         return dataset.to_meta()
     except Exception as exc:
@@ -104,7 +105,7 @@ async def import_text(payload: dict):
         raise HTTPException(status_code=400, detail=f"Could not parse pasted text: {exc}") from exc
     if df.empty:
         raise HTTPException(status_code=400, detail="Pasted text produced no rows")
-    dataset = session.import_dataframe(df, name=name)
+    dataset = session.import_dataframe(df, name=name, source_type="paste")
     return [dataset.to_meta()]
 
 

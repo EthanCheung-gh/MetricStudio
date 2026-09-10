@@ -36,6 +36,9 @@ class DataFrameMeta(CBaseModel):
     cols: int
     columns: list[ColumnMeta]
     created_at: str
+    # Origin of the dataset: csv / excel / parquet / json / sqlite / sql /
+    # paste / sample / snapshot. None for legacy or unknown origins.
+    source_type: Optional[str] = None
 
 
 class DataPreview(CBaseModel):

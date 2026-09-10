@@ -105,7 +105,7 @@ async def import_table(request: ImportRequest):
         if not isinstance(df, pd.DataFrame):
             df = session._to_pandas(df)
         actual_engine = session.engine.auto_engine(df)
-        dataset = Dataset(df, name=request.name or request.table, engine=actual_engine)
+        dataset = Dataset(df, name=request.name or request.table, engine=actual_engine, source_type="sqlite")
         session.datasets[dataset.id] = dataset
         stat = Path(request.path).stat()
         session.sources[dataset.id] = {
@@ -191,7 +191,7 @@ async def import_workbench_result(request: SnapshotRequest):
     if df.empty:
         raise HTTPException(status_code=400, detail="查询结果为空，无法保存为数据集")
     actual_engine = session.engine.auto_engine(df)
-    dataset = Dataset(df, name=request.name or "SQL Result", engine=actual_engine)
+    dataset = Dataset(df, name=request.name or "SQL Result", engine=actual_engine, source_type="sql")
     session.datasets[dataset.id] = dataset
     session._persist(dataset)
     _latest_result["columns"] = None

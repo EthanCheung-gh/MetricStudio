@@ -47,6 +47,7 @@ class SessionManager:
                 "name": dataset.name,
                 "engine": dataset.engine,
                 "created_at": dataset.created_at,
+                "source_type": dataset.source_type,
                 "history": dataset.history,
                 "source": self.sources.get(dataset.id),
                 "snapshots": [
@@ -80,7 +81,13 @@ class SessionManager:
                 if dataset_id in self.datasets:
                     continue
                 raw_df = pd.read_parquet(STORAGE_DIR / f"{dataset_id}.parquet")
-                dataset = Dataset(raw_df, name=meta["name"], engine=meta["engine"], dataset_id=dataset_id)
+                dataset = Dataset(
+                    raw_df,
+                    name=meta["name"],
+                    engine=meta["engine"],
+                    dataset_id=dataset_id,
+                    source_type=meta.get("source_type"),
+                )
                 self.datasets[dataset.id] = dataset  # register first: join replay may reference it
                 if meta.get("source"):
                     self.sources[dataset_id] = meta["source"]
@@ -172,11 +179,11 @@ class SessionManager:
     def restore_snapshot(self, snapshot_id: str, name: str | None = None) -> Dataset:
         snapshot = self.get_snapshot(snapshot_id)
         restored_name = (name or f"{snapshot['dataset_name']} · {snapshot['name']}").strip()
-        return self.import_dataframe(self.snapshot_df(snapshot_id), restored_name)
+        return self.import_dataframe(self.snapshot_df(snapshot_id), restored_name, source_type="snapshot")
 
     # ---- dataset operations ----
 
-    def import_dataframe(self, df: Any, name: str) -> Dataset:
+    def import_dataframe(self, df: Any, name: str, source_type: str | None = None) -> Dataset:
         """Register a dataset directly from an in-memory DataFrame.
 
         Used for clipboard / pasted-text imports that have no refreshable source
@@ -185,7 +192,7 @@ class SessionManager:
         if not isinstance(df, pd.DataFrame):
             df = self._to_pandas(df)
         actual_engine = self.engine.auto_engine(df)
-        dataset = Dataset(df, name=name, engine=actual_engine)
+        dataset = Dataset(df, name=name, engine=actual_engine, source_type=source_type)
         self.datasets[dataset.id] = dataset
         self._persist(dataset)
         return dataset
@@ -202,6 +209,9 @@ class SessionManager:
         path = Path(path)
         name = name or path.stem
         ext = path.suffix.lower()
+        source_type = {".csv": "csv", ".parquet": "parquet", ".json": "json", ".xlsx": "excel", ".xls": "excel"}.get(
+            ext, ext.lstrip(".")
+        )
         datasets: list[Dataset] = []
 
         # Persist the source file so the dataset can be refreshed later.
@@ -234,7 +244,7 @@ class SessionManager:
                     frames.append(frame)
                 df = pd.concat(frames, ignore_index=True)
                 actual_engine = self.engine.auto_engine(df)
-                dataset = Dataset(df, name=name, engine=actual_engine)
+                dataset = Dataset(df, name=name, engine=actual_engine, source_type=source_type)
                 self.datasets[dataset.id] = dataset
                 self.sources[dataset.id] = {**source_meta, "sheet_name": None, "merged_sheets": sheet_names}
                 self._persist(dataset)
@@ -245,7 +255,7 @@ class SessionManager:
                 if not isinstance(df, pd.DataFrame):
                     df = self._to_pandas(df)
                 actual_engine = self.engine.auto_engine(df)
-                dataset = Dataset(df, name=f"{name} - {sn}", engine=actual_engine)
+                dataset = Dataset(df, name=f"{name} - {sn}", engine=actual_engine, source_type=source_type)
                 self.datasets[dataset.id] = dataset
                 self.sources[dataset.id] = {**source_meta, "sheet_name": sn}
                 self._persist(dataset)
@@ -262,7 +272,7 @@ class SessionManager:
             if not isinstance(df, pd.DataFrame):
                 df = self._to_pandas(df)
             actual_engine = self.engine.auto_engine(df)
-            dataset = Dataset(df, name=name, engine=actual_engine)
+            dataset = Dataset(df, name=name, engine=actual_engine, source_type=source_type)
             self.datasets[dataset.id] = dataset
             self.sources[dataset.id] = {**source_meta, "sheet_name": None}
             self._persist(dataset)
@@ -286,7 +296,7 @@ class SessionManager:
             if not isinstance(df, pd.DataFrame):
                 df = self._to_pandas(df)
             history = list(dataset.history)
-            candidate = Dataset(df.copy(), name=dataset.name, engine=dataset.engine)
+            candidate = Dataset(df.copy(), name=dataset.name, engine=dataset.engine, source_type=dataset.source_type)
             self._replay(candidate, history)
             if len(candidate.history) != len(history):
                 raise ValueError("Could not replay all transforms against the refreshed SQLite source")
@@ -327,7 +337,7 @@ class SessionManager:
             df = self._to_pandas(df)
 
         history = list(dataset.history)
-        candidate = Dataset(df.copy(), name=dataset.name, engine=dataset.engine)
+        candidate = Dataset(df.copy(), name=dataset.name, engine=dataset.engine, source_type=dataset.source_type)
         self._replay(candidate, history)
         if len(candidate.history) != len(history):
             raise ValueError("Could not replay all transforms against the refreshed source")

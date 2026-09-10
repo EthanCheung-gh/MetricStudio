@@ -21,14 +21,21 @@ class Dataset:
         name: str,
         engine: str = "pandas",
         dataset_id: str | None = None,
+        source_type: str | None = None,
     ):
         self.id = dataset_id or DataEngine.new_id()
         self.name = name
         self.engine = engine
+        self.source_type = source_type
         self.raw_df = df.copy()
         self._df = df.copy()
         self.created_at = datetime.utcnow().isoformat()
         self.history: list[dict[str, Any]] = []
+        self._build_meta()
+
+    def set_source_type(self, source_type: str) -> None:
+        """Update the origin tag and refresh the cached meta."""
+        self.source_type = source_type
         self._build_meta()
 
     def _build_meta(self) -> None:
@@ -50,6 +57,7 @@ class Dataset:
                 for col in self._df.columns
             ],
             created_at=self.created_at,
+            source_type=self.source_type,
         )
 
     @property

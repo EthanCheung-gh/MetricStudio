@@ -25,6 +25,8 @@ export interface DataFrameMeta {
   cols: number;
   columns: ColumnMeta[];
   createdAt: string;
+  /** Origin of the dataset: csv / excel / parquet / json / sqlite / sql / paste / sample / snapshot. */
+  sourceType?: string | null;
 }
 
 export interface DataPreview {

@@ -17,6 +17,19 @@ export const DatasetList = memo(function DatasetList() {
   const dataVersions = useDataStore((s) => s.dataVersions)
   const addNotification = useUIStore((s) => s.addNotification)
 
+  // Compact badges shown next to each dataset name.
+  const TYPE_BADGE: Record<string, string> = {
+    csv: 'CSV',
+    excel: 'XLSX',
+    parquet: 'PQT',
+    json: 'JSON',
+    sqlite: 'SQLITE',
+    sql: 'SQL',
+    paste: 'PASTE',
+    sample: 'SAMPLE',
+    snapshot: 'SNAP',
+  }
+
   const refreshDataset = async (id: string, name: string) => {
     try {
       await refreshSource(id)
@@ -61,6 +74,14 @@ export const DatasetList = memo(function DatasetList() {
               <div className="flex items-center gap-2 overflow-hidden" title={source?.source_path || undefined}>
                 <Database className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{df.name}</span>
+                {df.sourceType && (
+                  <span
+                    className="shrink-0 rounded bg-default/70 px-1 text-[9px] font-semibold uppercase tracking-wide text-muted"
+                    title={df.sourceType}
+                  >
+                    {TYPE_BADGE[df.sourceType] ?? df.sourceType}
+                  </span>
+                )}
                 {source?.changed && <span className="text-[9px] text-warning">{t('dataset.changed')}</span>}
                 {source?.original_exists === false && <span className="text-[9px] text-danger">{t('dataset.sourceMissing')}</span>}
               </div>
