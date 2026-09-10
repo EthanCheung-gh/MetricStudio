@@ -43,3 +43,4 @@ src-tauri/target/
 # MetricStudio
 *.metricstudio
 .bitfun/
+.openbitfun/
