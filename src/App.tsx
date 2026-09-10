@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/AppShell'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { BackendBanner } from '@/components/common/BackendBanner'
 import { useBackend } from '@/hooks/useBackend'
+import { resolvedTheme, useSystemThemeSync } from '@/hooks/useSystemTheme'
 import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -21,8 +22,11 @@ function App() {
   const activeChartId = useChartStore((s) => s.activeChartId)
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const theme = useWorkspaceStore((s) => s.theme)
+  const systemTheme = useWorkspaceStore((s) => s.systemTheme)
   const language = useUIStore((s) => s.language)
   const { i18n } = useTranslation();
+
+  useSystemThemeSync()
 
   useEffect(() => {
     if (i18n.isInitialized) {
@@ -32,23 +36,14 @@ function App() {
     }
   }, [language, i18n])
 
-  // Apply light/dark theme to the root element
+  // Apply light/dark theme to the root element. Re-runs whenever the OS
+  // theme changes while the preference is "system" (systemTheme is reactive).
   useEffect(() => {
     const root = document.documentElement
-    const apply = () => {
-      const dark =
-        theme === 'dark' ||
-        (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
-      root.classList.toggle('dark', dark)
-      root.classList.toggle('light', !dark)
-    }
-    apply()
-    if (theme === 'system') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)')
-      mq.addEventListener('change', apply)
-      return () => mq.removeEventListener('change', apply)
-    }
-  }, [theme])
+    const dark = resolvedTheme(theme, systemTheme) === 'dark'
+    root.classList.toggle('dark', dark)
+    root.classList.toggle('light', !dark)
+  }, [theme, systemTheme])
 
   // Only show the disconnect banner after a connection was previously established
   // (initial startup failure is surfaced in the StatusBar instead)

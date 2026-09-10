@@ -12,6 +12,7 @@ interface WorkspaceState {
   rightActiveSection: RightSection;
   activeTab: 'data' | 'chart' | 'dashboard';
   theme: 'dark' | 'light' | 'system';
+  systemTheme: 'dark' | 'light';
   leftPanelSize: number;
   rightPanelSize: number;
   panelResizeVersion: number;
@@ -24,6 +25,7 @@ interface WorkspaceState {
   setPanelCollapsed: (panel: PanelKey, collapsed: boolean) => void;
   setActiveTab: (tab: 'data' | 'chart' | 'dashboard') => void;
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
+  setSystemTheme: (systemTheme: 'dark' | 'light') => void;
   setPanelSize: (panel: PanelKey, size: number) => void;
   notifyPanelResize: () => void;
 
@@ -47,6 +49,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       rightActiveSection: null,
       activeTab: 'data',
       theme: 'system',
+      systemTheme: 'dark',
       leftPanelSize: 20,
       rightPanelSize: 25,
       panelResizeVersion: 0,
@@ -65,6 +68,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       setTheme: (theme) => set({ theme }),
+      setSystemTheme: (systemTheme) => set({ systemTheme }),
       setPanelSize: (panel, size) => set({ [`${panel}PanelSize`]: size } as Partial<WorkspaceState>),
 
       // VS Code activity bar style: click icon to expand/switch/collapse

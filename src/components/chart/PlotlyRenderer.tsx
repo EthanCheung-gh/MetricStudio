@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PlotlyFigure } from '@/types/plotly'
+import { resolvedTheme } from '@/hooks/useSystemTheme'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { applyPlotlyUserStyle, mergePlotlyLayout } from '@/utils/plotlyLayout'
 
@@ -37,11 +38,10 @@ export function PlotlyRenderer({
   const [renderError, setRenderError] = useState<string | null>(null)
   const panelResizeVersion = useWorkspaceStore((s) => s.panelResizeVersion)
   const theme = useWorkspaceStore((s) => s.theme)
-  const isDark =
-    theme === 'dark' ||
-    (theme === 'system' &&
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-color-scheme: dark)').matches)
+  const systemTheme = useWorkspaceStore((s) => s.systemTheme)
+  // Reactive: when the OS theme flips under "system", this re-renders the
+  // chart with the matching grid/text colors (dependency in the render effect).
+  const isDark = resolvedTheme(theme, systemTheme) === 'dark'
   const onSelectedRef = useRef(onSelected)
   const onClearSelectionRef = useRef(onClearSelection)
   onSelectedRef.current = onSelected
