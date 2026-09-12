@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  Archive,
   Bot,
   ChevronDown,
   ChevronRight,
@@ -90,6 +91,7 @@ export function AskPanel() {
   const addTurn = useQAStore((s) => s.addTurn)
   const deleteTurn = useQAStore((s) => s.deleteTurn)
   const replaceTurn = useQAStore((s) => s.replaceTurn)
+  const compactTurns = useQAStore((s) => s.compactTurns)
   const clear = useQAStore((s) => s.clear)
   const addNotification = useUIStore((s) => s.addNotification)
   const setReportNotesDraft = useUIStore((s) => s.setReportNotesDraft)
@@ -124,6 +126,53 @@ export function AskPanel() {
   const filters = dashboardFiltersForDataset(activeDashboard?.filters ?? [], activeDataFrameId ?? '')
   const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
 
+  // --- v1.6.0 history compaction ------------------------------------------------
+  // Mirrors backend qa_agent.HISTORY_ROUNDS: dialog turns this far back are no
+  // longer sent verbatim to the LLM.
+  const HISTORY_ROUNDS = 8
+  const COMPACT_MIN_TURNS = 4
+  const COMPACT_SUGGEST_TURNS = 12
+
+  const dialogIndexes = turns.map((t, i) => (t.kind !== 'compaction' ? i : -1)).filter((i) => i >= 0)
+  const compactibleCount = dialogIndexes.length - 1 // keep the latest dialog turn
+  const canCompact = compactibleCount >= COMPACT_MIN_TURNS
+  const suggestCompact = dialogIndexes.length >= COMPACT_SUGGEST_TURNS
+  const [compacting, setCompacting] = useState(false)
+
+  const isOutOfContext = (index: number) => {
+    const pos = dialogIndexes.indexOf(index)
+    return pos >= 0 && pos < dialogIndexes.length - HISTORY_ROUNDS
+  }
+
+  const compact = async () => {
+    if (!activeDataFrameId || !canCompact || compacting) return
+    const endIndex = dialogIndexes[compactibleCount - 1]
+    const turnsToCompact = dialogIndexes.slice(0, compactibleCount).map((i) => {
+      const t = turns[i]
+      if (t.kind === 'compaction') return { question: '（此前对话摘要）', answer: t.summary ?? '' }
+      return { question: t.question, answer: t.answer }
+    })
+    setCompacting(true)
+    try {
+      const res = await api.nlCompact(activeDataFrameId, turnsToCompact)
+      compactTurns(0, endIndex, res.summary)
+      addNotification('success', t('ai.compacted', { count: res.turns_compacted }))
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('ai.requestFailed'))
+    } finally {
+      setCompacting(false)
+    }
+  }
+
+  const toHistory = (list: typeof turns) =>
+    list.map((t) => ({
+      question: t.kind === 'compaction' ? '' : t.question,
+      answer: t.kind === 'compaction' ? (t.summary ?? '') : t.answer,
+      kind: (t.kind ?? 'dialog') as 'dialog' | 'compaction',
+      summary: t.summary,
+      compacted_range: t.compactedRange,
+    }))
+
   const applyStreamEvent = (event: NLAskStreamEvent) => {
     setStreamState((prev) => {
       if (!prev) return prev
@@ -155,10 +204,7 @@ export function AskPanel() {
       const response = await api.nlAskStream(
         activeDataFrameId,
         currentQuestion,
-        turns.map(({ question: previousQuestion, answer: previousAnswer }) => ({
-          question: previousQuestion,
-          answer: previousAnswer,
-        })),
+        toHistory(turns),
         { snapshotId: boundSnapshotId, filters },
         applyStreamEvent,
       )
@@ -193,10 +239,7 @@ export function AskPanel() {
       const response = await api.nlAskStream(
         requestDatasetId,
         turn.question,
-        turns.slice(0, index).map(({ question: previousQuestion, answer: previousAnswer }) => ({
-          question: previousQuestion,
-          answer: previousAnswer,
-        })),
+        toHistory(turns.slice(0, index)),
         context,
         applyStreamEvent,
       )
@@ -356,6 +399,20 @@ export function AskPanel() {
               <Button isIconOnly size="sm" variant="light" onPress={() => activeConversationId && deleteConversation(activeConversationId)} aria-label={t('ai.deleteConversation')} title={t('ai.deleteConversation')}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
+              {canCompact && (
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  className={suggestCompact ? 'text-warning' : undefined}
+                  isLoading={compacting}
+                  onPress={() => void compact()}
+                  aria-label={t('ai.compact')}
+                  title={suggestCompact ? t('ai.compactSuggest') : t('ai.compact')}
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -425,6 +482,47 @@ export function AskPanel() {
               className="scroll-mt-1 space-y-1.5"
               ref={(el) => { if (el) turnRefs.current.set(index, el); else turnRefs.current.delete(index) }}
             >
+              {turn.kind === 'compaction' ? (
+                turnExpanded ? (
+                  <div className="rounded border border-primary/30 bg-primary/5 p-2">
+                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
+                      <Archive className="h-3 w-3 shrink-0" />
+                      {t('ai.compactedRange', {
+                        start: turn.compactedRange?.[0] ?? 0,
+                        end: turn.compactedRange?.[1] ?? 0,
+                      })}
+                      <button
+                        type="button"
+                        className="ml-auto text-muted hover:text-foreground"
+                        onClick={() => setTurnExpanded(index, false)}
+                        title={t('ai.collapseTurn')}
+                      >
+                        <ChevronUp className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <div className="mt-1 whitespace-pre-wrap text-[10px] leading-relaxed text-muted">{turn.summary}</div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setTurnExpanded(index, true)}
+                    title={t('ai.expandTurn')}
+                    className="group flex w-full items-center gap-1.5 rounded border border-primary/30 bg-primary/5 px-2 py-1.5 text-left hover:bg-primary/10"
+                  >
+                    <Archive className="h-3 w-3 shrink-0 text-primary" />
+                    <span className="min-w-0 flex-1 truncate text-[10px] text-primary">
+                      {t('ai.compactedRange', {
+                        start: turn.compactedRange?.[0] ?? 0,
+                        end: turn.compactedRange?.[1] ?? 0,
+                      })}
+                      {' · '}
+                      {turn.summary}
+                    </span>
+                    <ChevronRight className="h-3 w-3 shrink-0 text-primary group-hover:text-foreground" />
+                  </button>
+                )
+              ) : (
+              <>
               {!turnExpanded && (
                 <button
                   type="button"
@@ -434,6 +532,9 @@ export function AskPanel() {
                 >
                   <MessageSquare className="h-3 w-3 shrink-0 text-muted" />
                   <span className="min-w-0 flex-1 truncate text-[10px] text-muted">{turnPreview(index)}</span>
+                  {isOutOfContext(index) && (
+                    <span className="shrink-0 rounded bg-default/60 px-1 text-[8px] text-muted/80">{t('ai.outOfContext')}</span>
+                  )}
                   {!!turn.verifiedSteps && (
                     <span className="flex shrink-0 items-center gap-0.5 text-[9px] text-primary">
                       <ShieldCheck className="h-2.5 w-2.5" />
@@ -559,6 +660,8 @@ export function AskPanel() {
                   </div>
                 </div>
               </div>
+              )}
+              </>
               )}
             </div>
           )

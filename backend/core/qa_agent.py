@@ -89,9 +89,20 @@ def _parse_reply(text: str) -> dict[str, Any]:
 
 def _build_history_block(history: list[dict[str, str]]) -> str:
     turns = [turn for turn in history if isinstance(turn, dict)]
-    recent = turns[-HISTORY_ROUNDS:]
-    older = turns[:-HISTORY_ROUNDS]
+    # v1.6.0: compaction turns carry pre-made summaries; they are always shown
+    # and never occupy the recent-dialog window.
+    summaries = [turn for turn in turns if turn.get("kind") == "compaction"]
+    dialog = [turn for turn in turns if turn.get("kind") != "compaction"]
+    recent = dialog[-HISTORY_ROUNDS:]
+    older = dialog[:-HISTORY_ROUNDS]
     blocks: list[str] = []
+    for turn in summaries:
+        text = (turn.get("summary") or turn.get("answer") or "").strip()
+        if not text:
+            continue
+        rng = turn.get("compacted_range")
+        label = f"turns {rng[0]}-{rng[1]}" if isinstance(rng, list) and len(rng) == 2 else "earlier turns"
+        blocks.append(f"Summary of {label} (context compacted):\n{text}")
     if older:
         summary = "\n".join(f"Q: {t.get('question', '')}\nA: {t.get('answer', '')}" for t in older)
         blocks.append(f"Earlier conversation (truncated):\n{summary[:HISTORY_SUMMARY_LIMIT]}")

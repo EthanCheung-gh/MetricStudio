@@ -91,7 +91,13 @@ export function AICommandBar() {
         const res = await api.nlAskStream(
           activeDataFrameId,
           currentQuestion,
-          turns.map(({ question, answer }) => ({ question, answer })),
+          turns.map((t) => ({
+            question: t.question,
+            answer: t.answer,
+            kind: t.kind ?? 'dialog',
+            summary: t.summary,
+            compacted_range: t.compactedRange,
+          })),
           { snapshotId: boundSnapshotId, filters },
           (event: NLAskStreamEvent) => {
             setProcess((prev) => {

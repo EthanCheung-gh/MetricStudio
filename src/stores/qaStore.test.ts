@@ -41,6 +41,41 @@ describe('QA conversation store', () => {
     ])
   })
 
+  it('compacts a run of turns into one compaction turn', () => {
+    useQAStore.getState().setDataset('dataset-1')
+    for (let i = 1; i <= 5; i++) {
+      useQAStore.getState().addTurn({ question: `Q${i}`, answer: `A${i}`, evidence: [] })
+    }
+    useQAStore.getState().compactTurns(0, 3, '前四轮摘要')
+
+    const activeId = useQAStore.getState().activeConversationId
+    const turns = useQAStore.getState().conversations.find((item) => item.id === activeId)?.turns ?? []
+    expect(turns).toHaveLength(2)
+    expect(turns[0].kind).toBe('compaction')
+    expect(turns[0].summary).toBe('前四轮摘要')
+    expect(turns[0].compactedRange).toEqual([1, 4])
+    expect(turns[1].question).toBe('Q5')
+  })
+
+  it('compacts over an existing compaction turn', () => {
+    useQAStore.getState().setDataset('dataset-1')
+    for (let i = 1; i <= 6; i++) {
+      useQAStore.getState().addTurn({ question: `Q${i}`, answer: `A${i}`, evidence: [] })
+    }
+    // First pass: turns 1-4 collapse into one compaction turn.
+    useQAStore.getState().compactTurns(0, 3, '第一轮摘要')
+    // After that: [compaction(1-4), Q5, Q6]. Compacting again over the old
+    // summary plus Q5 leaves only Q6 outside.
+    useQAStore.getState().compactTurns(0, 1, '合并后的摘要')
+
+    const activeId = useQAStore.getState().activeConversationId
+    const turns = useQAStore.getState().conversations.find((item) => item.id === activeId)?.turns ?? []
+    expect(turns).toHaveLength(2)
+    expect(turns[0].summary).toBe('合并后的摘要')
+    expect(turns[0].compactedRange).toEqual([1, 2])
+    expect(turns[1].question).toBe('Q6')
+  })
+
   it('clears the selected snapshot when switching datasets', () => {
     useQAStore.getState().setDataset('dataset-1')
     useQAStore.getState().setSnapshotId('snapshot-1')

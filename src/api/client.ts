@@ -162,8 +162,16 @@ async function postForm<T>(path: string, formData: FormData): Promise<T> {
   return response.json() as Promise<T>
 }
 
-export interface NLAskResponse {
+/** One history turn sent with an ask request (v1.6.0 adds compaction turns). */
+export interface QAHistoryTurn {
+  question: string
   answer: string
+  kind?: 'dialog' | 'compaction'
+  summary?: string
+  compacted_range?: number[]
+}
+
+export interface NLAskResponse {  answer: string
   evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
   facts?: { n: number; tool: string; detail: string }[]
   followups?: string[]
@@ -258,7 +266,7 @@ async function consumeSseStream(
 async function nlAskStream(
   datasetId: string,
   question: string,
-  history: { question: string; answer: string }[] = [],
+  history: QAHistoryTurn[] = [],
   context?: { snapshotId?: string; filters?: QAFilter[] },
   onEvent?: (event: NLAskStreamEvent) => void,
   signal?: AbortSignal,
@@ -326,6 +334,17 @@ async function nlTransformStream(
   )
   if (operations === null) throw new Error('Transform stream ended without a result')
   return operations
+}
+
+/** Summarize a run of past turns into one compaction summary (v1.6.0). */
+async function nlCompact(
+  datasetId: string,
+  turns: { question: string; answer: string }[],
+): Promise<{ summary: string; turns_compacted: number; model?: string; generated_at?: string }> {
+  return fetchJson('/api/v1/nl/compact', {
+    method: 'POST',
+    body: JSON.stringify({ dataset_id: datasetId, turns }),
+  })
 }
 
 export const api = {
@@ -650,7 +669,7 @@ export const api = {
   nlAsk: (
     datasetId: string,
     question: string,
-    history: { question: string; answer: string }[] = [],
+    history: QAHistoryTurn[] = [],
     context?: { snapshotId?: string; filters?: QAFilter[] },
   ) =>
     fetchJson<NLAskResponse>('/api/v1/nl/ask', {
@@ -666,11 +685,15 @@ export const api = {
   nlAskStream: (
     datasetId: string,
     question: string,
-    history: { question: string; answer: string }[] = [],
+    history: QAHistoryTurn[] = [],
     context?: { snapshotId?: string; filters?: QAFilter[] },
     onEvent?: (event: NLAskStreamEvent) => void,
     signal?: AbortSignal,
   ) => nlAskStream(datasetId, question, history, context, onEvent, signal),
+  nlCompact: (
+    datasetId: string,
+    turns: { question: string; answer: string }[],
+  ) => nlCompact(datasetId, turns),
   explainChart: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {
       method: 'POST',

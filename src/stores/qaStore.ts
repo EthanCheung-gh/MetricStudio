@@ -44,6 +44,10 @@ export interface QATurn {
   followups?: string[]
   clarify?: QAClarify | null
   verifiedSteps?: number
+  /** v1.6.0: compaction turns replace runs of past dialog turns. */
+  kind?: 'dialog' | 'compaction'
+  summary?: string
+  compactedRange?: [number, number]
 }
 
 export interface QAConversation {
@@ -69,6 +73,8 @@ interface QAState {
   addTurn: (turn: QATurn) => void
   deleteTurn: (index: number) => void
   replaceTurn: (index: number, turn: QATurn) => void
+  /** v1.6.0: replace turns[startIndex..endIndex] with one compaction turn. */
+  compactTurns: (startIndex: number, endIndex: number, summary: string) => void
   hydrate: (conversations: QAConversation[], activeConversationId?: string | null) => void
   clear: () => void
 }
@@ -179,6 +185,29 @@ export const useQAStore = create<QAState>()(
           ? { ...item, turns: item.turns.map((current, turnIndex) => (turnIndex === index ? turn : current)), updatedAt: new Date().toISOString() }
           : item,
       ),
+    })),
+
+  compactTurns: (startIndex, endIndex, summary) =>
+    set((state) => ({
+      conversations: state.conversations.map((item) => {
+        if (item.id !== state.activeConversationId) return item
+        const start = Math.max(0, startIndex)
+        const end = Math.min(item.turns.length - 1, endIndex)
+        if (start > end) return item
+        const compaction: QATurn = {
+          question: '',
+          answer: '',
+          evidence: [],
+          kind: 'compaction',
+          summary,
+          compactedRange: [start + 1, end + 1],
+        }
+        return {
+          ...item,
+          turns: [...item.turns.slice(0, start), compaction, ...item.turns.slice(end + 1)],
+          updatedAt: new Date().toISOString(),
+        }
+      }),
     })),
 
   hydrate: (conversations, activeConversationId = null) =>

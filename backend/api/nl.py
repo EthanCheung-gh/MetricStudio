@@ -66,6 +66,9 @@ class NLTransformRequest(BaseModel):
 class NLAskTurn(BaseModel):
     question: str
     answer: str
+    kind: Literal["dialog", "compaction"] = "dialog"
+    summary: str | None = None
+    compacted_range: list[int] | None = None
 
 
 class NLAskRequest(BaseModel):
@@ -543,6 +546,56 @@ def nl_ask_stream(request: NLAskRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+class NLCompactRequest(BaseModel):
+    dataset_id: str
+    turns: list[NLAskTurn] = Field(default_factory=list)
+
+
+@router.post("/compact")
+def nl_compact(request: NLCompactRequest):
+    """Summarize a run of past dialog turns into one compact summary (v1.6.0).
+
+    The caller replaces the summarized turns with the returned summary turn;
+    the agent then sees the summary instead of the raw history.
+    """
+    if len(request.turns) < 2:
+        raise HTTPException(status_code=422, detail="Need at least 2 turns to compact")
+    dataset = None
+    if request.dataset_id:
+        try:
+            dataset = session.get(request.dataset_id)
+        except KeyError:
+            dataset = None
+    lines = []
+    for index, turn in enumerate(request.turns, start=1):
+        lines.append(f"[Turn {index}] User: {turn.question}\nAssistant: {turn.answer}")
+    dataset_hint = ""
+    if dataset is not None:
+        columns = ", ".join(c.name for c in dataset.meta.columns[:20])
+        dataset_hint = f"\n\nThe conversation is about the dataset \"{dataset.name}\" with columns: {columns}."
+    prompt = (
+        "Below is a past data-analysis Q&A conversation."
+        + dataset_hint
+        + "\n\nWrite a concise summary in 简体中文 (max 300 characters) that preserves:\n"
+        "1. Each question and its confirmed conclusion, including exact numbers;\n"
+        "2. Important data facts established by tools (row counts, aggregations, filters);\n"
+        "3. Any unresolved question or pending direction.\n"
+        "Output ONLY the summary text, no preamble, no markdown headers.\n\n"
+        + "\n\n".join(lines)
+    )
+    try:
+        summary = chat([{"role": "user", "content": prompt}])
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
+    summary = summary.strip() or "（摘要生成失败，请重试）"
+    return {
+        "summary": summary,
+        "turns_compacted": len(request.turns),
+        "model": load_config().get("model", "unknown"),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.post("/narrate")
