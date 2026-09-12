@@ -616,7 +616,7 @@ export function AskPanel() {
                         {t('ai.collapseTurn')}
                       </Button>
                     )}
-                    {turn.evidence.length > 0 && (
+                    {(turn.evidence ?? []).length > 0 && (
                         <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => toggleEvidence(index)} startContent={isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}>
                           {isExpanded ? t('ai.hideEvidence') : t('ai.showEvidence')}
                         </Button>
@@ -624,7 +624,7 @@ export function AskPanel() {
                     </div>
                     {isExpanded && (
                       <ul className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-[10px] text-muted">
-                        {turn.evidence.map((item, evidenceIndex) => (
+                        {(turn.evidence ?? []).map((item, evidenceIndex) => (
                           <li
                             key={`${item.kind}-${evidenceIndex}`}
                             className={`break-words rounded px-1 ${activeCitation?.turn === index && activeCitation.n.toString() === item.id?.replace('fact:', '') ? 'bg-primary/15 text-foreground' : ''}`}

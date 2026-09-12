@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Copy, Database, ListTree, Pencil, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Copy, Database, ListTree, MessageSquare, Pencil, SlidersHorizontal, Trash2, Upload, Sparkles } from 'lucide-react'
 import { Button, Card, CardBody } from '@heroui/react'
 import { DataExplorer } from '@/components/data/DataExplorer'
 import { DatasetList } from '@/components/data/DatasetList'
+import { AskPanel } from '@/components/data/AskPanel'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
@@ -22,15 +23,26 @@ export function LeftPanel() {
     <div className="flex h-full flex-col bg-surface">
       <div className="flex h-9 items-center justify-between border-b border-border px-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">
-          {activeSection === 'charts' ? t('nav.charts') : activeSection === 'datasets' ? t('nav.datasets') : t('nav.explorer')}
+          {activeSection === 'charts'
+            ? t('nav.charts')
+            : activeSection === 'datasets'
+              ? t('nav.datasets')
+              : activeSection === 'qa'
+                ? t('layout.qaPanel')
+                : t('nav.explorer')}
         </span>
         <Button isIconOnly size="sm" variant="light" onPress={() => toggle('left')} aria-label={t('layout.collapseSidebar')}>
           <ChevronLeft className="h-4 w-4" />
         </Button>
       </div>
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2">
         {activeSection === 'charts' && <ChartsSection />}
         {activeSection === 'datasets' && <DatasetList />}
+        {activeSection === 'qa' && (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <AskPanel />
+          </div>
+        )}
         {!activeSection && (
           <>
             <DataExplorer />
@@ -269,6 +281,13 @@ export function LeftPanelCollapsed() {
         active={activeSection === 'datasets'}
         onClick={() => activateSection('left', 'datasets')}
         tooltip={t('nav.datasets')}
+      />
+      <CollapsedIconBarItem
+        icon={MessageSquare}
+        label={t('layout.qaPanel')}
+        active={activeSection === 'qa'}
+        onClick={() => activateSection('left', 'qa')}
+        tooltip={t('layout.qaPanel')}
       />
       <CollapsedIconBarItem
         icon={Upload}

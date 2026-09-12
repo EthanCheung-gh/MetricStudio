@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type PanelKey = 'left' | 'right';
-export type LeftSection = 'charts' | 'datasets' | null;
-export type RightSection = 'chartType' | 'properties' | 'qa' | null;
+export type LeftSection = 'charts' | 'datasets' | 'qa' | null;
+export type RightSection = 'chartType' | 'properties' | null;
 
 interface WorkspaceState {
   leftPanelCollapsed: boolean;
