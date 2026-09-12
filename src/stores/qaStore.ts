@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import { generateId } from '@/utils/id'
 
 export interface QAEvidence {
@@ -77,7 +78,18 @@ function newConversation(datasetId: string, name = '新建问答'): QAConversati
   return { id: generateId(), datasetId, name, turns: [], createdAt: now, updatedAt: now }
 }
 
-export const useQAStore = create<QAState>((set) => ({
+const DEFAULT_CONVERSATION_NAME = '新建问答'
+
+/** Derive a conversation title from the first question (v1.5.0 auto-naming). */
+function deriveConversationName(question: string): string {
+  const text = question.trim().replace(/\s+/g, ' ')
+  if (!text) return DEFAULT_CONVERSATION_NAME
+  return text.length > 24 ? `${text.slice(0, 24)}…` : text
+}
+
+export const useQAStore = create<QAState>()(
+  persist(
+    (set) => ({
   datasetId: null,
   snapshotId: null,
   activeConversationId: null,
@@ -140,11 +152,15 @@ export const useQAStore = create<QAState>((set) => ({
 
   addTurn: (turn) =>
     set((state) => ({
-      conversations: state.conversations.map((item) =>
-        item.id === state.activeConversationId
-          ? { ...item, turns: [...item.turns, turn], updatedAt: new Date().toISOString() }
-          : item,
-      ),
+      conversations: state.conversations.map((item) => {
+        if (item.id !== state.activeConversationId) return item
+        // Auto-name from the first question (v1.5.0).
+        const name =
+          item.turns.length === 0 && item.name === DEFAULT_CONVERSATION_NAME
+            ? deriveConversationName(turn.question)
+            : item.name
+        return { ...item, name, turns: [...item.turns, turn], updatedAt: new Date().toISOString() }
+      }),
     })),
 
   deleteTurn: (index) =>
@@ -182,4 +198,20 @@ export const useQAStore = create<QAState>((set) => ({
         item.id === state.activeConversationId ? { ...item, turns: [], updatedAt: new Date().toISOString() } : item,
       ),
     })),
-}))
+}),
+    {
+      // v1.5.0: conversations survive page reloads / app restarts. The backend
+      // dataset ids are stable across backend restarts (session restore), so
+      // conversations stay bound to their dataset. Project save/load still
+      // carries conversations via hydrate(), which overrides this state.
+      name: 'metricstudio-qa-sessions',
+      version: 1,
+      partialize: (state) => ({
+        datasetId: state.datasetId,
+        snapshotId: state.snapshotId,
+        activeConversationId: state.activeConversationId,
+        conversations: state.conversations,
+      }),
+    },
+  ),
+)

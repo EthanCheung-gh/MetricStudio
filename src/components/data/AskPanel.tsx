@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bot,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Copy,
   Download,
@@ -10,6 +11,7 @@ import {
   FileText,
   LayoutDashboard,
   Loader2,
+  MessageSquare,
   MessageSquarePlus,
   Pencil,
   RefreshCw,
@@ -101,6 +103,10 @@ export function AskPanel() {
   const [loading, setLoading] = useState(false)
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null)
   const [streamState, setStreamState] = useState<StreamState | null>(null)
+  // v1.5.0 turn display: explicit visibility overrides; default = only the
+  // latest turn expanded. Cleared whenever the turn list shifts.
+  const [turnVisibility, setTurnVisibility] = useState<Map<number, boolean>>(new Map())
+  const turnRefs = useRef<Map<number, HTMLDivElement>>(new Map())
 
   useEffect(() => {
     if (datasetId !== activeDataFrameId) setDataset(activeDataFrameId)
@@ -265,12 +271,34 @@ export function AskPanel() {
   const clearHistory = () => {
     clear()
     setExpandedEvidence(new Set())
+    setTurnVisibility(new Map())
   }
 
   const startConversation = () => {
     createConversation()
     setQuestion('')
     setExpandedEvidence(new Set())
+    setTurnVisibility(new Map())
+  }
+
+  const setTurnExpanded = (index: number, expanded: boolean) => {
+    setTurnVisibility((current) => {
+      const next = new Map(current)
+      next.set(index, expanded)
+      return next
+    })
+  }
+
+  const scrollToTurn = (index: number) => {
+    turnRefs.current.get(index)?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
+
+  /** One-line collapsed preview of a historical turn (v1.5.0). */
+  const turnPreview = (index: number) => {
+    const turn = turns[index]
+    const question = turn.question.trim().replace(/\s+/g, ' ')
+    const answerLine = turn.answer.trim().split('\n')[0].replace(/\s+/g, ' ')
+    return `#${index + 1} · ${question.slice(0, 40)}${question.length > 40 ? '…' : ''} → ${answerLine.slice(0, 48)}${answerLine.length > 48 ? '…' : ''}`
   }
 
   if (!activeDataFrameId) return null
@@ -345,10 +373,33 @@ export function AskPanel() {
         >
           {visibleConversations.length === 0 && <option value="">{t('ai.noConversations')}</option>}
           {visibleConversations.map((conversation) => (
-            <option key={conversation.id} value={conversation.id}>{conversation.name}</option>
+            <option key={conversation.id} value={conversation.id}>
+              {conversation.name} · {t('ai.turnCount', { count: conversation.turns.length })}
+            </option>
           ))}
         </select>
       </div>
+
+      {turns.length >= 6 && (
+        <div className="flex flex-wrap gap-1">
+          {turns.map((_, navIndex) => {
+            const active = turnVisibility.get(navIndex) ?? navIndex === turns.length - 1
+            return (
+              <button
+                key={navIndex}
+                type="button"
+                onClick={() => scrollToTurn(navIndex)}
+                title={turnPreview(navIndex)}
+                className={`h-4 min-w-5 rounded px-1 text-[9px] transition-colors ${
+                  active ? 'bg-primary/20 text-primary' : 'bg-default/40 text-muted hover:text-foreground'
+                }`}
+              >
+                {navIndex + 1}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {turns.length === 0 && (
@@ -359,117 +410,149 @@ export function AskPanel() {
         )}
         {turns.map((turn, index) => {
           const isExpanded = expandedEvidence.has(index)
+          const turnExpanded = turnVisibility.get(index) ?? index === turns.length - 1
           const isRegenerating = regeneratingIndex === index
           return (
-            <div key={`${turn.question}-${index}`} className="space-y-1.5">
-              <div className="flex items-start justify-end gap-1.5">
-                <div className="max-w-[88%] rounded-lg rounded-tr-sm bg-primary/15 px-2.5 py-1.5 text-[11px] text-foreground">
-                  {turn.question}
-                </div>
-                <User className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
-              </div>
-              <div className="flex items-start gap-1.5">
-                <Bot className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
-                <div className="min-w-0 max-w-[92%] flex-1 rounded-lg rounded-tl-sm border border-border/60 bg-surface-elevated/40 p-2">
-                  {!isRegenerating && !!turn.verifiedSteps && turn.verifiedSteps > 0 && (
-                    <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">
-                      <ShieldCheck className="h-3 w-3" />
-                      {t('ai.verified', { count: turn.verifiedSteps })}
-                    </div>
+            <div
+              key={`${turn.question}-${index}`}
+              className="scroll-mt-1 space-y-1.5"
+              ref={(el) => { if (el) turnRefs.current.set(index, el); else turnRefs.current.delete(index) }}
+            >
+              {!turnExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setTurnExpanded(index, true)}
+                  title={t('ai.expandTurn')}
+                  className="group flex w-full items-center gap-1.5 rounded border border-border/50 bg-surface/40 px-2 py-1.5 text-left hover:bg-surface-elevated/60"
+                >
+                  <MessageSquare className="h-3 w-3 shrink-0 text-muted" />
+                  <span className="min-w-0 flex-1 truncate text-[10px] text-muted">{turnPreview(index)}</span>
+                  {!!turn.verifiedSteps && (
+                    <span className="flex shrink-0 items-center gap-0.5 text-[9px] text-primary">
+                      <ShieldCheck className="h-2.5 w-2.5" />
+                      {turn.verifiedSteps}
+                    </span>
                   )}
-                  {turn.clarify && (
-                    <div className="mb-1.5 rounded border border-warning/40 bg-warning/10 p-1.5">
-                      <div className="text-[11px] font-medium text-foreground">{turn.clarify.question}</div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {turn.clarify.options.map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted hover:text-foreground"
-                            onClick={() => void ask(option)}
+                  <ChevronRight className="h-3 w-3 shrink-0 text-muted group-hover:text-foreground" />
+                </button>
+              )}
+              {turnExpanded && (
+              <div className="space-y-1.5">
+                <div className="flex items-start justify-end gap-1.5">
+                  <div className="max-w-[88%] rounded-lg rounded-tr-sm bg-primary/15 px-2.5 py-1.5 text-[11px] text-foreground">
+                    {turn.question}
+                  </div>
+                  <User className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
+                </div>
+                <div className="flex items-start gap-1.5">
+                  <Bot className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
+                  <div className="min-w-0 max-w-[92%] flex-1 rounded-lg rounded-tl-sm border border-border/60 bg-surface-elevated/40 p-2">
+                    {!isRegenerating && !!turn.verifiedSteps && turn.verifiedSteps > 0 && (
+                      <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">
+                        <ShieldCheck className="h-3 w-3" />
+                        {t('ai.verified', { count: turn.verifiedSteps })}
+                      </div>
+                    )}
+                    {turn.clarify && (
+                      <div className="mb-1.5 rounded border border-warning/40 bg-warning/10 p-1.5">
+                        <div className="text-[11px] font-medium text-foreground">{turn.clarify.question}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {turn.clarify.options.map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted hover:text-foreground"
+                              onClick={() => void ask(option)}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {isRegenerating ? (
+                      <div className="whitespace-pre-wrap text-[11px] leading-relaxed">{t('ai.regenerating')}</div>
+                    ) : (
+                      turn.answer && (
+                        <AnswerText
+                          text={turn.answer}
+                          onCite={(n) => {
+                            setActiveCitation({ turn: index, n })
+                            setExpandedEvidence((current) => {
+                              const next = new Set(current)
+                              next.add(index)
+                              return next
+                            })
+                          }}
+                        />
+                      )
+                    )}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1 border-t border-border/50 pt-1">
+                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => copyAnswer(turn.answer)} startContent={<Copy className="h-3 w-3" />}>
+                        {t('ai.copyAnswer')}
+                      </Button>
+                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToDashboard(turn.question, turn.answer)} startContent={<LayoutDashboard className="h-3 w-3" />}>
+                        {t('ai.addToDashboard')}
+                      </Button>
+                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToReport(turn.question, turn.answer)} startContent={<FilePlus2 className="h-3 w-3" />}>
+                        {t('ai.addToReport')}
+                      </Button>
+                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => regenerate(index)} isLoading={isRegenerating} startContent={<RefreshCw className="h-3 w-3" />}>
+                        {t('ai.regenerate')}
+                      </Button>
+                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => { deleteTurn(index); setTurnVisibility(new Map()); setExpandedEvidence(new Set()) }} startContent={<Trash2 className="h-3 w-3" />}>
+                        {t('ai.deleteTurn')}
+                      </Button>
+                      {turns.length > 1 && (
+                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => setTurnExpanded(index, false)} startContent={<ChevronDown className="h-3 w-3" />}>
+                        {t('ai.collapseTurn')}
+                      </Button>
+                    )}
+                    {turn.evidence.length > 0 && (
+                        <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => toggleEvidence(index)} startContent={isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}>
+                          {isExpanded ? t('ai.hideEvidence') : t('ai.showEvidence')}
+                        </Button>
+                      )}
+                    </div>
+                    {isExpanded && (
+                      <ul className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-[10px] text-muted">
+                        {turn.evidence.map((item, evidenceIndex) => (
+                          <li
+                            key={`${item.kind}-${evidenceIndex}`}
+                            className={`break-words rounded px-1 ${activeCitation?.turn === index && activeCitation.n.toString() === item.id?.replace('fact:', '') ? 'bg-primary/15 text-foreground' : ''}`}
                           >
-                            {option}
+                            {item.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {!isRegenerating && !!turn.followups?.length && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {turn.followups.map((followup) => (
+                          <button
+                            key={followup}
+                            type="button"
+                            className="rounded-full border border-primary/40 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+                            onClick={() => void ask(followup)}
+                          >
+                            {followup}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  )}
-                  {isRegenerating ? (
-                    <div className="whitespace-pre-wrap text-[11px] leading-relaxed">{t('ai.regenerating')}</div>
-                  ) : (
-                    turn.answer && (
-                      <AnswerText
-                        text={turn.answer}
-                        onCite={(n) => {
-                          setActiveCitation({ turn: index, n })
-                          setExpandedEvidence((current) => {
-                            const next = new Set(current)
-                            next.add(index)
-                            return next
-                          })
-                        }}
-                      />
-                    )
-                  )}
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1 border-t border-border/50 pt-1">
-                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => copyAnswer(turn.answer)} startContent={<Copy className="h-3 w-3" />}>
-                      {t('ai.copyAnswer')}
-                    </Button>
-                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToDashboard(turn.question, turn.answer)} startContent={<LayoutDashboard className="h-3 w-3" />}>
-                      {t('ai.addToDashboard')}
-                    </Button>
-                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToReport(turn.question, turn.answer)} startContent={<FilePlus2 className="h-3 w-3" />}>
-                      {t('ai.addToReport')}
-                    </Button>
-                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => regenerate(index)} isLoading={isRegenerating} startContent={<RefreshCw className="h-3 w-3" />}>
-                      {t('ai.regenerate')}
-                    </Button>
-                    <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => deleteTurn(index)} startContent={<Trash2 className="h-3 w-3" />}>
-                      {t('ai.deleteTurn')}
-                    </Button>
-                    {turn.evidence.length > 0 && (
-                      <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => toggleEvidence(index)} startContent={isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}>
-                        {isExpanded ? t('ai.hideEvidence') : t('ai.showEvidence')}
-                      </Button>
+                    )}
+                    {!isRegenerating && index === turns.length - 1 && !turn.followups?.length && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {[t('ai.quickWhy'), t('ai.quickBreakdown'), t('ai.quickChart')].map((suggestion) => (
+                          <button key={suggestion} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted hover:text-foreground" onClick={() => setQuestion(suggestion)}>
+                            {suggestion}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  {isExpanded && (
-                    <ul className="mt-1.5 space-y-1 border-t border-border/50 pt-1.5 text-[10px] text-muted">
-                      {turn.evidence.map((item, evidenceIndex) => (
-                        <li
-                          key={`${item.kind}-${evidenceIndex}`}
-                          className={`break-words rounded px-1 ${activeCitation?.turn === index && activeCitation.n.toString() === item.id?.replace('fact:', '') ? 'bg-primary/15 text-foreground' : ''}`}
-                        >
-                          {item.detail}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {!isRegenerating && !!turn.followups?.length && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {turn.followups.map((followup) => (
-                        <button
-                          key={followup}
-                          type="button"
-                          className="rounded-full border border-primary/40 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/10"
-                          onClick={() => void ask(followup)}
-                        >
-                          {followup}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {!isRegenerating && index === turns.length - 1 && !turn.followups?.length && (
-                    <div className="mt-1.5 flex flex-wrap gap-1">
-                      {[t('ai.quickWhy'), t('ai.quickBreakdown'), t('ai.quickChart')].map((suggestion) => (
-                        <button key={suggestion} className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted hover:text-foreground" onClick={() => setQuestion(suggestion)}>
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
+              )}
             </div>
           )
         })}
