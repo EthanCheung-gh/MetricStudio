@@ -404,6 +404,83 @@ def test_ask_stream_first_failure_yields_error_frame(client, monkeypatch):
     assert frames[-1]["type"] == "error" and "no llm" in frames[-1]["message"]
 
 
+def test_op_extractor_incremental_objects():
+    import backend.api.nl as nl_module
+
+    extractor = nl_module._OpExtractor()
+    assert extractor.feed('[{"type":"fil') == []
+    first = extractor.feed('ter","params":{"column":"a","op":"gt"}}')
+    assert [op["type"] for op in first] == ["filter"]
+    # Nested braces and brackets inside params must not confuse the depth.
+    second = extractor.feed(', {"type":"pivot","params":{"index":"d","columns":["x"],"values":{"y":1}}} ]')
+    assert [op["type"] for op in second] == ["pivot"]
+    assert extractor.ops == first + second
+
+
+def test_op_extractor_braces_inside_strings_and_fences():
+    import backend.api.nl as nl_module
+
+    extractor = nl_module._OpExtractor()
+    out = extractor.feed('```json\n[{"type":"compute","params":{"name":"v","expression":"len(x) + \\"{not a brace\\""}}]\n```')
+    assert [op["type"] for op in out] == ["compute"]
+    assert out[0]["params"]["expression"] == 'len(x) + "{not a brace"'
+
+
+def test_transform_stream_emits_op_and_done(client, monkeypatch):
+    import backend.core.qa_agent as qa_agent_module
+    import backend.api.nl as nl_module
+
+
+    csv = "a\n1\n2\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    def fake_stream(messages):
+        yield '[{"type":"fil'
+        yield 'ter","params":{"column":"a","operator":"gt","value":1}}'
+        yield ', {"type":"sort","params":{"column":"a","ascending":false}}]'
+
+    monkeypatch.setattr(nl_module, "chat_stream", fake_stream)
+    with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "filter then sort"}) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        body = "".join(chunk for chunk in response.iter_text())
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+    kinds = [frame["type"] for frame in frames]
+    assert kinds == ["thinking", "op", "op", "done"]
+    assert frames[1]["op"] == {"type": "filter", "params": {"column": "a", "operator": "gt", "value": 1}}
+    assert frames[3]["operations"] == [frames[1]["op"], frames[2]["op"]]
+
+
+def test_transform_stream_invalid_output_yields_error(client, monkeypatch):
+    csv = "a\n1\n"
+    import backend.api.nl as nl_module
+
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+    monkeypatch.setattr(nl_module, "chat_stream", lambda messages: iter(["I cannot help with that"]))
+    with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "x"}) as response:
+        body = "".join(chunk for chunk in response.iter_text())
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+    assert frames[0]["type"] == "thinking"
+    assert frames[-1]["type"] == "error" and "LLM output invalid" in frames[-1]["message"]
+
+
+def test_transform_stream_llm_failure_yields_error(client, monkeypatch):
+    csv = "a\n1\n"
+    import backend.api.nl as nl_module
+
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    def boom(messages):
+        raise RuntimeError("no llm")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(nl_module, "chat_stream", boom)
+    with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "x"}) as response:
+        body = "".join(chunk for chunk in response.iter_text())
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+    assert frames[-1]["type"] == "error" and "LLM unavailable" in frames[-1]["message"]
+
+
 def test_narrate_endpoint(client, monkeypatch):
     import backend.api.nl as nl_module
 

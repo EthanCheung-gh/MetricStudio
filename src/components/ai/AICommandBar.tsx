@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FilePlus2, LayoutDashboard, Play, Send, Sparkles, Wand2, X } from 'lucide-react'
+import { FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Wand2, Wrench, X } from 'lucide-react'
 import { Button } from '@heroui/react'
-import { api } from '@/api/client'
+import { api, type NLAskStreamEvent, type NLTransformStreamEvent } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
@@ -15,6 +15,24 @@ interface NLOp {
 }
 
 type Mode = 'query' | 'ask'
+
+interface ProcessTool {
+  name: string
+  status: 'running' | 'ok' | 'error'
+  detail?: string
+}
+
+/** Unified live process card shown above the command bar while streaming. */
+interface ProcessCard {
+  mode: Mode
+  question: string
+  phase: 'thinking' | 'working' | 'done' | 'error'
+  tools: ProcessTool[]
+  ops: NLOp[]
+  answer: string
+  operations: NLOp[] | null
+  error?: string
+}
 
 export function AICommandBar() {
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
@@ -37,8 +55,7 @@ export function AICommandBar() {
   const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('query')
   const [input, setInput] = useState('')
-  const [operations, setOperations] = useState<NLOp[] | null>(null)
-  const [answer, setAnswer] = useState<{ question: string; text: string } | null>(null)
+  const [process, setProcess] = useState<ProcessCard | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
 
@@ -52,21 +69,50 @@ export function AICommandBar() {
   const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
 
   const submit = async () => {
-    if (!activeDataFrameId || !input.trim()) return
+    if (!activeDataFrameId || !input.trim() || loading) return
+    const runMode = mode
+    const value = input.trim()
     setLoading(true)
-    setOperations(null)
-    setAnswer(null)
+    setInput('')
+    setProcess({ mode: runMode, question: value, phase: 'thinking', tools: [], ops: [], answer: '', operations: null })
     try {
-      if (mode === 'query') {
-        const res = await api.nlTransform(activeDataFrameId, input.trim())
-        setOperations(res.operations)
+      if (runMode === 'query') {
+        const operations = await api.nlTransformStream(activeDataFrameId, value, (event: NLTransformStreamEvent) => {
+          setProcess((prev) => {
+            if (!prev) return prev
+            if (event.type === 'thinking') return { ...prev, phase: 'thinking' }
+            if (event.type === 'op' && event.op) return { ...prev, phase: 'working', ops: [...prev.ops, event.op] }
+            return prev
+          })
+        })
+        setProcess((prev) => (prev ? { ...prev, phase: 'done', operations } : prev))
       } else {
-        const currentQuestion = input.trim()
-        const res = await api.nlAsk(
+        const currentQuestion = value
+        const res = await api.nlAskStream(
           activeDataFrameId,
           currentQuestion,
           turns.map(({ question, answer }) => ({ question, answer })),
           { snapshotId: boundSnapshotId, filters },
+          (event: NLAskStreamEvent) => {
+            setProcess((prev) => {
+              if (!prev) return prev
+              if (event.type === 'round_start') return { ...prev, phase: 'working' }
+              if (event.type === 'tool_call') {
+                const incoming = (event.calls ?? []).map((call) => ({ name: call.name, status: 'running' as const }))
+                return { ...prev, phase: 'working', tools: [...prev.tools, ...incoming] }
+              }
+              if (event.type === 'tool_result') {
+                const tools = [...prev.tools]
+                const index = tools.findIndex((tool) => tool.status === 'running')
+                if (index >= 0) {
+                  tools[index] = { name: event.tool ?? tools[index].name, status: event.ok ? 'ok' : 'error', detail: event.detail }
+                }
+                return { ...prev, tools }
+              }
+              if (event.type === 'answer_delta') return { ...prev, phase: 'working', answer: prev.answer + (event.text ?? '') }
+              return prev
+            })
+          },
         )
         addTurn({
           question: currentQuestion,
@@ -79,46 +125,45 @@ export function AICommandBar() {
           clarify: res.clarify,
           verifiedSteps: res.tool_call_count ?? 0,
         })
-        setAnswer({ question: currentQuestion, text: res.answer })
-        setInput('')
+        setProcess((prev) => (prev ? { ...prev, phase: 'done', answer: res.answer } : prev))
       }
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : t('ai.requestFailed'))
+      const message = err instanceof Error ? err.message : t('ai.requestFailed')
+      setProcess((prev) => (prev ? { ...prev, phase: 'error', error: message } : prev))
     } finally {
       setLoading(false)
     }
   }
 
-  const addAnswerToDashboard = () => {
-    if (!answer) return
-    const dashboard = activeDashboard ?? dashboards[0] ?? createDashboard()
-    addTextItem(dashboard.id, `${answer.question}\n\n${answer.text}`)
-    addNotification('success', t('ai.addedToDashboard'))
-  }
-
-  const addAnswerToReport = () => {
-    if (!answer) return
-    const paragraph = `## ${answer.question}\n\n${answer.text}`
-    const draft = useUIStore.getState().reportNotesDraft
-    setReportNotesDraft(draft ? `${draft}\n\n${paragraph}` : paragraph)
-    setReportDialogOpen(true)
-    addNotification('success', t('ai.addedToReport'))
-  }
-
   const apply = async () => {
-    if (!activeDataFrameId || !operations || operations.length === 0) return
+    if (!activeDataFrameId || !process?.operations?.length) return
     setApplying(true)
     try {
-      await api.applyBatch(activeDataFrameId, operations)
-      addNotification('success', t('ai.appliedOps', { count: operations.length }))
-      setOperations(null)
-      setInput('')
+      await api.applyBatch(activeDataFrameId, process.operations)
+      addNotification('success', t('ai.appliedOps', { count: process.operations.length }))
+      setProcess(null)
       await refreshActiveDataFrame()
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('ai.applyFailed'))
     } finally {
       setApplying(false)
     }
+  }
+
+  const addAnswerToDashboard = () => {
+    if (!process) return
+    const dashboard = activeDashboard ?? dashboards[0] ?? createDashboard()
+    addTextItem(dashboard.id, `${process.question}\n\n${process.answer}`)
+    addNotification('success', t('ai.addedToDashboard'))
+  }
+
+  const addAnswerToReport = () => {
+    if (!process) return
+    const paragraph = `## ${process.question}\n\n${process.answer}`
+    const draft = useUIStore.getState().reportNotesDraft
+    setReportNotesDraft(draft ? `${draft}\n\n${paragraph}` : paragraph)
+    setReportDialogOpen(true)
+    addNotification('success', t('ai.addedToReport'))
   }
 
   // Slide in/out instead of unmounting so the toggle from the status bar animates.
@@ -135,40 +180,94 @@ export function AICommandBar() {
         aiBarVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-24 opacity-0'
       }`}
     >
-      {/* Result card */}
-      {operations !== null && (
+      {/* Live process card: appears the moment a message is submitted */}
+      {process !== null && (
         <div className="mb-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
-          <div className="mb-1 flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted">{operations.length} {t('ai.operations')}</span>
-            <button className="text-muted hover:text-foreground" onClick={() => setOperations(null)} aria-label={t('common.close')}>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1.5 text-xs">
+              {process.mode === 'query' ? (
+                <Wand2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+              )}
+              <span className="truncate text-foreground">{process.question}</span>
+            </div>
+            <button className="shrink-0 text-muted hover:text-foreground" onClick={() => setProcess(null)} aria-label={t('common.close')}>
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
-          <div className="flex flex-col gap-1">
-            {operations.map((op, i) => (
-              <div key={i} className="flex items-start gap-1 font-mono text-[11px]">
-                <span className="shrink-0 text-primary">{op.type}</span>
-                <span className="break-all text-muted">{JSON.stringify(op.params)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex gap-1">
-            <Button size="sm" color="primary" isLoading={applying} startContent={<Play className="h-3 w-3" />} onPress={apply}>
-              {t('ai.apply')}
-            </Button>
-            <Button size="sm" variant="light" startContent={<X className="h-3 w-3" />} onPress={() => setOperations(null)}>
-              {t('ai.cancel')}
-            </Button>
-          </div>
-        </div>
-      )}
 
-      {answer !== null && (
-        <div className="mb-2 flex items-start gap-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
-          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <div className="whitespace-pre-wrap text-xs leading-relaxed">{answer.text}</div>
-            <div className="mt-2 flex flex-wrap gap-1">
+          {process.phase === 'thinking' && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t('ai.thinking')}
+            </div>
+          )}
+
+          {process.phase === 'error' && (
+            <div className="rounded border border-danger/40 bg-danger/10 p-1.5 text-[11px] text-danger">{process.error}</div>
+          )}
+
+          {process.tools.length > 0 && (
+            <div className="mb-1.5 space-y-1">
+              {process.tools.map((tool, toolIndex) => (
+                <div key={`${tool.name}-${toolIndex}`} className="flex items-center gap-1.5 text-[10px]">
+                  {tool.status === 'running' ? (
+                    <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+                  ) : (
+                    <Wrench className={`h-3 w-3 shrink-0 ${tool.status === 'ok' ? 'text-success' : 'text-danger'}`} />
+                  )}
+                  <span className="shrink-0 font-mono text-[9px] text-muted">{tool.name}</span>
+                  {tool.detail && <span className="min-w-0 flex-1 truncate text-muted">{tool.detail}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {process.ops.length > 0 && (
+            <div className="mb-1.5 flex flex-col gap-1">
+              <div className="text-[9px] font-medium uppercase tracking-wide text-muted">
+                {t('ai.operations')} ({process.ops.length})
+              </div>
+              {process.ops.map((op, opIndex) => (
+                <div key={opIndex} className="flex items-center gap-1.5 text-[10px]">
+                  <Wrench className="h-3 w-3 shrink-0 text-success" />
+                  <span className="shrink-0 font-mono text-primary">{op.type}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-muted">{JSON.stringify(op.params)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {process.answer && (
+            <div className="whitespace-pre-wrap text-xs leading-relaxed">
+              {process.answer}
+              {process.phase === 'working' && (
+                <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-primary/70 align-middle" />
+              )}
+            </div>
+          )}
+
+          {process.phase === 'working' && !process.answer && process.ops.length === 0 && process.tools.length === 0 && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              {t('ai.thinking')}
+            </div>
+          )}
+
+          {process.phase === 'done' && process.mode === 'query' && process.operations && process.operations.length > 0 && (
+            <div className="mt-2 flex gap-1 border-t border-border/50 pt-2">
+              <Button size="sm" color="primary" isLoading={applying} startContent={<Play className="h-3 w-3" />} onPress={apply}>
+                {t('ai.apply')}
+              </Button>
+              <Button size="sm" variant="light" startContent={<X className="h-3 w-3" />} onPress={() => setProcess(null)}>
+                {t('ai.cancel')}
+              </Button>
+            </div>
+          )}
+
+          {process.phase === 'done' && process.mode === 'ask' && process.answer && (
+            <div className="mt-2 flex gap-1 border-t border-border/50 pt-2">
               <Button size="sm" variant="light" startContent={<LayoutDashboard className="h-3 w-3" />} onPress={addAnswerToDashboard}>
                 {t('ai.addToDashboard')}
               </Button>
@@ -176,10 +275,7 @@ export function AICommandBar() {
                 {t('ai.addToReport')}
               </Button>
             </div>
-          </div>
-          <button className="text-muted hover:text-foreground" onClick={() => setAnswer(null)} aria-label={t('common.close')}>
-            <X className="h-3.5 w-3.5" />
-          </button>
+          )}
         </div>
       )}
 

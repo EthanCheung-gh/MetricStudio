@@ -162,6 +162,18 @@ async function postForm<T>(path: string, formData: FormData): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export interface NLAskResponse {
+  answer: string
+  evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
+  facts?: { n: number; tool: string; detail: string }[]
+  followups?: string[]
+  clarify?: { question: string; options: string[] } | null
+  rounds_used?: number
+  tool_call_count?: number
+  model?: string
+  generated_at?: string
+}
+
 export interface NLAskStreamEvent {
   type: 'round_start' | 'tool_call' | 'tool_result' | 'answer_delta' | 'done' | 'error'
   round?: number
@@ -175,16 +187,67 @@ export interface NLAskStreamEvent {
   result?: NLAskResponse
 }
 
-export interface NLAskResponse {
-  answer: string
-  evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
-  facts?: { n: number; tool: string; detail: string }[]
-  followups?: string[]
-  clarify?: { question: string; options: string[] } | null
-  rounds_used?: number
-  tool_call_count?: number
-  model?: string
-  generated_at?: string
+export interface NLTransformStreamEvent {
+  type: 'thinking' | 'op' | 'done' | 'error'
+  index?: number
+  op?: { type: string; params: Record<string, unknown> }
+  operations?: { type: string; params: Record<string, unknown> }[]
+  message?: string
+}
+
+/** POST JSON and consume the SSE response body frame by frame. */
+async function consumeSseStream(
+  path: string,
+  body: unknown,
+  onFrame: (frame: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const url = `${getBaseUrl()}${path}`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    })
+  } catch (error) {
+    throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
+  }
+  if (!response.ok || !response.body) {
+    let detail = ''
+    try {
+      const errBody = await response.json()
+      detail = errBody.detail || JSON.stringify(errBody)
+    } catch {
+      detail = await response.text().catch(() => 'Unknown error')
+    }
+    throw new Error(`${response.status} ${response.statusText}: ${path} — ${detail}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (value) {
+        buffer += decoder.decode(value, { stream: true })
+        let separator = buffer.indexOf('\n\n')
+        while (separator >= 0) {
+          const frame = buffer.slice(0, separator)
+          buffer = buffer.slice(separator + 2)
+          onFrame(frame)
+          separator = buffer.indexOf('\n\n')
+        }
+      }
+      if (done) break
+    }
+    if (buffer.trim()) onFrame(buffer)
+  } finally {
+    reader.cancel().catch(() => {})
+  }
 }
 
 /**
@@ -200,74 +263,69 @@ async function nlAskStream(
   onEvent?: (event: NLAskStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<NLAskResponse> {
-  const url = `${getBaseUrl()}/api/v1/nl/ask/stream`
-  let response: Response
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dataset_id: datasetId,
-        question,
-        history,
-        snapshot_id: context?.snapshotId,
-        filters: context?.filters ?? [],
-      }),
-      signal,
-    })
-  } catch (error) {
-    throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
-  }
-  if (!response.ok || !response.body) {
-    let detail = ''
-    try {
-      const body = await response.json()
-      detail = body.detail || JSON.stringify(body)
-    } catch {
-      detail = await response.text().catch(() => 'Unknown error')
-    }
-    throw new Error(`${response.status} ${response.statusText}: /api/v1/nl/ask/stream — ${detail}`)
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
   let result: NLAskResponse | null = null
-
-  const handleFrame = (frame: string) => {
-    const line = frame.trim()
-    if (!line.startsWith('data:')) return
-    let event: NLAskStreamEvent
-    try {
-      event = JSON.parse(line.slice(5).trim()) as NLAskStreamEvent
-    } catch {
-      return
-    }
-    if (event.type === 'done') {
-      result = event.result ?? null
-    } else if (event.type === 'error') {
-      throw new Error(event.message || 'Ask stream failed')
-    }
-    onEvent?.(event)
-  }
-
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (value) {
-      buffer += decoder.decode(value, { stream: true })
-      let separator = buffer.indexOf('\n\n')
-      while (separator >= 0) {
-        const frame = buffer.slice(0, separator)
-        buffer = buffer.slice(separator + 2)
-        handleFrame(frame)
-        separator = buffer.indexOf('\n\n')
+  await consumeSseStream(
+    '/api/v1/nl/ask/stream',
+    {
+      dataset_id: datasetId,
+      question,
+      history,
+      snapshot_id: context?.snapshotId,
+      filters: context?.filters ?? [],
+    },
+    (frame) => {
+      const line = frame.trim()
+      if (!line.startsWith('data:')) return
+      let event: NLAskStreamEvent
+      try {
+        event = JSON.parse(line.slice(5).trim()) as NLAskStreamEvent
+      } catch {
+        return
       }
-    }
-    if (done) break
-  }
-  if (buffer.trim()) handleFrame(buffer)
-  if (!result) throw new Error('Ask stream ended without a result')
+      if (event.type === 'done') {
+        result = event.result ?? null
+      } else if (event.type === 'error') {
+        throw new Error(event.message || 'Ask stream failed')
+      }
+      onEvent?.(event)
+    },
+    signal,
+  )
+  if (result === null) throw new Error('Ask stream ended without a result')
   return result
+}
+
+/** Streaming variant of nlTransform: yields each parsed op as it arrives. */
+async function nlTransformStream(
+  datasetId: string,
+  query: string,
+  onEvent?: (event: NLTransformStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<{ type: string; params: Record<string, unknown> }[]> {
+  let operations: { type: string; params: Record<string, unknown> }[] | null = null
+  await consumeSseStream(
+    '/api/v1/nl/transform/stream',
+    { dataset_id: datasetId, query },
+    (frame) => {
+      const line = frame.trim()
+      if (!line.startsWith('data:')) return
+      let event: NLTransformStreamEvent
+      try {
+        event = JSON.parse(line.slice(5).trim()) as NLTransformStreamEvent
+      } catch {
+        return
+      }
+      if (event.type === 'done') {
+        operations = event.operations ?? []
+      } else if (event.type === 'error') {
+        throw new Error(event.message || 'Transform stream failed')
+      }
+      onEvent?.(event)
+    },
+    signal,
+  )
+  if (operations === null) throw new Error('Transform stream ended without a result')
+  return operations
 }
 
 export const api = {
@@ -488,6 +546,12 @@ export const api = {
       '/api/v1/nl/transform',
       { method: 'POST', body: JSON.stringify({ dataset_id: datasetId, query }) },
     ),
+  nlTransformStream: (
+    datasetId: string,
+    query: string,
+    onEvent?: (event: NLTransformStreamEvent) => void,
+    signal?: AbortSignal,
+  ) => nlTransformStream(datasetId, query, onEvent, signal),
   diffDatasets: (leftId: string, rightId: string) =>
     fetchJson<DataDiffResult>('/api/v1/data/diff', {
       method: 'POST',

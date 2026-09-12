@@ -17,6 +17,7 @@ from backend.api.chart import _filter_by_filters
 from backend.core.llm import (
     activate_profile,
     chat,
+    chat_stream,
     create_profile,
     delete_profile,
     list_profiles,
@@ -31,6 +32,10 @@ from backend.core.session import session
 from backend.models.chart import FilterSpec
 
 router = APIRouter(prefix="/api/v1/nl", tags=["nl"])
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 VALID_OP_TYPES = {
     "filter", "sort", "dropna", "fillna", "rename", "dtype",
@@ -169,6 +174,118 @@ def nl_transform(request: NLTransformRequest):
         raise HTTPException(status_code=422, detail=f"LLM output invalid: {exc}") from exc
 
     return {"operations": ops, "raw": raw}
+
+
+class _OpExtractor:
+    """Incrementally extract complete objects from a streamed JSON array.
+
+    The transform protocol streams a JSON array of operations like
+    ``[{"type": "filter", "params": {...}}, ...]``. Each time an object
+    closes, it is decoded and emitted so the UI can light the operation up
+    while the LLM is still writing the rest of the chain. String-aware
+    bracket counting keeps braces inside JSON strings from confusing the
+    depth tracking. A parse failure on a single object is tolerated here —
+    the done frame re-validates the whole chain via _parse_chain.
+    """
+
+    def __init__(self) -> None:
+        self._buf = ""
+        self._scan = 0
+        self._started = False
+        self._obj_start: int | None = None
+        self._depth = 0
+        self._in_string = False
+        self._escape = False
+        self.ops: list[dict[str, Any]] = []
+
+    def feed(self, delta: str) -> list[dict[str, Any]]:
+        if not delta:
+            return []
+        self._buf += delta
+        buf = self._buf
+        out: list[dict[str, Any]] = []
+        i = self._scan
+        while i < len(buf):
+            char = buf[i]
+            if self._obj_start is None:
+                if not self._started:
+                    if char == "[":
+                        self._started = True
+                    elif char == "{":
+                        # Tolerate a bare object without the array wrapper.
+                        self._started = True
+                        self._obj_start = i
+                        self._depth = 1
+                elif char == "{":
+                    self._obj_start = i
+                    self._depth = 1
+                    self._in_string = False
+                    self._escape = False
+            else:
+                if self._escape:
+                    self._escape = False
+                elif char == "\\":
+                    self._escape = True
+                elif char == '"':
+                    self._in_string = not self._in_string
+                elif not self._in_string:
+                    if char in "{[":
+                        self._depth += 1
+                    elif char in "}]":
+                        self._depth -= 1
+                        if self._depth == 0:
+                            try:
+                                op = json.loads(buf[self._obj_start : i + 1])
+                                if isinstance(op, dict):
+                                    self.ops.append(op)
+                                    out.append(op)
+                            except json.JSONDecodeError:
+                                pass
+                            self._obj_start = None
+                            self._in_string = False
+            i += 1
+        self._scan = i
+        return out
+
+
+@router.post("/transform/stream")
+def nl_transform_stream(request: NLTransformRequest):
+    """SSE variant of /transform (v1.4.0).
+
+    Frames: {"type":"thinking"} -> {"type":"op","index":n,"op":{...}}* ->
+    {"type":"done","operations":[...]} | {"type":"error","message":...}.
+    """
+    try:
+        dataset = session.get(request.dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    prompt = _build_prompt(dataset, request.query)
+
+    def event_stream():
+        yield _sse({"type": "thinking"})
+        extractor = _OpExtractor()
+        chunks: list[str] = []
+        try:
+            for delta in chat_stream([{"role": "user", "content": prompt}]):
+                chunks.append(delta)
+                for op in extractor.feed(delta):
+                    yield _sse({"type": "op", "index": len(extractor.ops) - 1, "op": op})
+        except Exception as exc:  # noqa: BLE001 - terminal frame must be sent
+            yield _sse({"type": "error", "message": f"LLM unavailable: {exc}"})
+            return
+        try:
+            ops = _parse_chain("".join(chunks))
+            _validate_ops(ops)
+        except ValueError as exc:
+            yield _sse({"type": "error", "message": f"LLM output invalid: {exc}"})
+            return
+        yield _sse({"type": "done", "operations": ops})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _question_tokens(question: str) -> list[str]:
@@ -391,9 +508,6 @@ def nl_ask_stream(request: NLAskRequest):
     snapshot_id = request.snapshot_id
 
     def event_stream():
-        def sse(payload: dict) -> str:
-            return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
         try:
             config = load_config()
             evidence = _build_data_evidence(dataset, df, snapshot_id)
@@ -408,7 +522,7 @@ def nl_ask_stream(request: NLAskRequest):
                         {"id": f"fact:{fact['n']}", "kind": "tool", "detail": f"[{fact['n']}] {fact['tool']}: {fact['detail']}", "source": dict(fact_source)}
                         for fact in agent_result["facts"]
                     )
-                    yield sse({"type": "done", "result": {
+                    yield _sse({"type": "done", "result": {
                         **agent_result,
                         "evidence": evidence[:20],
                         "model": config.get("model", "unknown"),
@@ -416,13 +530,13 @@ def nl_ask_stream(request: NLAskRequest):
                     }})
                 elif event["type"] == "error":
                     agent_result = {}  # terminal: a error frame was already sent
-                    yield sse(event)
+                    yield _sse(event)
                 else:
-                    yield sse(event)
+                    yield _sse(event)
             if agent_result is None:  # generator ended without done (defensive)
-                yield sse({"type": "error", "message": "agent stream ended unexpectedly"})
+                yield _sse({"type": "error", "message": "agent stream ended unexpectedly"})
         except Exception as exc:  # noqa: BLE001 - stream must end with a terminal frame
-            yield sse({"type": "error", "message": str(exc) or exc.__class__.__name__})
+            yield _sse({"type": "error", "message": str(exc) or exc.__class__.__name__})
 
     return StreamingResponse(
         event_stream(),
