@@ -22,6 +22,7 @@ import copy
 import json
 import os
 import shutil
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -318,3 +319,66 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
     resp.raise_for_status()
     data = resp.json()
     return data["choices"][0]["message"]["content"]
+
+
+def iter_sse_deltas(lines: Any) -> Any:
+    """Yield text deltas from an OpenAI-compatible SSE byte/line iterator.
+
+    Accepts any iterable of ``bytes``/``str`` lines (httpx stream lines).
+    Non-delta lines (role-only chunks, ``[DONE]``, keep-alives) are skipped.
+    """
+    for line in lines:
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        chunk = line[len("data:"):].strip()
+        if not chunk or chunk == "[DONE]":
+            continue
+        try:
+            event = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        choices = event.get("choices") or []
+        if not choices:
+            continue
+        delta = (choices[0] or {}).get("delta") or {}
+        content = delta.get("content")
+        if isinstance(content, str) and content:
+            yield content
+
+
+def chat_stream(messages: list[dict[str, str]], config: dict[str, str] | None = None) -> Any:
+    """Streaming variant of :func:`chat`; yields text deltas as they arrive.
+
+    Raises the same way as chat() when the provider is unreachable. The
+    returned iterator must be fully consumed (or closed) by the caller.
+    """
+    cfg = config or load_config()
+    url = cfg["base_url"].rstrip("/") + "/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("api_key"):
+        headers["Authorization"] = f"Bearer {cfg['api_key']}"
+
+    payload: dict[str, Any] = {
+        "model": cfg["model"],
+        "messages": messages,
+        "temperature": 0,
+        "stream": True,
+    }
+    stream = httpx.stream("POST", url, json=payload, headers=headers, timeout=120.0)
+    response = stream.__enter__()
+    try:
+        response.raise_for_status()
+    except Exception:
+        stream.__exit__(*sys.exc_info())
+        raise
+
+    def generator() -> Any:
+        try:
+            yield from iter_sse_deltas(response.iter_lines())
+        finally:
+            stream.__exit__(None, None, None)
+
+    return generator()

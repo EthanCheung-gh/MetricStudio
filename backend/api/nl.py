@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 import pandas as pd
@@ -25,7 +26,7 @@ from backend.core.llm import (
     update_profile,
 )
 from backend.core.privacy import prepare_for_llm, sensitive_columns
-from backend.core.qa_agent import run_agent
+from backend.core.qa_agent import run_agent, run_agent_stream
 from backend.core.session import session
 from backend.models.chart import FilterSpec
 
@@ -369,6 +370,65 @@ def nl_ask(request: NLAskRequest):
         "model": config.get("model", "unknown"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.post("/ask/stream")
+def nl_ask_stream(request: NLAskRequest):
+    """SSE endpoint for the agent loop (v1.3.0).
+
+    Emits ``data: {json}\\n\\n`` frames:
+    round_start / tool_call / tool_result / answer_delta / done / error.
+    ``done`` carries the same payload as the sync /ask response. A sync def
+    keeps the blocking LLM stream on FastAPI's threadpool.
+    """
+    try:
+        dataset = session.get(request.dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    df = _ask_dataframe(dataset, request)
+    context = _build_data_context(dataset, df, request.question)
+    history = [turn.model_dump() for turn in request.history]
+    snapshot_id = request.snapshot_id
+
+    def event_stream():
+        def sse(payload: dict) -> str:
+            return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+        try:
+            config = load_config()
+            evidence = _build_data_evidence(dataset, df, snapshot_id)
+            fact_source: dict[str, str] = {"datasetId": dataset.id}
+            if snapshot_id:
+                fact_source["snapshotId"] = snapshot_id
+            agent_result: dict[str, Any] | None = None
+            for event in run_agent_stream(request.question, df, context, history):
+                if event["type"] == "done":
+                    agent_result = event["result"]
+                    evidence.extend(
+                        {"id": f"fact:{fact['n']}", "kind": "tool", "detail": f"[{fact['n']}] {fact['tool']}: {fact['detail']}", "source": dict(fact_source)}
+                        for fact in agent_result["facts"]
+                    )
+                    yield sse({"type": "done", "result": {
+                        **agent_result,
+                        "evidence": evidence[:20],
+                        "model": config.get("model", "unknown"),
+                        "generated_at": datetime.now(timezone.utc).isoformat(),
+                    }})
+                elif event["type"] == "error":
+                    agent_result = {}  # terminal: a error frame was already sent
+                    yield sse(event)
+                else:
+                    yield sse(event)
+            if agent_result is None:  # generator ended without done (defensive)
+                yield sse({"type": "error", "message": "agent stream ended unexpectedly"})
+        except Exception as exc:  # noqa: BLE001 - stream must end with a terminal frame
+            yield sse({"type": "error", "message": str(exc) or exc.__class__.__name__})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/narrate")

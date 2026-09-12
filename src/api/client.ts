@@ -162,6 +162,114 @@ async function postForm<T>(path: string, formData: FormData): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export interface NLAskStreamEvent {
+  type: 'round_start' | 'tool_call' | 'tool_result' | 'answer_delta' | 'done' | 'error'
+  round?: number
+  calls?: { name: string; args?: Record<string, unknown> }[]
+  n?: number
+  tool?: string
+  ok?: boolean
+  detail?: string
+  text?: string
+  message?: string
+  result?: NLAskResponse
+}
+
+export interface NLAskResponse {
+  answer: string
+  evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
+  facts?: { n: number; tool: string; detail: string }[]
+  followups?: string[]
+  clarify?: { question: string; options: string[] } | null
+  rounds_used?: number
+  tool_call_count?: number
+  model?: string
+  generated_at?: string
+}
+
+/**
+ * Streaming variant of nlAsk: POSTs the same payload to /ask/stream and
+ * consumes the SSE response body incrementally, invoking onEvent per frame.
+ * Resolves with the done frame's result; rejects on error frames / failures.
+ */
+async function nlAskStream(
+  datasetId: string,
+  question: string,
+  history: { question: string; answer: string }[] = [],
+  context?: { snapshotId?: string; filters?: QAFilter[] },
+  onEvent?: (event: NLAskStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<NLAskResponse> {
+  const url = `${getBaseUrl()}/api/v1/nl/ask/stream`
+  let response: Response
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataset_id: datasetId,
+        question,
+        history,
+        snapshot_id: context?.snapshotId,
+        filters: context?.filters ?? [],
+      }),
+      signal,
+    })
+  } catch (error) {
+    throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
+  }
+  if (!response.ok || !response.body) {
+    let detail = ''
+    try {
+      const body = await response.json()
+      detail = body.detail || JSON.stringify(body)
+    } catch {
+      detail = await response.text().catch(() => 'Unknown error')
+    }
+    throw new Error(`${response.status} ${response.statusText}: /api/v1/nl/ask/stream — ${detail}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let result: NLAskResponse | null = null
+
+  const handleFrame = (frame: string) => {
+    const line = frame.trim()
+    if (!line.startsWith('data:')) return
+    let event: NLAskStreamEvent
+    try {
+      event = JSON.parse(line.slice(5).trim()) as NLAskStreamEvent
+    } catch {
+      return
+    }
+    if (event.type === 'done') {
+      result = event.result ?? null
+    } else if (event.type === 'error') {
+      throw new Error(event.message || 'Ask stream failed')
+    }
+    onEvent?.(event)
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) {
+      buffer += decoder.decode(value, { stream: true })
+      let separator = buffer.indexOf('\n\n')
+      while (separator >= 0) {
+        const frame = buffer.slice(0, separator)
+        buffer = buffer.slice(separator + 2)
+        handleFrame(frame)
+        separator = buffer.indexOf('\n\n')
+      }
+    }
+    if (done) break
+  }
+  if (buffer.trim()) handleFrame(buffer)
+  if (!result) throw new Error('Ask stream ended without a result')
+  return result
+}
+
 export const api = {
   health: () => fetchJson<{ status: string }>('/health'),
 
@@ -481,17 +589,7 @@ export const api = {
     history: { question: string; answer: string }[] = [],
     context?: { snapshotId?: string; filters?: QAFilter[] },
   ) =>
-    fetchJson<{
-      answer: string
-      evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
-      facts?: { n: number; tool: string; detail: string }[]
-      followups?: string[]
-      clarify?: { question: string; options: string[] } | null
-      rounds_used?: number
-      tool_call_count?: number
-      model?: string
-      generated_at?: string
-    }>('/api/v1/nl/ask', {
+    fetchJson<NLAskResponse>('/api/v1/nl/ask', {
       method: 'POST',
       body: JSON.stringify({
         dataset_id: datasetId,
@@ -501,6 +599,14 @@ export const api = {
         filters: context?.filters ?? [],
       }),
     }),
+  nlAskStream: (
+    datasetId: string,
+    question: string,
+    history: { question: string; answer: string }[] = [],
+    context?: { snapshotId?: string; filters?: QAFilter[] },
+    onEvent?: (event: NLAskStreamEvent) => void,
+    signal?: AbortSignal,
+  ) => nlAskStream(datasetId, question, history, context, onEvent, signal),
   explainChart: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {
       method: 'POST',

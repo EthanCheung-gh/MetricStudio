@@ -216,6 +216,132 @@ def test_agent_history_is_capped(sales_df, monkeypatch):
     assert "Earlier conversation (truncated)" in captured["user"]
 
 
+# --- streaming agent (v1.3.0) ----------------------------------------------------
+
+def _collect(events):
+    deltas, done, errors = [], None, []
+    for event in events:
+        if event["type"] == "answer_delta":
+            deltas.append(event["text"])
+        elif event["type"] == "done":
+            done = event["result"]
+        elif event["type"] == "error":
+            errors.append(event)
+    return "".join(deltas), done, errors
+
+
+def test_extractor_streams_and_decodes_escapes():
+    extractor = qa_agent._AnswerExtractor()
+    out = extractor.feed('{"answer": "line1\\nline2 \\"q\\" \\u4e2d')
+    out += extractor.feed('文", "followups": ["x"]}')
+    assert out == 'line1\nline2 "q" 中文'
+    assert extractor.emitted and extractor.decoded == out
+
+
+def test_extractor_ignores_tool_json_and_straddled_keys():
+    tool_stream = qa_agent._AnswerExtractor()
+    assert tool_stream.feed('{"tools": [{"name": "row_count"}') == ""
+    assert tool_stream.feed(', {"answer" : 1}]}') == ""
+    assert not tool_stream.emitted
+
+    straddled = qa_agent._AnswerExtractor()
+    text = straddled.feed('{"ans')
+    text += straddled.feed('wer": "ok"}')
+    assert text == "ok"
+
+
+def test_stream_direct_answer(sales_df, monkeypatch):
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages: iter(["共 6 行。"]))
+    deltas, done, errors = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert not errors
+    assert deltas == "共 6 行。"
+    assert done["answer"] == "共 6 行。" and done["rounds_used"] == 1
+
+
+def test_stream_tool_round_then_streamed_answer(sales_df, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_stream(messages):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            yield '{"tools": [{"name": "row_count", "args": {}}'
+            yield "]}"
+        else:
+            yield '{"answer": "共 6 行 [1]。", "followups": ["按类别？"], "clarify": null}'
+
+    monkeypatch.setattr(qa_agent, "chat_stream", fake_stream)
+    events = list(qa_agent.run_agent_stream("q", sales_df, "context"))
+    kinds = [event["type"] for event in events]
+    assert kinds == ["round_start", "tool_call", "tool_result", "round_start", "answer_delta", "done"]
+    assert events[2]["n"] == 1 and events[2]["ok"] and "6" in events[2]["detail"]
+    deltas, done, _ = _collect(events)
+    assert deltas == "共 6 行 [1]。"
+    assert done["followups"] == ["按类别？"] and done["tool_call_count"] == 1
+
+
+def test_stream_caps_rounds_and_falls_back_to_facts(sales_df, monkeypatch):
+    def always_tools(messages):
+        yield '{"tools": [{"name": "row_count", "args": {}}]}'
+
+    monkeypatch.setattr(qa_agent, "chat_stream", always_tools)
+    deltas, done, errors = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert not errors
+    assert done["tool_call_count"] == qa_agent.MAX_ROUNDS - 1
+    assert "[1] row_count: row_count = 6" in done["answer"]
+    assert deltas == done["answer"]  # fallback text was streamed too
+
+
+def test_stream_plain_text_reply_is_final_answer(sales_df, monkeypatch):
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages: iter(["直接文字回答。"]))
+    deltas, done, _ = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert done["answer"] == "直接文字回答。" and deltas == "直接文字回答。"
+
+
+def test_stream_first_failure_emits_error(sales_df, monkeypatch):
+    def boom(messages):
+        raise RuntimeError("no llm")
+        yield  # pragma: no cover - make it a generator
+
+    monkeypatch.setattr(qa_agent, "chat_stream", boom)
+    events = list(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert events[-1]["type"] == "error" and "no llm" in events[-1]["message"]
+
+
+def test_stream_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(messages):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            yield '{"tools": [{"name": "distinct_count", "args": {"column": "category"}}]}'
+            return
+        raise RuntimeError("boom")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(qa_agent, "chat_stream", flaky)
+    deltas, done, errors = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert not errors
+    assert "[1] distinct_count" in done["answer"] and deltas == done["answer"]
+
+
+def test_stream_truncated_json_trusts_streamed_answer(sales_df, monkeypatch):
+    def truncated(messages):
+        yield '{"answer": "部分回答'  # broken JSON, no closing braces
+
+    monkeypatch.setattr(qa_agent, "chat_stream", truncated)
+    deltas, done, _ = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert done["answer"] == "部分回答" and deltas == "部分回答"
+
+
+def test_stream_clarify_only_answer(sales_df, monkeypatch):
+    def clarify(messages):
+        yield '{"answer": "", "clarify": {"question": "哪个字段？", "options": ["a", "b"]}}'
+
+    monkeypatch.setattr(qa_agent, "chat_stream", clarify)
+    deltas, done, _ = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert deltas == "" and done["clarify"]["question"] == "哪个字段？"
+
+
 # --- adaptive context (D) --------------------------------------------------------
 
 def test_context_categorical_and_datetime_lines():

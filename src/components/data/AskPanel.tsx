@@ -9,6 +9,7 @@ import {
   FilePlus2,
   FileText,
   LayoutDashboard,
+  Loader2,
   MessageSquarePlus,
   Pencil,
   RefreshCw,
@@ -17,16 +18,30 @@ import {
   ShieldCheck,
   Trash2,
   User,
+  Wrench,
   X,
 } from 'lucide-react'
 import { Button, Input } from '@heroui/react'
-import { api } from '@/api/client'
+import { api, type NLAskStreamEvent } from '@/api/client'
 import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
 import { dashboardFiltersForDataset } from '@/utils/qaContext'
 import { conversationToHtml, conversationToMarkdown, downloadText } from '@/utils/qaExport'
+
+interface StreamTool {
+  name: string
+  status: 'running' | 'ok' | 'error'
+  detail?: string
+}
+
+interface StreamState {
+  question: string
+  answer: string
+  tools: StreamTool[]
+  round: number
+}
 
 /** Render answer text with clickable [n] citation chips. */
 function AnswerText({ text, onCite }: { text: string; onCite: (n: number) => void }) {
@@ -85,6 +100,7 @@ export function AskPanel() {
   const [activeCitation, setActiveCitation] = useState<{ turn: number; n: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null)
+  const [streamState, setStreamState] = useState<StreamState | null>(null)
 
   useEffect(() => {
     if (datasetId !== activeDataFrameId) setDataset(activeDataFrameId)
@@ -102,12 +118,35 @@ export function AskPanel() {
   const filters = dashboardFiltersForDataset(activeDashboard?.filters ?? [], activeDataFrameId ?? '')
   const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
 
+  const applyStreamEvent = (event: NLAskStreamEvent) => {
+    setStreamState((prev) => {
+      if (!prev) return prev
+      if (event.type === 'round_start') return { ...prev, round: event.round ?? prev.round + 1 }
+      if (event.type === 'tool_call') {
+        const incoming = (event.calls ?? []).map((call) => ({ name: call.name, status: 'running' as const }))
+        return { ...prev, tools: [...prev.tools, ...incoming] }
+      }
+      if (event.type === 'tool_result') {
+        const tools = [...prev.tools]
+        const index = tools.findIndex((tool) => tool.status === 'running')
+        if (index >= 0) {
+          tools[index] = { name: event.tool ?? tools[index].name, status: event.ok ? 'ok' : 'error', detail: event.detail }
+        }
+        return { ...prev, tools }
+      }
+      if (event.type === 'answer_delta') return { ...prev, answer: prev.answer + (event.text ?? '') }
+      return prev
+    })
+  }
+
   const ask = async (value = question) => {
     if (!activeDataFrameId || !activeConversationId || !value.trim() || loading || regeneratingIndex !== null) return
+    const currentQuestion = value.trim()
     setLoading(true)
+    setQuestion('')
+    setStreamState({ question: currentQuestion, answer: '', tools: [], round: 0 })
     try {
-      const currentQuestion = value.trim()
-      const response = await api.nlAsk(
+      const response = await api.nlAskStream(
         activeDataFrameId,
         currentQuestion,
         turns.map(({ question: previousQuestion, answer: previousAnswer }) => ({
@@ -115,6 +154,7 @@ export function AskPanel() {
           answer: previousAnswer,
         })),
         { snapshotId: boundSnapshotId, filters },
+        applyStreamEvent,
       )
       addTurn({
         question: currentQuestion,
@@ -127,22 +167,24 @@ export function AskPanel() {
         clarify: response.clarify,
         verifiedSteps: response.tool_call_count ?? 0,
       })
-      setQuestion('')
     } catch (err) {
+      setQuestion(currentQuestion)
       addNotification('error', err instanceof Error ? err.message : 'Ask failed')
     } finally {
       setLoading(false)
+      setStreamState(null)
     }
   }
 
   const regenerate = async (index: number) => {
     if (!activeDataFrameId || !activeConversationId || loading || regeneratingIndex !== null) return
     setRegeneratingIndex(index)
+    const turn = turns[index]
+    setStreamState({ question: turn.question, answer: '', tools: [], round: 0 })
     try {
-      const turn = turns[index]
       const requestDatasetId = turn.context?.datasetId ?? activeDataFrameId
       const context = { snapshotId: turn.context?.snapshotId, filters: turn.context?.filters ?? [] }
-      const response = await api.nlAsk(
+      const response = await api.nlAskStream(
         requestDatasetId,
         turn.question,
         turns.slice(0, index).map(({ question: previousQuestion, answer: previousAnswer }) => ({
@@ -150,6 +192,7 @@ export function AskPanel() {
           answer: previousAnswer,
         })),
         context,
+        applyStreamEvent,
       )
       replaceTurn(index, {
         question: turn.question,
@@ -166,6 +209,7 @@ export function AskPanel() {
       addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')
     } finally {
       setRegeneratingIndex(null)
+      setStreamState(null)
     }
   }
 
@@ -429,6 +473,47 @@ export function AskPanel() {
             </div>
           )
         })}
+        {streamState && (
+          <div className="space-y-1.5">
+            <div className="flex items-start justify-end gap-1.5">
+              <div className="max-w-[88%] rounded-lg rounded-tr-sm bg-primary/15 px-2.5 py-1.5 text-[11px] text-foreground">
+                {streamState.question}
+              </div>
+              <User className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
+            </div>
+            <div className="flex items-start gap-1.5">
+              <Bot className="mt-1 h-3.5 w-3.5 shrink-0 text-primary" />
+              <div className="min-w-0 max-w-[92%] flex-1 rounded-lg rounded-tl-sm border border-border/60 bg-surface-elevated/40 p-2">
+                {streamState.tools.length > 0 && (
+                  <div className="mb-1.5 space-y-1 rounded border border-border/50 bg-surface/60 p-1.5">
+                    {streamState.tools.map((tool, toolIndex) => (
+                      <div key={`${tool.name}-${toolIndex}`} className="flex items-center gap-1.5 text-[10px]">
+                        {tool.status === 'running' ? (
+                          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+                        ) : (
+                          <Wrench className={`h-3 w-3 shrink-0 ${tool.status === 'ok' ? 'text-success' : 'text-danger'}`} />
+                        )}
+                        <span className="shrink-0 font-mono text-[9px] text-muted">{tool.name}</span>
+                        {tool.detail && <span className="min-w-0 flex-1 truncate text-muted">{tool.detail}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {streamState.answer ? (
+                  <div className="text-[11px] leading-relaxed">
+                    <AnswerText text={streamState.answer} onCite={() => {}} />
+                    <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-primary/70 align-middle" />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {t('ai.thinking')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between border-t border-border/50 pt-2">

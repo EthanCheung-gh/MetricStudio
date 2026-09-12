@@ -158,6 +158,7 @@ export default {
   'ai.evidence': 'Evidence',
   'ai.emptyHistory': 'No questions yet. Ask something about the current dataset.',
   'ai.verified': 'Verified in {{count}} steps',
+  'ai.thinking': 'Thinking…',
   'ai.showEvidence': 'Show evidence',
   'ai.hideEvidence': 'Hide evidence',
   'ai.copyAnswer': 'Copy answer',

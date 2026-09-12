@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.core.llm import chat
+from backend.core.llm import chat, chat_stream
 from backend.core.qa_tools import TOOLS_DESC, run as run_tool
 
 MAX_ROUNDS = 3
@@ -194,3 +194,243 @@ def run_agent(
         "rounds_used": rounds_used,
         "tool_call_count": tool_call_count,
     }
+
+
+# --- v1.3.0 streaming agent ----------------------------------------------------
+
+_JSON_ESCAPES = {'"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t"}
+
+
+class _AnswerExtractor:
+    """Incrementally decode the JSON ``answer`` value out of a delta stream.
+
+    The agent protocol receives JSON objects like ``{"answer": "...", ...}``.
+    As soon as the opening quote of the ``answer`` value is reached, decoded
+    text is produced chunk by chunk so the UI can render a live typewriter
+    answer while the LLM is still writing. Tool-round replies (no ``answer``
+    key) produce nothing and are later parsed as a whole by ``_parse_reply``.
+    """
+
+    _KEY, _COLON, _QUOTE, _STRING, _DONE = range(5)
+
+    def __init__(self) -> None:
+        self._buffer = ""
+        self._pos = 0
+        self._state = self._KEY
+        self._escape = False
+        self._unicode_active = False
+        self._unicode = ""
+        self.emitted = False
+        self.decoded = ""
+
+    def feed(self, delta: str) -> str:
+        if self._state == self._DONE or not delta:
+            return ""
+        self._buffer += delta
+        out: list[str] = []
+        buf = self._buffer
+        while self._pos < len(buf):
+            if self._state == self._KEY:
+                idx = buf.find('"answer"', self._pos)
+                if idx < 0:
+                    # A key may straddle chunk boundaries: keep scanning from
+                    # just before the tail of the buffer next time.
+                    self._pos = max(self._pos, max(0, len(buf) - 8))
+                    break
+                self._pos = idx + len('"answer"')
+                self._state = self._COLON
+            elif self._state == self._COLON:
+                while self._pos < len(buf) and buf[self._pos].isspace():
+                    self._pos += 1
+                if self._pos >= len(buf):
+                    break
+                if buf[self._pos] == ":":
+                    self._pos += 1
+                    self._state = self._QUOTE
+                else:
+                    # The "answer" match was inside another string; resume.
+                    self._state = self._KEY
+            elif self._state == self._QUOTE:
+                while self._pos < len(buf) and buf[self._pos].isspace():
+                    self._pos += 1
+                if self._pos >= len(buf):
+                    break
+                if buf[self._pos] == '"':
+                    self._pos += 1
+                    self._state = self._STRING
+                else:
+                    self._state = self._KEY
+            else:  # _STRING
+                i = self._pos
+                while i < len(buf):
+                    char = buf[i]
+                    if self._unicode_active:
+                        self._unicode += char
+                        if len(self._unicode) == 4:
+                            try:
+                                out.append(chr(int(self._unicode, 16)))
+                            except ValueError:
+                                out.append(self._unicode)
+                            self._unicode = ""
+                            self._unicode_active = False
+                        i += 1
+                        continue
+                    if self._escape:
+                        self._escape = False
+                        if char == "u":
+                            self._unicode_active = True
+                            self._unicode = ""
+                        elif char in _JSON_ESCAPES:
+                            out.append(_JSON_ESCAPES[char])
+                        else:
+                            out.append(char)
+                        i += 1
+                        continue
+                    if char == "\\":
+                        self._escape = True
+                        i += 1
+                        continue
+                    if char == '"':
+                        i += 1
+                        self._state = self._DONE
+                        break
+                    out.append(char)
+                    i += 1
+                self._pos = i
+                break
+
+        text = "".join(out)
+        if text:
+            self.emitted = True
+            self.decoded += text
+        return text
+
+
+def _final_result(
+    answer: str,
+    facts: list[dict[str, Any]],
+    rounds_used: int,
+    tool_call_count: int,
+    followups: list[str] | None = None,
+    clarify: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "answer": answer,
+        "followups": followups or [],
+        "clarify": clarify,
+        "facts": facts,
+        "rounds_used": rounds_used,
+        "tool_call_count": tool_call_count,
+    }
+
+
+def _fallback_from_facts(facts: list[dict[str, Any]]) -> str:
+    return "\n".join(f"[{fact['n']}] {fact['tool']}: {fact['detail']}" for fact in facts)
+
+
+def run_agent_stream(
+    question: str,
+    df: Any,
+    context: str,
+    history: list[dict[str, str]] | None = None,
+) -> Any:
+    """Streaming variant of :func:`run_agent`; yields event dicts.
+
+    Events:
+    - {"type": "round_start", "round": n}
+    - {"type": "tool_call",   "round": n, "calls": [{"name", "args"}]}
+    - {"type": "tool_result", "round": n, "n": fact_n, "tool", "ok", "detail"}
+    - {"type": "answer_delta", "text": "..."}   (decoded final-answer text)
+    - {"type": "done", "result": {...}}          (same shape as run_agent)
+    - {"type": "error", "message": "..."}        (first-round failure only)
+
+    The degradation ladder mirrors run_agent: mid-loop chat failures degrade
+    to the best facts gathered so far; only a failure on the very first call
+    yields an error event.
+    """
+    messages: list[dict[str, str]] = [
+        {"role": "system", "content": _SYSTEM_TEMPLATE.format(
+            context=context, tools_desc=TOOLS_DESC, max_calls=MAX_CALLS_PER_ROUND,
+        )},
+    ]
+    history_block = _build_history_block(history or [])
+    messages.append({"role": "user", "content": f"{history_block}Question: {question}"})
+
+    facts: list[dict[str, Any]] = []
+    rounds_used = 0
+    tool_call_count = 0
+
+    for round_index in range(1, MAX_ROUNDS + 1):
+        rounds_used = round_index
+        is_final_round = round_index == MAX_ROUNDS
+        yield {"type": "round_start", "round": round_index}
+        extractor = _AnswerExtractor()
+        chunks: list[str] = []
+        try:
+            for delta in chat_stream(messages):
+                chunks.append(delta)
+                text = extractor.feed(delta)
+                if text:
+                    yield {"type": "answer_delta", "text": text}
+        except Exception as exc:
+            if round_index == 1:
+                yield {"type": "error", "message": str(exc) or exc.__class__.__name__}
+                return
+            answer = extractor.decoded if extractor.emitted and extractor.decoded.strip() else _fallback_from_facts(facts)
+            if not extractor.emitted and answer:
+                yield {"type": "answer_delta", "text": answer}
+            yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
+            return
+        full_text = "".join(chunks)
+        parsed = _parse_reply(full_text)
+
+        if parsed["kind"] == "tools" and not is_final_round:
+            calls = [call for call in parsed["tools"] if isinstance(call, dict)][:MAX_CALLS_PER_ROUND]
+            if calls:
+                yield {"type": "tool_call", "round": round_index,
+                       "calls": [{"name": str(call.get("name", "")), "args": call.get("args") if isinstance(call.get("args"), dict) else {}} for call in calls]}
+                result_lines: list[str] = []
+                for call in calls:
+                    tool_call_count += 1
+                    name = str(call.get("name", ""))
+                    args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                    result = run_tool(df, name, args)
+                    facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
+                    status = "ok" if result["ok"] else "error"
+                    result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
+                    yield {"type": "tool_result", "round": round_index, "n": facts[-1]["n"], "tool": name,
+                           "ok": bool(result["ok"]), "detail": result["detail"]}
+                messages.append({"role": "assistant", "content": full_text})
+                messages.append({"role": "user", "content": "\n".join([
+                    "Tool results:",
+                    *result_lines,
+                    "Continue: answer now citing facts as [n], or call more tools if still needed.",
+                ])})
+                continue
+
+        if parsed["kind"] == "answer":
+            answer = parsed["answer"]
+            if not extractor.emitted and answer:
+                # clarify-only answers or providers that ignore streaming.
+                yield {"type": "answer_delta", "text": answer}
+            yield {"type": "done", "result": _final_result(
+                answer, facts, rounds_used, tool_call_count,
+                followups=parsed["followups"], clarify=parsed["clarify"],
+            )}
+            return
+
+        # Plain text, or an unactionable/late tool call: degrade gracefully.
+        fallback_text = parsed.get("text", "").strip()
+        if extractor.emitted and extractor.decoded.strip():
+            # The stream already showed the answer value; trust it over the
+            # raw text (which may be a truncated JSON wrapper).
+            fallback_text = extractor.decoded
+        elif facts and not fallback_text:
+            fallback_text = _fallback_from_facts(facts)
+        if fallback_text and not extractor.emitted:
+            yield {"type": "answer_delta", "text": fallback_text}
+        yield {"type": "done", "result": _final_result(
+            fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
+            facts, rounds_used, tool_call_count,
+        )}
+        return

@@ -353,6 +353,57 @@ def test_ask_clarify_payload_passes_through(client, monkeypatch):
 
 
 
+def test_ask_stream_endpoint_emits_sse_frames(client, monkeypatch):
+    import backend.api.nl as nl_module
+    import backend.core.qa_agent as qa_agent_module
+
+    csv = "name,value\na,10\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    # Round 1 requests a tool; round 2 answers. Distinguish via call count.
+    def fake_stream_two(messages):
+        fake_stream_two.calls = getattr(fake_stream_two, "calls", 0) + 1
+        if fake_stream_two.calls == 1:
+            yield '{"tools": [{"name": "row_count", "args": {}}'
+            yield "]}"
+        else:
+            yield '{"answer": "共 1 行 [1]。", "followups": ["下一问"], "clarify": null}'
+
+    monkeypatch.setattr(qa_agent_module, "chat_stream", fake_stream_two)
+    with client.stream("POST", "/api/v1/nl/ask/stream", json={"dataset_id": dataset_id, "question": "多少行？"}) as response:
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+        body = "".join(chunk for chunk in response.iter_text())
+
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+    kinds = [frame["type"] for frame in frames]
+    assert kinds == ["round_start", "tool_call", "tool_result", "round_start", "answer_delta", "done"]
+    done = frames[-1]["result"]
+    assert done["answer"] == "共 1 行 [1]。"
+    assert done["followups"] == ["下一问"]
+    assert done["facts"] == [{"n": 1, "tool": "row_count", "detail": "row_count = 1"}]
+    assert any(item["id"] == "fact:1" for item in done["evidence"])
+    assert done["model"]
+
+
+def test_ask_stream_first_failure_yields_error_frame(client, monkeypatch):
+    import backend.core.qa_agent as qa_agent_module
+
+    csv = "name,value\na,10\n"
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+
+    def boom(messages):
+        raise RuntimeError("no llm")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(qa_agent_module, "chat_stream", boom)
+    with client.stream("POST", "/api/v1/nl/ask/stream", json={"dataset_id": dataset_id, "question": "q"}) as response:
+        assert response.status_code == 200
+        body = "".join(chunk for chunk in response.iter_text())
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+    assert frames[-1]["type"] == "error" and "no llm" in frames[-1]["message"]
+
+
 def test_narrate_endpoint(client, monkeypatch):
     import backend.api.nl as nl_module
 

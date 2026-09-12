@@ -158,6 +158,7 @@ export default {
   'ai.evidence': '证据来源',
   'ai.emptyHistory': '还没有问答，向当前数据集提一个问题吧。',
   'ai.verified': '已查证 {{count}} 步',
+  'ai.thinking': '正在思考…',
   'ai.showEvidence': '查看证据',
   'ai.hideEvidence': '收起证据',
   'ai.copyAnswer': '复制回答',
