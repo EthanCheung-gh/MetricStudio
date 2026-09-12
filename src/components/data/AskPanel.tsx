@@ -301,10 +301,17 @@ export function AskPanel() {
     return `#${index + 1} · ${question.slice(0, 40)}${question.length > 40 ? '…' : ''} → ${answerLine.slice(0, 48)}${answerLine.length > 48 ? '…' : ''}`
   }
 
-  if (!activeDataFrameId) return null
+  if (!activeDataFrameId) {
+    return (
+      <div className="flex items-center gap-2 rounded border border-dashed border-border/70 p-3 text-[11px] text-muted">
+        <Bot className="h-4 w-4 shrink-0 opacity-60" />
+        {t('ai.noDataset')}
+      </div>
+    )
+  }
 
   return (
-    <div className="flex max-h-[min(560px,70vh)] flex-col gap-2 overflow-hidden rounded border border-border bg-surface p-2">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden rounded border border-border bg-surface p-2">
       <div className="flex items-center justify-between gap-2 text-xs font-semibold text-muted">
         <div className="flex min-w-0 items-center gap-1">
           <Bot className="h-3.5 w-3.5 shrink-0" />

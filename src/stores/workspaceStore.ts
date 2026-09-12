@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 
 export type PanelKey = 'left' | 'right';
 export type LeftSection = 'charts' | 'datasets' | null;
-export type RightSection = 'chartType' | 'properties' | null;
+export type RightSection = 'chartType' | 'properties' | 'qa' | null;
 
 interface WorkspaceState {
   leftPanelCollapsed: boolean;
