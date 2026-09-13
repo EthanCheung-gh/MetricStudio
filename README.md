@@ -4,7 +4,7 @@
 
 基于 Plotly 的个人数据分析桌面工具。导入数据后即可完成清洗变换、可视化图表构建、交互式 Dashboard 编排，并借助 AI 完成数据问答、洞察叙述与统计解释——全程数据留在本机。
 
-当前版本：**1.2.0**
+当前版本：**1.7.0**
 
 ## 界面预览
 
@@ -19,7 +19,7 @@
 ## 功能特性
 
 ### 数据管理
-- 多格式导入：CSV / Excel（多 Sheet 合并或分表）/ Parquet / JSON（含 NDJSON）/ SQLite 表 / 粘贴文本
+- 多格式导入：CSV / Excel（多 Sheet 合并或分表）/ Parquet / JSON（含 NDJSON）/ SQLite 表 / 粘贴文本，数据集列表带来源类型徽标（CSV / XLSX / SQLITE / SQL / 快照等）
 - 不可变数据快照：物化任意变换步骤，支持快照对比（diff）与恢复为新数据集
 - 变换链：筛选 / 排序 / 透视 / 连接 / 计算列 / 字符串清理等 16 类操作，支持中间步骤预览、步骤级启用/禁用、全局撤销重做
 - 数据源自动刷新：轮询源文件变更并重放变换链，失败保留上一可用版本，数据集带版本标记
@@ -32,8 +32,12 @@
 - 导出：自包含交互式 HTML（记录筛选条件与生成时间）
 
 ### AI 辅助（OpenAI 兼容接口，支持 Ollama 本地模型）
-- 自然语言清洗：描述需求 → 校验后的操作链，确认后才应用
-- 多轮数据问答：绑定快照与 Dashboard 筛选、确定性证据引用、工具调用（行数 / 列统计 / 基数）保证数字精确
+- 自然语言清洗：描述需求 → 操作链在过程卡中逐条点亮，确认后才应用
+- 多轮数据问答：绑定快照与 Dashboard 筛选；3 轮迭代式工具调用（11 个确定性工具：行数 / 列统计 / 分组聚合 / 筛选统计 / 时间聚合 / 相关 / 分位数 / 交叉表等）保证数字精确
+- 流式体验：答案逐字输出，工具调用实时以时间线展示（进行中 → 完成 + 结果摘要）
+- Markdown 渲染：答案以表格 / 列表 / 加粗呈现，`[n]` 引用 chip 可点击回溯证据；同一渲染贯穿问答面板、AI 命令栏、Dashboard 文本卡、HTML 导出与报告
+- 会话管理：多会话按数据集组织、首轮问题自动命名、历史轮次折叠与数字导航、自动持久化
+- 历史压缩（compact）：早期轮次一键收敛为 LLM 摘要，摘要以特殊轮次可见；超出上下文窗口的轮次明确标记"已不在上下文"
 - 洞察 / 叙述 / 图表解读；回答可一键转为 Dashboard 文本卡片或报告段落
 - 数据隐私：敏感列识别与脱敏 / 排除、本地 / 云端模型选择
 
@@ -52,9 +56,9 @@
 | 层 | 技术 |
 |---|---|
 | 桌面壳 | Tauri 2.x (Rust)，sidecar 生命周期管理、随机端口、健康恢复 |
-| 前端 | React 19 + TypeScript + Vite，Zustand 状态管理，HeroUI，react-grid-layout，@tanstack/react-table + virtual |
+| 前端 | React 19 + TypeScript + Vite，Zustand 状态管理，HeroUI，react-grid-layout，@tanstack/react-table + virtual，react-markdown |
 | 可视化 | Plotly.js（服务端构建 figure，前端渲染） |
-| 后端 | Python FastAPI + pandas / polars 双引擎，numpy / scipy 统计，内置 sqlite3（SQL 工作台） |
+| 后端 | Python FastAPI + pandas / polars 双引擎，numpy / scipy 统计，内置 sqlite3（SQL 工作台），markdown 报告渲染 |
 | AI | OpenAI 兼容 chat completions（Ollama / 云端均可） |
 | 国际化 | i18next（简体中文 / English） |
 
@@ -97,7 +101,7 @@ pnpm tauri build   # 打包安装程序（CI 同款流程）
 pnpm test              # 前端 Vitest
 pnpm lint              # oxlint
 pnpm build             # tsc + vite 生产构建
-pnpm test:backend      # 后端 pytest（190+ 用例）
+pnpm test:backend      # 后端 pytest（259 用例）
 ```
 
 ## 代码图谱
@@ -134,6 +138,12 @@ codegraph impact Dataset       # 修改某符号会影响什么
 - **v1.0.0**：分析故事模式（P0–P2 全部完成）
 - **v1.1.x**：编辑体验与健壮性打磨
 - **v1.2.0**：数据问答智能化——迭代式工具调用（3 轮 × 11 个确定性工具）、[n] 引用闭环、自适应上下文、建议追问与澄清
+- **v1.2.1**：数据集来源类型徽标、主题跟随系统修复
+- **v1.3.0**：问答流式输出（SSE）与工具调用实时时间线
+- **v1.4.0**：AI 命令栏统一过程卡——清洗操作链逐条点亮、流式答案
+- **v1.5.0**：会话持久化、自动命名、轮次折叠与数字导航
+- **v1.6.0**：历史压缩（compact）——LLM 摘要轮、上下文边界标记
+- **v1.7.0**：全链路 Markdown 渲染——问答面板 / AI 命令栏 / Dashboard 文本卡 / HTML 导出 / 报告
 
 后续方向（P3）：发现式分析首页、插件系统、轻量分享。
 

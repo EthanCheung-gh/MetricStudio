@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.2.0**
+Current version: **1.7.0**
 
 ## Screenshots
 
@@ -19,7 +19,7 @@ Current version: **1.2.0**
 ## Features
 
 ### Data management
-- Multi-format import: CSV / Excel (merge or split sheets) / Parquet / JSON (incl. NDJSON) / SQLite tables / pasted text
+- Multi-format import: CSV / Excel (merge or split sheets) / Parquet / JSON (incl. NDJSON) / SQLite tables / pasted text, with source-type badges in the dataset list (CSV / XLSX / SQLITE / SQL / snapshot, etc.)
 - Immutable data snapshots: materialize any transform step, diff snapshots, restore as new datasets
 - Transform chains: 16 operation types (filter / sort / pivot / join / computed columns / string cleanup, etc.) with per-step preview, step-level enable/disable, global undo & redo
 - Source auto-refresh: watches source files, replays the transform chain, keeps the last good version on failure, versioned datasets
@@ -32,9 +32,12 @@ Current version: **1.2.0**
 - Export: self-contained interactive HTML (records filters and generation time)
 
 ### AI assistance (OpenAI-compatible endpoints; works with local Ollama)
-- Natural-language cleaning: describe what you want → a validated operation chain, applied only after confirmation
-- Multi-turn data Q&A: bound to snapshots and dashboard filters, deterministic tool calling (11 tools incl. group-by aggregates, filtered stats, time aggregation) with a 3-round iterative loop, and inline [n] citations back to computed facts
-- Follow-up suggestions and clarification prompts when a question is ambiguous
+- Natural-language cleaning: describe what you want → the operation chain lights up step by step in a live process card, applied only after confirmation
+- Multi-turn data Q&A: bound to snapshots and dashboard filters; a 3-round iterative tool loop (11 deterministic tools: row counts, column stats, group-by aggregates, filtered stats, time aggregation, correlation, quantiles, crosstab, etc.) keeps every number exact
+- Streaming experience: answers stream in token by token while tool calls appear live on a timeline (running → done with result summaries)
+- Markdown rendering: answers show tables / lists / bold text with clickable [n] citation chips that trace back to evidence; the same rendering spans the Q&A panel, AI command bar, dashboard text cards, HTML exports and reports
+- Session management: multi-session per dataset, auto-naming from the first question, turn collapsing with a numbered navigation rail, automatic persistence
+- History compaction: collapse early turns into an LLM-generated summary that stays visible as a special turn; turns outside the context window are explicitly marked as "out of context"
 - Insights / narratives / chart explanations; answers can become dashboard text cards or report paragraphs in one click
 - Data privacy: sensitive-column detection with redaction / exclusion, local vs. cloud model choice
 
@@ -53,9 +56,9 @@ Current version: **1.2.0**
 | Layer | Technology |
 |---|---|
 | Desktop shell | Tauri 2.x (Rust): sidecar lifecycle, random port, health recovery |
-| Frontend | React 19 + TypeScript + Vite, Zustand, HeroUI, react-grid-layout, @tanstack/react-table + virtual |
+| Frontend | React 19 + TypeScript + Vite, Zustand, HeroUI, react-grid-layout, @tanstack/react-table + virtual, react-markdown |
 | Visualization | Plotly.js (figures built server-side, rendered in the frontend) |
-| Backend | Python FastAPI + pandas / polars dual engine, numpy / scipy statistics, built-in sqlite3 (SQL workbench) |
+| Backend | Python FastAPI + pandas / polars dual engine, numpy / scipy statistics, built-in sqlite3 (SQL workbench), markdown report rendering |
 | AI | OpenAI-compatible chat completions (Ollama or cloud endpoints) |
 | i18n | i18next (简体中文 / English) |
 
@@ -98,7 +101,7 @@ In production the Rust shell starts the Python sidecar on a random port; the fro
 pnpm test              # frontend Vitest
 pnpm lint              # oxlint
 pnpm build             # tsc + vite production build
-pnpm test:backend      # backend pytest (220+ cases)
+pnpm test:backend      # backend pytest (259 cases)
 ```
 
 ## Code map
@@ -135,6 +138,12 @@ See [package.json](package.json) for the current version (kept in sync with `src
 - **v1.0.0**: analysis story mode (P0–P2 complete)
 - **v1.1.x**: editing experience & robustness polish
 - **v1.2.0**: smarter data Q&A — iterative tool calling (3 rounds × 11 deterministic tools), inline [n] citations, adaptive context, follow-up suggestions & clarification
+- **v1.2.1**: dataset source-type badges, theme follow-system fix
+- **v1.3.0**: streaming Q&A answers (SSE) with a live tool-call timeline
+- **v1.4.0**: unified live process card in the AI bar — cleaning ops light up one by one, streamed answers
+- **v1.5.0**: session persistence, auto-naming, turn collapsing & numbered navigation
+- **v1.6.0**: history compaction — LLM summary turns, context-boundary markers
+- **v1.7.0**: full-chain markdown rendering — Q&A panel / AI bar / dashboard text cards / HTML exports / reports
 
 Next up (P3): discovery-oriented home page, plugin system, lightweight sharing.
 
