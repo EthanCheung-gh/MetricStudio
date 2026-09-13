@@ -189,8 +189,8 @@ export function AICommandBar() {
     >
       {/* Live process card: appears the moment a message is submitted */}
       {process !== null && (
-        <div className="mb-2 rounded-xl border border-border bg-surface-elevated p-3 shadow-xl">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="mb-2 flex max-h-[min(62vh,560px)] flex-col overflow-hidden rounded-xl border border-border bg-surface-elevated shadow-xl">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/50 px-3 py-2">
             <div className="flex min-w-0 items-center gap-1.5 text-xs">
               {process.mode === 'query' ? (
                 <Wand2 className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -204,6 +204,7 @@ export function AICommandBar() {
             </button>
           </div>
 
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           {process.phase === 'thinking' && (
             <div className="flex items-center gap-1.5 text-[11px] text-muted">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -278,6 +279,7 @@ export function AICommandBar() {
               </Button>
             </div>
           )}
+          </div>
         </div>
       )}
 
