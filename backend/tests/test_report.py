@@ -40,6 +40,24 @@ def test_generate_report_with_insights_and_charts(client, dirty_dataset):
     assert "Plotly.newPlot('chart-0'" in doc
 
 
+def test_generate_report_renders_notes_markdown(client, dirty_dataset):
+    resp = client.post(
+        "/api/v1/report/generate",
+        json={
+            "title": "MD Report",
+            "dataset_id": dirty_dataset["id"],
+            "charts": [],
+            "notes": "**重点**：销售额上升\n\n| 列 | 值 |\n|---|---|\n| a | 1 |",
+            "include_insights": False,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    doc = resp.json()["html"]
+    assert "<strong>重点</strong>" in doc
+    assert "<table>" in doc and "<th>列</th>" in doc
+    assert "**" not in doc  # raw markers are consumed by the renderer
+
+
 def test_generate_report_uses_requested_locale(client, dirty_dataset):
     resp = client.post(
         "/api/v1/report/generate",

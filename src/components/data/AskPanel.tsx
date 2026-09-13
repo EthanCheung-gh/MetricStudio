@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { Button, Input } from '@heroui/react'
 import { api, type NLAskStreamEvent } from '@/api/client'
+import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
@@ -44,32 +45,6 @@ interface StreamState {
   answer: string
   tools: StreamTool[]
   round: number
-}
-
-/** Render answer text with clickable [n] citation chips. */
-function AnswerText({ text, onCite }: { text: string; onCite: (n: number) => void }) {
-  const parts = text.split(/(\[\d+\])/g)
-  return (
-    <div className="whitespace-pre-wrap text-[11px] leading-relaxed">
-      {parts.map((part, partIndex) => {
-        const match = part.match(/^\[(\d+)\]$/)
-        if (match) {
-          return (
-            <button
-              key={partIndex}
-              type="button"
-              title={`fact [${match[1]}]`}
-              onClick={() => onCite(Number(match[1]))}
-              className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/15 px-1 align-middle text-[9px] font-semibold text-primary hover:bg-primary/30"
-            >
-              {match[1]}
-            </button>
-          )
-        }
-        return <span key={partIndex}>{part}</span>
-      })}
-    </div>
-  )
 }
 
 export function AskPanel() {
@@ -582,7 +557,7 @@ export function AskPanel() {
                       <div className="whitespace-pre-wrap text-[11px] leading-relaxed">{t('ai.regenerating')}</div>
                     ) : (
                       turn.answer && (
-                        <AnswerText
+                        <AnswerMarkdown
                           text={turn.answer}
                           onCite={(n) => {
                             setActiveCitation({ turn: index, n })
@@ -693,10 +668,7 @@ export function AskPanel() {
                   </div>
                 )}
                 {streamState.answer ? (
-                  <div className="text-[11px] leading-relaxed">
-                    <AnswerText text={streamState.answer} onCite={() => {}} />
-                    <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-primary/70 align-middle" />
-                  </div>
+                  <AnswerMarkdown text={streamState.answer} cursor />
                 ) : (
                   <div className="flex items-center gap-1.5 text-[11px] text-muted">
                     <Loader2 className="h-3 w-3 animate-spin" />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card, CardBody, Textarea } from '@heroui/react'
 import { Lock, Pencil, Unlock, X } from 'lucide-react'
+import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import type { DashboardItem } from '@/types/dashboard'
 
 export interface TextCardProps {
@@ -59,8 +60,12 @@ export function TextCard({ item, editing, onToggleLock, onRemove, onChange }: Te
             value={item.text || ''}
             onValueChange={onChange}
           />
+        ) : item.text ? (
+          <div className="text-sm">
+            <AnswerMarkdown text={item.text} />
+          </div>
         ) : (
-          <p className="whitespace-pre-wrap text-sm">{item.text || t('dashboard.emptyText')}</p>
+          <p className="text-sm text-muted">{t('dashboard.emptyText')}</p>
         )}
       </CardBody>
     </Card>

@@ -1,7 +1,7 @@
 {
   "name": "metricstudio",
   "private": true,
-  "version": "1.6.0",
+  "version": "1.7.0",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
@@ -42,8 +42,10 @@
     "react-dom": "^19.2.7",
     "react-grid-layout": "^2.2.4",
     "react-i18next": "^17.0.11",
+    "react-markdown": "^10.1.0",
     "react-plotly.js": "^2.6.0",
     "react-resizable-panels": "^3.0.2",
+    "remark-gfm": "^4.0.1",
     "zustand": "^5.0.4"
   },
   "devDependencies": {

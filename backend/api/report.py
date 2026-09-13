@@ -15,6 +15,22 @@ router = APIRouter(prefix="/api/v1/report", tags=["report"])
 _PLOTLY_CDN = "https://cdn.plot.ly/plotly-latest.min.js"
 
 
+def _markdown_to_html(text: str) -> str:
+    """Escape-then-render user markdown (v1.7.0).
+
+    Escaping first keeps ``& < >`` inert while leaving markdown syntax
+    (``* # - | >``) intact; the optional ``markdown`` package then renders
+    tables and inline styles. Falls back to escaped plain text with <br>.
+    """
+    escaped = html.escape(text)
+    try:
+        import markdown
+
+        return markdown.markdown(escaped, extensions=["tables", "nl2br"])
+    except Exception:  # noqa: BLE001 - rendering must never break the report
+        return escaped.replace("\n", "<br>")
+
+
 @router.post("/generate")
 async def generate_report(payload: dict):
     title = payload.get("title", "未命名报告")
@@ -96,12 +112,12 @@ async def generate_report(payload: dict):
         kpi_html = f'<section><h2>{labels["kpis"]}</h2><div class="kpi-grid">{cards}</div></section>'
 
     text_html = "".join(
-        f'<section class="text-card"><p>{html.escape(str(card.get("text", "")))}</p></section>'
+        f'<section class="text-card"><div class="qa-md">{_markdown_to_html(str(card.get("text", "")))}</div></section>'
         for card in text_cards
         if str(card.get("text", "")).strip()
     )
     notes_html = (
-        f"<section><h2>{labels['notes']}</h2><p>{html.escape(notes)}</p></section>" if notes else ""
+        f"<section><h2>{labels['notes']}</h2><div class=\"qa-md\">{_markdown_to_html(notes)}</div></section>" if notes else ""
     )
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -133,6 +149,15 @@ async def generate_report(payload: dict):
   .kpi-detail {{ margin-top: 3px; font-size: 11px; color: #6b7280; }}
   .text-card {{ border: 1px solid #26292f; border-radius: 8px; padding: 4px 16px; margin-top: 12px; }}
   ul.filters {{ font-size: 12px; color: #9ca3af; }}
+  .qa-md {{ font-size: 13px; line-height: 1.7; }}
+  .qa-md p {{ margin: 0.35em 0; }}
+  .qa-md ul, .qa-md ol {{ margin: 0.35em 0; padding-left: 1.4em; }}
+  .qa-md table {{ border-collapse: collapse; margin: 0.5em 0; }}
+  .qa-md th, .qa-md td {{ border: 1px solid #26292f; padding: 4px 10px; text-align: left; }}
+  .qa-md th {{ background: #1a1d23; font-weight: 600; }}
+  .qa-md code {{ font-family: ui-monospace, Menlo, monospace; background: #1a1d23; border: 1px solid #26292f; border-radius: 3px; padding: 0 4px; }}
+  .qa-md pre {{ background: #1a1d23; border: 1px solid #26292f; border-radius: 6px; padding: 8px 10px; overflow-x: auto; }}
+  .qa-md blockquote {{ margin: 0.45em 0; padding: 0.1em 0.8em; border-left: 3px solid #26292f; color: #9ca3af; }}
 </style>
 </head>
 <body>

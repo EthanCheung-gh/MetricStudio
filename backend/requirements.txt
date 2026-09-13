@@ -13,3 +13,6 @@ httpx>=0.27.0
 # Optional enhancement: richer describe() stats in the column-stats panel;
 # the backend falls back to plain pandas when dtale is absent.
 dtale>=3.0.0
+# Optional enhancement: markdown rendering in generated reports; the backend
+# falls back to escaped plain text when markdown is absent.
+markdown>=3.5

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Wand2, Wrench, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api, type NLAskStreamEvent, type NLTransformStreamEvent } from '@/api/client'
+import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
@@ -246,12 +247,7 @@ export function AICommandBar() {
           )}
 
           {process.answer && (
-            <div className="whitespace-pre-wrap text-xs leading-relaxed">
-              {process.answer}
-              {process.phase === 'working' && (
-                <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-primary/70 align-middle" />
-              )}
-            </div>
+            <AnswerMarkdown text={process.answer} cursor={process.phase === 'working'} />
           )}
 
           {process.phase === 'working' && !process.answer && process.ops.length === 0 && process.tools.length === 0 && (
