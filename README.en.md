@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.7.0**
+Current version: **1.7.1**
 
 ## Screenshots
 
