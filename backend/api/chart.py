@@ -207,10 +207,15 @@ def _aggregate(df, encoding):
         if not encoding.x or not y_fields:
             return {"data": [], "layout": layout}
         primary = y_fields[0]
+        # NaN/null in x or y makes plotly's histogram2d binning crash
+        # (createImageData with width 0) — mirror the heatmap _clean_z guard.
+        pair = df[[encoding.x.field, primary.field]].apply(pd.to_numeric, errors="coerce").dropna()
+        if pair.empty:
+            return {"data": [], "layout": layout}
         trace = {
             "type": "histogram2d" if chart_type == "density_heatmap" else "histogram2dcontour",
-            "x": df[encoding.x.field].tolist(),
-            "y": df[primary.field].tolist(),
+            "x": pair[encoding.x.field].tolist(),
+            "y": pair[primary.field].tolist(),
             "colorscale": "Viridis",
         }
         if chart_type == "density_contour":

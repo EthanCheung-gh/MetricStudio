@@ -13,7 +13,9 @@ export function NotificationContainer() {
               ? 'bg-success text-white'
               : n.type === 'error'
                 ? 'bg-danger text-white'
-                : 'bg-surface-elevated text-foreground border border-border'
+                : n.type === 'warning'
+                  ? 'bg-warning text-black'
+                  : 'bg-surface-elevated text-foreground border border-border'
           }`}
         >
           {n.message}

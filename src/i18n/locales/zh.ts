@@ -259,6 +259,10 @@ export default {
   // 图表
   'chart.selectChartToEdit': '选择图表以编辑属性。',
   'chart.title': '标题',
+  'chart.renderError': '图表渲染出错',
+  'chart.retryRender': '重试渲染',
+  'chart.configureToPreview': '配置图表编码以生成预览',
+  'layout.filePathFollowsName': '文件名自动跟随项目名（手动修改后不再跟随）',
   'chart.xAxisLabel': 'X 轴标签',
   'chart.leftYAxisLabel': '左 Y 轴标签',
   'chart.rightYAxisLabel': '右 Y 轴标签',

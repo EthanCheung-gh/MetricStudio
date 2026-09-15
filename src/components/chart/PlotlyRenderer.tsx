@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { RotateCcw } from 'lucide-react'
+import { Button } from '@heroui/react'
 import type { PlotlyFigure } from '@/types/plotly'
 import { resolvedTheme } from '@/hooks/useSystemTheme'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { applyPlotlyUserStyle, mergePlotlyLayout } from '@/utils/plotlyLayout'
 
 declare const Plotly: {
-  react: (el: HTMLElement, data: unknown[], layout: unknown, config?: unknown) => void
+  react: (el: HTMLElement, data: unknown[], layout: unknown, config?: unknown) => Promise<unknown> | void
   Plots: { resize: (el: HTMLElement) => void; redraw: (el: HTMLElement) => void }
   purge: (el: HTMLElement) => void
   toImage: (el: HTMLElement, opts: { format: string; height: number; width: number }) => Promise<string>
@@ -33,9 +36,12 @@ export function PlotlyRenderer({
   onSelected,
   onClearSelection,
 }: PlotlyRendererProps) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const [ready, setReady] = useState(false)
   const [renderError, setRenderError] = useState<string | null>(null)
+  // Bumped by the retry button to re-run the render effect after a failure.
+  const [renderRetry, setRenderRetry] = useState(0)
   const panelResizeVersion = useWorkspaceStore((s) => s.panelResizeVersion)
   const theme = useWorkspaceStore((s) => s.theme)
   const systemTheme = useWorkspaceStore((s) => s.systemTheme)
@@ -82,17 +88,28 @@ export function PlotlyRenderer({
       userLayout,
     )
 
+    // Clear any stale error first — the canvas container now stays mounted,
+    // so every new figure gets a fresh chance to render (v1.7.1).
+    setRenderError(null)
+    let failed = false
     try {
-      setRenderError(null)
-      Plotly.react(el, themeFigure.data, themeFigure.layout, {
+      const maybePromise = Plotly.react(el, themeFigure.data, themeFigure.layout, {
         responsive: true,
         displayModeBar: true,
         displaylogo: false,
       })
+      // Async failures inside plotly (bad traces, layout NaN) reject here.
+      if (maybePromise && typeof (maybePromise as Promise<unknown>).catch === 'function') {
+        (maybePromise as Promise<unknown>).catch((err: unknown) => {
+          setRenderError(err instanceof Error ? err.message : 'Plotly render failed')
+        })
+      }
     } catch (err) {
       setRenderError(err instanceof Error ? err.message : 'Plotly render failed')
-      return // don't set up observers if chart didn't render
+      failed = true
     }
+
+    if (failed) return // don't set up observers if chart didn't render
 
     // Crossfilter: brush (box/lasso) -> selection; empty click -> clear
     const gd = el as HTMLDivElement & {
@@ -124,7 +141,7 @@ export function PlotlyRenderer({
       try { gd.removeAllListeners?.() } catch { /* ignore */ }
       try { Plotly.purge(el) } catch { /* ignore */ }
     }
-  }, [figure, ready, userLayout, isDark])
+  }, [figure, ready, userLayout, isDark, renderRetry])
 
   // Resize chart when panelResizeVersion changes
   useEffect(() => {
@@ -133,32 +150,38 @@ export function PlotlyRenderer({
     try { Plotly.Plots.resize(el) } catch { /* ignore */ }
   }, [panelResizeVersion, ready])
 
-  if (!ready) {
-    return (
-      <div className={`flex items-center justify-center text-sm text-muted ${className}`}>
-        Loading Plotly...
-      </div>
-    )
-  }
-
-  if (renderError) {
-    return (
-      <div className={`flex items-center justify-center ${className}`}>
-        <div className="rounded border border-danger bg-danger/10 p-3 text-center text-xs text-danger">
-          <p className="font-semibold">Chart render error</p>
-          <p className="mt-1">{renderError}</p>
+  // The canvas container is ALWAYS mounted; loading/error/empty hints are
+  // overlays so a failed render can never leave the plot unable to recover
+  // (v1.7.1).
+  return (
+    <div className={`relative ${className}`}>
+      <div ref={containerRef} className="h-full w-full" />
+      {!ready && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">
+          Loading Plotly...
         </div>
-      </div>
-    )
-  }
-
-  if (!figure) {
-    return (
-      <div className={`flex items-center justify-center text-sm text-muted ${className}`}>
-        Configure chart encoding to preview
-      </div>
-    )
-  }
-
-  return <div ref={containerRef} className={`h-full w-full ${className}`} />
+      )}
+      {ready && renderError && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface/85 p-3">
+          <div className="rounded border border-danger bg-danger/10 p-3 text-center text-xs text-danger">
+            <p className="font-semibold">{t('chart.renderError')}</p>
+            <p className="mt-1">{renderError}</p>
+          </div>
+          <Button
+            size="sm"
+            variant="light"
+            startContent={<RotateCcw className="h-3 w-3" />}
+            onPress={() => setRenderRetry((n) => n + 1)}
+          >
+            {t('chart.retryRender')}
+          </Button>
+        </div>
+      )}
+      {!figure && !renderError && ready && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">
+          {t('chart.configureToPreview')}
+        </div>
+      )}
+    </div>
+  )
 }

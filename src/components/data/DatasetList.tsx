@@ -5,6 +5,7 @@ import { Button, Card, CardBody, Chip } from '@heroui/react'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
+import { saveFromUrl } from '@/utils/fileSave'
 
 export const DatasetList = memo(function DatasetList() {
   const { t } = useTranslation()
@@ -111,7 +112,7 @@ export const DatasetList = memo(function DatasetList() {
                   variant="light"
                   className="h-5 w-5 min-w-0"
                   aria-label={`Export ${df.name}`}
-                  onPress={() => window.open(api.exportDatasetUrl(df.id, 'csv'), '_blank')}
+                  onPress={() => void saveFromUrl(api.exportDatasetUrl(df.id, 'csv'), `${df.name.replace(/[^\w-]+/g, '_')}.csv`)}
                 >
                   <Download className="h-3 w-3 text-muted" />
                 </Button>

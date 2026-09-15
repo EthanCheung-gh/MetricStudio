@@ -795,7 +795,7 @@ export const api = {
 
   // Project
   saveProject: (payload: { path: string; name: string; charts?: ChartConfig[]; dashboards?: DashboardConfig[]; qa_conversations?: QAConversation[] }) =>
-    fetchJson<{ path: string; datasets: number }>('/api/v1/project/save', {
+    fetchJson<{ path: string; datasets: number; fallback?: boolean; requested?: string }>('/api/v1/project/save', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

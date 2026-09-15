@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Database, FileJson, FolderOpen, History, Menu, Minus, Save, Square, Upload, X } from 'lucide-react'
@@ -24,8 +24,25 @@ export function TitleBar() {
   const addNotification = useUIStore((s) => s.addNotification)
   const [projectPath, setProjectPath] = useState('project.metricstudio')
   const [projectName, setProjectName] = useState('Untitled')
+  // v1.7.1: the file name follows the project name until the user edits the
+  // path by hand (parity fix with the HarmonyOS port).
+  const [pathTouched, setPathTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Reset path-following each time the save dialog opens, so the file name
+  // tracks the (possibly renamed) project again.
+  useEffect(() => {
+    if (saveProjectModalOpen) setPathTouched(false)
+  }, [saveProjectModalOpen])
+
+  const handleProjectNameChange = (value: string) => {
+    setProjectName(value)
+    if (!pathTouched) {
+      const base = value.trim() || 'project'
+      setProjectPath(`${base.replace(/[\\/:*?"<>|]+/g, '_')}.metricstudio`)
+    }
+  }
 
   const handleSave = async () => {
     setSaving(true)
@@ -36,7 +53,11 @@ export function TitleBar() {
       const result = await api.saveProject({ path: projectPath, name: projectName, charts, dashboards, qa_conversations: qaConversations })
       useUIStore.getState().setAutoSaveTarget(result.path, projectName)
       useUIStore.getState().setAutoSaveTime(new Date().toISOString())
-      addNotification('success', `Project saved: ${result.datasets} dataset(s) to ${result.path}`)
+      if (result.fallback) {
+        addNotification('warning', `${projectName} 已回退保存至 ${result.path}（原路径不可写）`)
+      } else {
+        addNotification('success', `Project saved: ${result.datasets} dataset(s) to ${result.path}`)
+      }
       setSaveProjectModalOpen(false)
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : 'Save failed')
@@ -143,15 +164,18 @@ export function TitleBar() {
             <Input
               label={t('layout.projectName')}
               value={projectName}
-              onValueChange={setProjectName}
+              onValueChange={handleProjectNameChange}
               size="sm"
             />
             <Input
               label={t('layout.filePath')}
               value={projectPath}
-              onValueChange={setProjectPath}
+              onValueChange={(value) => {
+                setPathTouched(true)
+                setProjectPath(value)
+              }}
               size="sm"
-              description=".metricstudio extension"
+              description={pathTouched ? '.metricstudio extension' : t('layout.filePathFollowsName')}
             />
           </ModalBody>
           <ModalFooter>

@@ -259,6 +259,10 @@ export default {
   // Chart
   'chart.selectChartToEdit': 'Select a chart to edit its properties.',
   'chart.title': 'Title',
+  'chart.renderError': 'Chart render error',
+  'chart.retryRender': 'Retry render',
+  'chart.configureToPreview': 'Configure chart encoding to preview',
+  'layout.filePathFollowsName': 'File name follows the project name (edit to override)',
   'chart.xAxisLabel': 'X axis label',
   'chart.leftYAxisLabel': 'Left Y axis label',
   'chart.rightYAxisLabel': 'Right Y axis label',

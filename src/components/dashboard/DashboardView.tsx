@@ -16,6 +16,7 @@ import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
 import { DashboardFilterBar } from './DashboardFilterBar'
 import { KpiCard } from './KpiCard'
 import { TextCard } from './TextCard'
+import { saveFile } from '@/utils/fileSave'
 
 const Grid = WidthProvider(GridLayout)
 
@@ -219,13 +220,8 @@ export function DashboardView() {
         include_insights: false,
         locale: useUIStore.getState().language,
       })
-      const blob = new Blob([html], { type: 'text/html' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${dashboard.name.replace(/[^\w-]+/g, '_')}.html`
-      a.click()
-      URL.revokeObjectURL(url)
+      const outcome = await saveFile(`${dashboard.name.replace(/[^\w-]+/g, '_')}.html`, html)
+      if (outcome === 'cancelled') return
       addNotification('success', t('dashboard.exported', { charts: figures.length, kpis: kpis.length, texts: textCards.length }))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('dashboard.exportFailed'))

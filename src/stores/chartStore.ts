@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { ChartConfig, ChartEncoding, SelectionFilter } from '@/types/encoding';
 import type { PlotlyFigure } from '@/types/plotly';
 import { api } from '@/api/client';
@@ -50,6 +50,48 @@ const defaultEncoding: ChartEncoding = {
 };
 
 let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// v1.7.1: monotonic token — only the most recently issued preview may write
+// `previewFigure`, so slow stale responses can never overwrite fresh ones.
+let previewSeq = 0;
+
+/**
+ * v1.7.1: debounced persist storage — zustand's default storage stringifies
+ * the whole charts array synchronously on EVERY set (per keystroke on rename,
+ * every preview response), which made chart switching janky. Writes are
+ * merged in a trailing 250ms window and flushed on page unload.
+ */
+const pendingWrites = new Map<string, string>();
+let persistFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushPendingPersist(): void {
+  if (persistFlushTimer) clearTimeout(persistFlushTimer);
+  persistFlushTimer = null;
+  for (const [name, value] of pendingWrites) {
+    try { localStorage.setItem(name, value); } catch { /* quota / private mode */ }
+  }
+  pendingWrites.clear();
+}
+
+const debouncedLocalStorage = {
+  getItem: (name: string): string | null => localStorage.getItem(name),
+  setItem: (name: string, value: string): void => {
+    pendingWrites.set(name, value);
+    if (persistFlushTimer) clearTimeout(persistFlushTimer);
+    persistFlushTimer = setTimeout(flushPendingPersist, 250);
+  },
+  removeItem: (name: string): void => {
+    pendingWrites.delete(name);
+    localStorage.removeItem(name);
+  },
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushPendingPersist);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPendingPersist();
+  });
+}
 
 export const useChartStore = create<ChartState>()(
   persist(
@@ -139,6 +181,12 @@ export const useChartStore = create<ChartState>()(
       },
 
       previewChart: async (datasetId, encoding, chartId) => {
+        // v1.7.1: skip requests for charts that are not the active one —
+        // they share the single `previewFigure` and would clobber the
+        // currently displayed chart (brush-link / undo replays).
+        const activeChartId = get().activeChartId;
+        if (chartId && activeChartId && chartId !== activeChartId) return;
+        const seq = ++previewSeq;
         set({ loading: true, error: null });
         try {
           // Crossfilter: apply the active selection to every chart EXCEPT its source.
@@ -153,15 +201,19 @@ export const useChartStore = create<ChartState>()(
                 }
               : undefined;
           const figure = await api.previewChart(datasetId, encoding, applySel);
+          if (seq !== previewSeq) return; // a newer preview was issued meanwhile
           set({ previewFigure: figure, loading: false });
         } catch (err) {
+          if (seq !== previewSeq) return;
           set({ error: err instanceof Error ? err.message : 'Chart preview failed', loading: false });
         }
       },
 
       setSelection: (sel) => {
         set({ selection: sel });
-        // Re-preview every OTHER chart against the new brush.
+        // Re-preview every OTHER chart against the new brush. previewChart
+        // itself skips non-active charts (single previewFigure), so only the
+        // source chart's own re-render matters here.
         const state = get();
         state.charts.forEach((c) => {
           if (c.id !== sel.chartId) state.previewChart(c.datasetId, c.encoding, c.id);
@@ -181,6 +233,7 @@ export const useChartStore = create<ChartState>()(
     }),
     {
       name: 'metricstudio-charts',
+      storage: createJSONStorage(() => debouncedLocalStorage),
       partialize: (state) => ({ charts: state.charts }),
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Record<string, unknown>) } as ChartState;

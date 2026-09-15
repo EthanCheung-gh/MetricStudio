@@ -7,6 +7,41 @@ def _import(client, csv):
     return resp.json()[0]["id"]
 
 
+def test_density_heatmap_drops_null_rows(client):
+    """NaN/null in x or y must be dropped before histogram2d binning
+    (null values crash plotly's createImageData) — v1.7.1 parity fix."""
+    csv = "x,y\n1,10\n2,\n3,30\n,40\nabc,50\n4,60\n"
+    dsid = _import(client, csv)
+    for chart_type in ("density_heatmap", "density_contour"):
+        encoding = {
+            "chartType": chart_type,
+            "x": {"field": "x", "type": "quantitative"},
+            "yFields": [{"field": "y", "type": "quantitative"}],
+        }
+        resp = client.post("/api/v1/chart/preview", json={"dataset_id": dsid, "encoding": encoding})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        assert data, "expected a density trace for rows with clean values"
+        trace = data[0]
+        assert all(v is not None for v in trace["x"]), "x must not contain nulls"
+        assert all(v is not None for v in trace["y"]), "y must not contain nulls"
+        assert trace["x"] == [1.0, 3.0, 4.0]
+        assert trace["y"] == [10.0, 30.0, 60.0]
+
+
+def test_density_heatmap_all_null_returns_empty(client):
+    csv = "x,y\n1,\n2,\n"
+    dsid = _import(client, csv)
+    encoding = {
+        "chartType": "density_heatmap",
+        "x": {"field": "x", "type": "quantitative"},
+        "yFields": [{"field": "y", "type": "quantitative"}],
+    }
+    resp = client.post("/api/v1/chart/preview", json={"dataset_id": dsid, "encoding": encoding})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"] == []
+
+
 def test_candlestick(client):
     csv = """date,open,high,low,close
 2024-01-01,100,110,90,105

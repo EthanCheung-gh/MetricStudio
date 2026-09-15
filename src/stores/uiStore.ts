@@ -6,7 +6,7 @@ import { persist } from 'zustand/middleware';
 
 export interface Notification {
   id: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   message: string;
 }
 

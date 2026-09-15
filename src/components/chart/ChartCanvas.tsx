@@ -8,6 +8,7 @@ import { Download, Image, FileCode, FileText, Filter, Lightbulb, Sparkles, X } f
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
 import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
+import { dataUrlToUint8Array, saveFile } from '@/utils/fileSave'
 
 declare const Plotly: {
   toImage: (el: HTMLElement, opts: { format: string; height: number; width: number }) => Promise<string>
@@ -100,14 +101,8 @@ export function ChartCanvas() {
     try {
       const figure = applyPlotlyUserStyle(previewFigure, activeChart?.layout)
       const { html } = await api.exportHtml(figure)
-      const blob = new Blob([html], { type: 'text/html' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'chart.html'
-      a.click()
-      URL.revokeObjectURL(url)
-      addNotification('success', t('chart.htmlExported'))
+      const outcome = await saveFile(`${activeChart?.name || 'chart'}.html`, html)
+      if (outcome !== 'cancelled') addNotification('success', t('chart.htmlExported'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('chart.exportFailed'))
     }
@@ -124,28 +119,19 @@ export function ChartCanvas() {
         width: 800,
       })
       if (!url) return
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'chart.png'
-      a.click()
-      addNotification('success', t('chart.pngExported'))
+      const outcome = await saveFile(`${activeChart?.name || 'chart'}.png`, dataUrlToUint8Array(url))
+      if (outcome !== 'cancelled') addNotification('success', t('chart.pngExported'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('chart.exportFailed'))
     }
   }
 
-  const handleExportJson = () => {
+  const handleExportJson = async () => {
     if (!previewFigure) return
     try {
       const json = JSON.stringify(applyPlotlyUserStyle(previewFigure, activeChart?.layout), null, 2)
-      const blob = new Blob([json], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'chart.json'
-      a.click()
-      URL.revokeObjectURL(url)
-      addNotification('success', t('chart.jsonExported'))
+      const outcome = await saveFile(`${activeChart?.name || 'chart'}.json`, json)
+      if (outcome !== 'cancelled') addNotification('success', t('chart.jsonExported'))
     } catch (err) {
       addNotification('error', err instanceof Error ? err.message : t('chart.exportFailed'))
     }

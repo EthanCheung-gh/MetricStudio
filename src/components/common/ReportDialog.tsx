@@ -6,6 +6,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { api } from '@/api/client'
+import { saveFile } from '@/utils/fileSave'
 import { applyPlotlyUserStyle } from '@/utils/plotlyLayout'
 
 export function ReportDialog() {
@@ -50,13 +51,9 @@ export function ReportDialog() {
         include_insights: includeInsights,
         locale: useUIStore.getState().language,
       })
-      const blob = new Blob([html], { type: 'text/html' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${(title.trim() || t('report.fileName')).replace(/[^\w\u4e00-\u9fff-]+/g, '_')}.html`
-      a.click()
-      URL.revokeObjectURL(url)
+      const filename = `${(title.trim() || t('report.fileName')).replace(/[^\w\u4e00-\u9fff-]+/g, '_')}.html`
+      const outcome = await saveFile(filename, html)
+      if (outcome === 'cancelled') return
       addNotification('success', t('report.generated', { count: figures.length }))
       setReportNotesDraft('')
       setOpen(false)

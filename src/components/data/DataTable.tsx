@@ -11,6 +11,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Download, Pin, PinOff, Search } from 'lucide-react'
 import { Button, Spinner } from '@heroui/react'
 import { api } from '@/api/client'
+import { saveFromUrl } from '@/utils/fileSave'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { fmt } from '@/utils/format'
@@ -164,10 +165,14 @@ export function DataTable() {
     }
   }
 
-  const exportCsv = () => {
+  const exportCsv = async () => {
     if (!activeDataFrameId) return
-    window.open(api.exportDatasetUrl(activeDataFrameId, 'csv'), '_blank')
-    addNotification('success', t('table.exportStarted'))
+    try {
+      const outcome = await saveFromUrl(api.exportDatasetUrl(activeDataFrameId, 'csv'), `${activeDataFrameId.slice(0, 8)}.csv`)
+      if (outcome !== 'cancelled') addNotification('success', t('table.exportStarted'))
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : 'Export failed')
+    }
   }
 
   if (loading && !preview) {

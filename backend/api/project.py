@@ -33,16 +33,15 @@ def _validate_archive(zf: zipfile.ZipFile) -> None:
         raise ValueError("Project archive is too large")
 
 
-@router.post("/save")
-async def save_project(payload: dict):
-    path = Path(payload.get("path", "project.metricstudio"))
+def _write_zip(target: Path, payload: dict) -> int:
+    """Materialize the .metricstudio bundle at `target`; returns dataset count."""
     name = payload.get("name", "Untitled")
     charts = payload.get("charts", [])
     dashboards = payload.get("dashboards", [])
     qa_conversations = payload.get("qa_conversations", [])
-    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path = target.with_suffix(target.suffix + ".tmp")
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
             manifest = {
                 "name": name,
@@ -77,10 +76,36 @@ async def save_project(payload: dict):
                 if snapshot_path.is_file():
                     zf.write(snapshot_path, f"snapshots/{snapshot['id']}.parquet")
             zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        temp_path.replace(path)
-        return {"path": str(path), "datasets": len(manifest["data_sources"])}
-    except Exception as exc:
+        temp_path.replace(target)
+        return len(manifest["data_sources"])
+    except Exception:
         temp_path.unlink(missing_ok=True)
+        raise
+
+
+@router.post("/save")
+async def save_project(payload: dict):
+    path = Path(payload.get("path", "project.metricstudio"))
+
+    try:
+        datasets = _write_zip(path, payload)
+        return {"path": str(path), "datasets": datasets}
+    except (PermissionError, OSError) as exc:
+        if path.is_absolute():
+            # The user picked an unwritable absolute location — tell them
+            # plainly instead of silently saving somewhere else.
+            raise HTTPException(
+                status_code=500,
+                detail=f"Cannot write to {path}: {exc}. Try a writable directory "
+                f"such as {Path.home() / '.metricstudio' / 'projects'}",
+            ) from exc
+        # v1.7.1 parity fix (matches the HarmonyOS port): a relative path lands
+        # in the backend process cwd, which may be read-only (e.g. a packaged
+        # app). Fall back to the storage root and report the real location.
+        fallback = Path.home() / ".metricstudio" / "projects" / path.name
+        datasets = _write_zip(fallback, payload)
+        return {"path": str(fallback), "datasets": datasets, "fallback": True, "requested": str(path)}
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 

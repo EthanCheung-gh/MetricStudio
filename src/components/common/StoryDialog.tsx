@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { BookOpen, CheckCircle2, Download } from 'lucide-react'
 import { Button, Checkbox, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Textarea } from '@heroui/react'
 import { api } from '@/api/client'
+import { saveFile } from '@/utils/fileSave'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
@@ -95,13 +96,8 @@ export function StoryDialog() {
         conclusions,
         locale: language,
       })
-      const blob = new Blob([html], { type: 'text/html' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${(title.trim() || 'story').replace(/[^\w\u4e00-\u9fff-]+/g, '_')}.html`
-      a.click()
-      URL.revokeObjectURL(url)
+      const outcome = await saveFile(`${(title.trim() || 'story').replace(/[^\w\u4e00-\u9fff-]+/g, '_')}.html`, html)
+      if (outcome === 'cancelled') return
       addNotification('success', t('story.generated'))
       setOpen(false)
     } catch (err) {
