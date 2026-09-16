@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Literal, Union
+from datetime import date, datetime
+from typing import Any, Literal, Union
 from pathlib import Path
 import uuid
 
+import numpy as np
 import pandas as pd
 
 
@@ -15,6 +17,37 @@ except Exception:  # pragma: no cover
     HAS_POLARS = False
 
 DataFrame = Union[pd.DataFrame, "pl.DataFrame"]
+
+
+def json_safe(value: Any) -> Any:
+    """Convert a pandas/polars cell value into a JSON-serializable primitive.
+
+    Done per value on purpose: DataFrame.replace({pd.NA: None, ...}) behaves
+    differently across pandas versions (2.0-2.2, 3.x) and has historically
+    wiped datetime columns to None — the root cause of blank timestamp cells
+    in the data table. Normalizing scalars here is stable on every version.
+    """
+    if value is None or value is pd.NaT:
+        return None
+    # pd.NaT is a pd.Timestamp subclass — check it first.
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        # Arrays/lists inside a cell are kept as-is; preview callers expect
+        # scalars, so stringify anything exotic instead of crashing.
+        return str(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
 
 
 class DataEngine:
@@ -34,7 +67,10 @@ class DataEngine:
 
     def to_records(self, df: DataFrame) -> list[dict]:
         if isinstance(df, pd.DataFrame):
-            return df.replace({pd.NA: None, float("nan"): None}).to_dict("records")
+            return [
+                {key: json_safe(value) for key, value in record.items()}
+                for record in df.to_dict("records")
+            ]
         # polars
         return df.to_dicts()
 

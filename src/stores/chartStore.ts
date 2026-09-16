@@ -36,8 +36,8 @@ interface ChartState {
 const defaultLayout: Record<string, unknown> = {
   autosize: true,
   margin: { t: 40, r: 20, b: 40, l: 60 },
-  paper_bgcolor: 'rgba(0,0,0,0)',
-  plot_bgcolor: 'rgba(0,0,0,0)',
+  paper_bgcolor: '#ffffff',
+  plot_bgcolor: '#ffffff',
   font: {},
   xaxis: {},
   yaxis: {},

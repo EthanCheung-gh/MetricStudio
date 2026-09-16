@@ -6,7 +6,6 @@ from pathlib import Path
 import json
 
 import pandas as pd
-import numpy as np
 
 from backend.core.engine import DataEngine
 from backend.models.data import ColumnMeta, DataFrameMeta
@@ -384,15 +383,6 @@ def safe_float(value: Any) -> float | None:
 
 
 def sanitize_rows(rows: list[list]) -> list[list]:
-    def sanitize(value: Any) -> Any:
-        if pd.isna(value):
-            return None
-        if isinstance(value, (np.integer, np.floating)):
-            return value.item()
-        if isinstance(value, np.bool_):
-            return bool(value)
-        if isinstance(value, pd.Timestamp):
-            return value.isoformat()
-        return value
+    from backend.core.engine import json_safe
 
-    return [[sanitize(v) for v in row] for row in rows]
+    return [[json_safe(v) for v in row] for row in rows]

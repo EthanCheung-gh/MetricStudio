@@ -80,11 +80,11 @@ export function encodingToPlotly(
   const layout: Record<string, any> = {
     autosize: true,
     margin: { t: 40, r: 20, b: 60, l: 60 },
-    paper_bgcolor: 'rgba(0,0,0,0)',
-    plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { color: '#f5f5f5' },
-    xaxis: { title: encoding.x?.field, gridcolor: '#333333' },
-    yaxis: { title: null, gridcolor: '#333333' },
+    paper_bgcolor: '#ffffff',
+    plot_bgcolor: '#ffffff',
+    font: { color: '#333333' },
+    xaxis: { title: encoding.x?.field, gridcolor: '#e5e5e5' },
+    yaxis: { title: null, gridcolor: '#e5e5e5' },
     showlegend: !!encoding.color || yFields.length > 1,
   };
 
@@ -753,7 +753,7 @@ export function encodingToPlotly(
       side: 'right',
       overlaying: 'y',
       anchor: 'x',
-      gridcolor: '#333333',
+      gridcolor: '#e5e5e5',
     };
   }
 

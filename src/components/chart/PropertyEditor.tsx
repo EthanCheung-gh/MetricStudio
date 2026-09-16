@@ -108,7 +108,7 @@ export function PropertyEditor() {
         <div className="flex flex-col gap-2">
           <Input size="sm" label={t('chart.title')} value={titleText(title)} onValueChange={(value) => updateLayout(chart.id, { title: { ...title, text: value } })} />
           <Input size="sm" type="number" label={t('chart.titleFontSize')} value={String(title.font?.size ?? 16)} onValueChange={(value) => updateLayout(chart.id, { title: { ...title, font: { ...(title.font || {}), size: Number(value) || 16 } } })} />
-          <Input size="sm" type="color" label={t('chart.bgColor')} value={String(layout.plot_bgcolor || '#000000')} onValueChange={(value) => updateLayout(chart.id, { plot_bgcolor: value })} />
+          <Input size="sm" type="color" label={t('chart.bgColor')} value={String(layout.plot_bgcolor && layout.plot_bgcolor !== 'rgba(0,0,0,0)' ? layout.plot_bgcolor : '#ffffff')} onValueChange={(value) => updateLayout(chart.id, { plot_bgcolor: value })} />
         </div>
       </CollapsibleSection>
 
