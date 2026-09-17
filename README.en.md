@@ -16,6 +16,18 @@ Current version: **1.7.1**
 | **Command palette** | **SQL workbench** |
 | ![Command palette](png/05-metricstudio-command-panel.png) | ![SQL workbench](png/06-metricstudio-sql-stat.png) |
 
+## Design decisions
+
+Three technical trade-offs that run through the whole product — each one is the line between "it runs" and "it's trustworthy":
+
+| Decision | What MetricStudio does | What happens if you don't |
+|---|---|---|
+| **Q&A numbers come from deterministic tools** | In a ≤3-round loop the LLM only emits "which tool to call" JSON; row counts, group-by aggregates, correlations and quantiles are computed by 11 tools directly on pandas | Feed samples to the model and ask it to "read the data": every count, ranking and aggregate is mental math or guesswork, and the same question yields different numbers each run. Not hypothetical — before tool calling, this project's Q&A could not even answer "how many rows does this dataset have" on first ask |
+| **Every answer must carry [n] citations** | Each tool result is registered as a numbered fact; numbers in the answer are tagged `[n]`, rendered as clickable chips that jump back to the raw evidence | The answer is an unverifiable black box: users either blindly trust it or re-compute by hand; when it's wrong you can't tell whether the question was misread or the math was wrong — so it can't be fixed |
+| **Statistical tests go to scipy; the LLM only explains** | Welch t / paired t / Mann-Whitney U, linear regression R² & p-values and confidence intervals are all computed by numpy/scipy; the LLM (insights / narratives / chart explanation) only interprets statistics that were already computed | Let the model declare "the difference is significant": fluent wording, but no test type, no p-value, no sample-size caveat — a professional-looking, irreproducible pseudo-analysis, especially misleading on small samples |
+
+In one line: **the LLM handles understanding and narration; the data handles computing and proving** — only with that separation do AI outputs become verifiable and reproducible.
+
 ## Features
 
 ### Data management
