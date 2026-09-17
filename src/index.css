@@ -60,6 +60,14 @@ body {
   background: var(--scrollbar-thumb-hover);
 }
 
+/* Page-size input: keep the number spinner always visible (touch webviews
+   hide it until hover, which never happens on a phone). */
+.page-size-input::-webkit-inner-spin-button,
+.page-size-input::-webkit-outer-spin-button {
+  opacity: 1;
+  -webkit-appearance: inner-spin-button;
+}
+
 /* Plotly container overrides */
 .js-plotly-plot {
   width: 100%;

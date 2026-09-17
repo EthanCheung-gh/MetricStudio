@@ -6,6 +6,7 @@ import {
   flexRender,
   type SortingState,
   type ColumnFiltersState,
+  type ColumnSizingState,
 } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Check, ChevronDown, ChevronUp, ChevronsUpDown, Columns3, Download, Pin, PinOff, Search } from 'lucide-react'
@@ -30,6 +31,7 @@ export function DataTable() {
 
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({})
   const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({})
   const [globalFilter, setGlobalFilter] = useState('')
   const [showColumnsPanel, setShowColumnsPanel] = useState(false)
@@ -71,10 +73,11 @@ export function DataTable() {
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnFilters, columnVisibility, globalFilter },
+    state: { sorting, columnFilters, columnVisibility, globalFilter, columnSizing },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnSizingChange: setColumnSizing,
     onGlobalFilterChange: setGlobalFilter,
     manualSorting: true,
     manualFiltering: true,
@@ -104,6 +107,37 @@ export function DataTable() {
       setPage(0)
     }
     setPageSizeInput(String(value))
+  }
+
+  /** Fit every visible column to its widest cell/header (capped), so long
+   * timestamps never spill outside the cell. Per-char widths are deliberately
+   * generous (8.5px ASCII / 13.5px CJK) — an over-wide column beats a
+   * truncated timestamp on WebViews whose canvas metrics undershoot.
+   * widest starts at 0 and the +40px padding/border allowance is applied once
+   * at the end; initializing it at 40 gets overwritten by the sample loop,
+   * which silently drops the allowance (HarmonyOS-session root cause). */
+  const autoFitColumns = () => {
+    const sample = data.slice(0, 200)
+    const sizing: ColumnSizingState = {}
+    for (const column of table.getAllLeafColumns()) {
+      if (!column.getIsVisible()) continue
+      let widest = 0
+      for (const row of sample) {
+        const value = (row as Record<string, unknown>)[column.id]
+        const text = value === null || value === undefined ? '' : String(value)
+        const width = [...text].reduce(
+          (w, ch) => w + (ch.charCodeAt(0) > 0x2e7f ? 13.5 : 8.5),
+          0,
+        )
+        if (width > widest) widest = width
+      }
+      const headerWidth = [...column.id].reduce(
+        (w, ch) => w + (ch.charCodeAt(0) > 0x2e7f ? 13.5 : 8.5),
+        0,
+      ) + 20
+      sizing[column.id] = Math.min(640, Math.max(80, Math.ceil(Math.max(widest, headerWidth)) + 40))
+    }
+    setColumnSizing((prev) => ({ ...prev, ...sizing }))
   }
 
   useEffect(() => {
@@ -243,6 +277,15 @@ export function DataTable() {
           <Button
             size="sm"
             variant="light"
+            startContent={<Pin className="h-3.5 w-3.5" />}
+            onPress={autoFitColumns}
+            aria-label={t('table.autoFitColumns')}
+          >
+            {t('table.autoFitColumns')}
+          </Button>
+          <Button
+            size="sm"
+            variant="light"
             startContent={freezeHeader ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
             onPress={() => setFreezeHeader((v) => !v)}
             aria-label={freezeHeader ? t('table.unfreezeHeader') : t('table.freezeHeader')}
@@ -367,7 +410,7 @@ export function DataTable() {
                         <div
                           key={cell.id}
                           style={{ width: cell.column.getSize(), flexShrink: 0 }}
-                          className="group relative cursor-pointer whitespace-nowrap border-b border-r border-border px-3 py-1.5 text-foreground"
+                          className="group relative cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap border-b border-r border-border px-3 py-1.5 text-foreground"
                           onClick={() => copyCell(cell.id, cell.getValue())}
                           title={t('table.clickToCopy')}
                         >
@@ -391,7 +434,6 @@ export function DataTable() {
         <div className="flex items-center gap-2">
           <span>{t('table.pageSize')}</span>
           <input
-            list="page-size-options"
             type="number"
             min={1}
             max={MAX_PAGE_SIZE}
@@ -405,11 +447,8 @@ export function DataTable() {
               }
             }}
             title={`${t('table.pageSize')}: 1 - ${MAX_PAGE_SIZE}`}
-            className="w-16 rounded border border-border bg-surface px-1.5 py-1 text-foreground outline-none focus:border-primary"
+            className="page-size-input w-16 rounded border border-border bg-surface px-1.5 py-1 text-foreground outline-none focus:border-primary"
           />
-          <datalist id="page-size-options">
-            {[100, 200, 500, MAX_PAGE_SIZE].map((size) => <option key={size} value={size} />)}
-          </datalist>
         </div>
         <div className="flex items-center gap-2">
           {loading && <Spinner size="sm" />}

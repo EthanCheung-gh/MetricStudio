@@ -600,6 +600,7 @@ export default {
   'table.filterPlaceholder': 'Filter…',
   'table.noMatchingRows': 'No rows match the current filters',
   'table.clickToCopy': 'Click to copy',
+  'table.autoFitColumns': 'Auto-fit columns',
   'table.pageSize': 'Rows per page',
   'table.pageOf': 'Page {{page}} / {{total}}',
   'table.exportStarted': 'Full dataset export started',
