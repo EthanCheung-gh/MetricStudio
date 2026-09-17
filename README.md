@@ -62,6 +62,49 @@
 | AI | OpenAI 兼容 chat completions（Ollama / 云端均可） |
 | 国际化 | i18next（简体中文 / English） |
 
+## 数据流
+
+一条主线看懂数据怎么流动：**常规分析走 REST（①–②），AI 问答走 SSE 流式循环（③–⑧）——LLM 只负责决策与叙述，所有数字都由后端确定性工具算出，并以编号证据回传。**
+
+```mermaid
+flowchart LR
+    subgraph fe["前端 · React + Zustand"]
+        direction TB
+        UI["表格 / 图表 / 清洗 / 问答面板"]
+        ST["dataStore · chartStore · qaStore"]
+        CL["api/client.ts"]
+        UI --> ST --> CL
+    end
+
+    subgraph be["后端 · FastAPI（Python sidecar）"]
+        direction TB
+        REST["REST /api/v1/*<br/>data · transform · chart"]
+        SSE["SSE /nl/ask/stream<br/>/nl/transform/stream"]
+        DS["SessionManager · Dataset<br/>pandas/polars + 变换链"]
+        QT["qa_tools 确定性工具 ×11<br/>分组聚合 / 筛选统计 / 相关 / 时间聚合…"]
+        AG["qa_agent 迭代循环（≤3 轮）"]
+    end
+
+    LLM["LLM · OpenAI 兼容接口<br/>云端 API / 本地 Ollama"]
+
+    CL -- "① 导入 / 预览 / 清洗 / 图表编码" --> REST
+    REST --> DS
+    DS -- "sanitize 后的行 · 聚合结果 · Plotly figure" --> REST
+    REST -- "JSON 响应（表格预览 / 图表数据）" --> CL
+    CL -- "③ 提问（SSE 连接）" --> SSE
+    SSE --> AG
+    AG -- "④ 决策：调用哪些工具" --> LLM
+    LLM -- "⑤ {tools:[…]}" --> AG
+    AG -- "⑥ 确定性计算（数字不出 pandas）" --> QT
+    QT -- "⑦ 编号事实 facts" --> AG
+    AG -- "⑧ 最终回答 + [n] 引用 + 建议追问" --> SSE
+    SSE -- "② 流式帧：工具时间线 / 答案逐字 / 证据" --> CL
+```
+
+- **数字精确性的来源**：LLM 在循环中只输出「调用哪个工具」的 JSON，行数、聚合、相关系数等全部由 `qa_tools` 在 pandas 上直接计算，杜绝模型心算
+- **证据回传**：每次工具结果登记为编号事实（facts），最终答案用 `[n]` 标注出处，前端渲染为可点击的引用 chip，一键回溯证据原文
+- **同构复用**：自然语言清洗走同一条 SSE 模式（LLM 生成操作链 → 过程卡逐条点亮 → 确认后应用），图表 figure 由服务端构建、前端仅渲染
+
 ## 快速开始
 
 ### 环境要求
@@ -101,7 +144,7 @@ pnpm tauri build   # 打包安装程序（CI 同款流程）
 pnpm test              # 前端 Vitest
 pnpm lint              # oxlint
 pnpm build             # tsc + vite 生产构建
-pnpm test:backend      # 后端 pytest（259 用例）
+pnpm test:backend      # 后端 pytest（264 用例）
 ```
 
 ## 代码图谱

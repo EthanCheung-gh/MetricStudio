@@ -62,6 +62,49 @@ Current version: **1.7.1**
 | AI | OpenAI-compatible chat completions (Ollama or cloud endpoints) |
 | i18n | i18next (简体中文 / English) |
 
+## How data flows
+
+One diagram for the whole pipeline: **regular analysis goes over REST (1–2), AI Q&A runs a streaming SSE loop (3–8) — the LLM only decides and narrates, every number is computed by deterministic backend tools and returned as numbered evidence.**
+
+```mermaid
+flowchart LR
+    subgraph fe["Frontend · React + Zustand"]
+        direction TB
+        UI["Table / Charts / Clean / Q&A panel"]
+        ST["dataStore · chartStore · qaStore"]
+        CL["api/client.ts"]
+        UI --> ST --> CL
+    end
+
+    subgraph be["Backend · FastAPI (Python sidecar)"]
+        direction TB
+        REST["REST /api/v1/*<br/>data · transform · chart"]
+        SSE["SSE /nl/ask/stream<br/>/nl/transform/stream"]
+        DS["SessionManager · Dataset<br/>pandas/polars + transform chain"]
+        QT["qa_tools deterministic tools ×11<br/>groupby / filter stats / corr / time agg…"]
+        AG["qa_agent iterative loop (≤3 rounds)"]
+    end
+
+    LLM["LLM · OpenAI-compatible<br/>cloud API / local Ollama"]
+
+    CL -- "1 import / preview / clean / chart encoding" --> REST
+    REST --> DS
+    DS -- "sanitized rows · aggregates · Plotly figure" --> REST
+    REST -- "JSON responses (table preview / chart data)" --> CL
+    CL -- "3 ask a question (SSE)" --> SSE
+    SSE --> AG
+    AG -- "4 decide which tools to call" --> LLM
+    LLM -- "5 {tools:[…]}" --> AG
+    AG -- "6 deterministic compute (numbers stay in pandas)" --> QT
+    QT -- "7 numbered facts" --> AG
+    AG -- "8 final answer + [n] citations + follow-ups" --> SSE
+    SSE -- "2 stream frames: tool timeline / token-by-token answer / evidence" --> CL
+```
+
+- **Where numeric accuracy comes from**: inside the loop the LLM only emits "which tool to call" JSON; row counts, aggregates and correlations are all computed by `qa_tools` directly on pandas — no mental math by the model
+- **Evidence loop**: every tool result is registered as a numbered fact; the final answer cites `[n]`, rendered as clickable citation chips that jump back to the raw evidence
+- **Same pattern reused**: natural-language cleaning follows the same SSE flow (LLM drafts the operation chain → process card lights up step by step → apply on confirm); chart figures are built server-side and only rendered in the frontend
+
 ## Getting started
 
 ### Requirements
@@ -101,7 +144,7 @@ In production the Rust shell starts the Python sidecar on a random port; the fro
 pnpm test              # frontend Vitest
 pnpm lint              # oxlint
 pnpm build             # tsc + vite production build
-pnpm test:backend      # backend pytest (259 cases)
+pnpm test:backend      # backend pytest (264 cases)
 ```
 
 ## Code map
