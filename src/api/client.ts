@@ -455,6 +455,12 @@ export const api = {
   exportDatasetUrl: (id: string, format: 'csv' | 'parquet') =>
     `${getBaseUrl()}/api/v1/data/${id}/export?format=${format}`,
 
+  // Diagnostics (v1.8.0)
+  diagnosticsExportUrl: (includeTrace = false) =>
+    `${getBaseUrl()}/api/v1/logs/diagnostics/export?include_trace=${includeTrace}`,
+  purgeAgentTrace: () =>
+    fetchJson<{ purged: boolean; reclaimed_bytes: number }>('/api/v1/logs/purge-trace', { method: 'POST' }),
+
   // Transform
   filter: (id: string, params: FilterParams) =>
     fetchJson<DataPreview>(`/api/v1/transform/${id}/filter`, {

@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.7.1**
+Current version: **1.8.0**
 
 ## Screenshots
 
@@ -199,6 +199,7 @@ See [package.json](package.json) for the current version (kept in sync with `src
 - **v1.5.0**: session persistence, auto-naming, turn collapsing & numbered navigation
 - **v1.6.0**: history compaction — LLM summary turns, context-boundary markers
 - **v1.7.0**: full-chain markdown rendering — Q&A panel / AI bar / dashboard text cards / HTML exports / reports
+- **v1.8.0**: structured logging — one JSONL protocol across app + agent (trace-id end to end), a dedicated full-body LLM prompt/response trace file, one-click diagnostics bundle, privacy tombstones and trace purge
 
 Next up (P3): discovery-oriented home page, plugin system, lightweight sharing.
 

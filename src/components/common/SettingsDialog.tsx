@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button, Checkbox, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem } from '@heroui/react'
-import { Keyboard, Plus, PlugZap, Save, Trash2 } from 'lucide-react'
+import { FileDown, Keyboard, Plus, PlugZap, Save, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import { api } from '@/api/client'
@@ -8,6 +8,8 @@ import type { LLMDataScope, LLMProfileView, LLMProviderKind } from '@/api/client
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
+import { saveFromUrl } from '@/utils/fileSave'
+import { info as logInfo } from '@/utils/logger'
 
 const NEW_PROFILE = '__new__'
 
@@ -55,6 +57,9 @@ export function SettingsDialog() {
   const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [clearApiKey, setClearApiKey] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [confirmingPurge, setConfirmingPurge] = useState(false)
+  const [purging, setPurging] = useState(false)
+  const [includeTraceInExport, setIncludeTraceInExport] = useState(false)
 
   const selectedProfile = profiles.find((p) => p.id === selectedId) ?? null
   const isNew = selectedId === NEW_PROFILE
@@ -198,6 +203,35 @@ export function SettingsDialog() {
       setTestResult({ ok: false, text: error instanceof Error ? error.message : t('settings.llmTestFail', { error: '' }) })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const purgeTrace = async () => {
+    if (!confirmingPurge) {
+      setConfirmingPurge(true)
+      window.setTimeout(() => setConfirmingPurge(false), 3000)
+      return
+    }
+    setPurging(true)
+    try {
+      const result = await api.purgeAgentTrace()
+      logInfo('trace_purged', 'settings', undefined, { reclaimed_bytes: result.reclaimed_bytes })
+      addNotification('success', t('settings.purgeTraceDone'))
+    } catch (error) {
+      addNotification('error', error instanceof Error ? error.message : t('settings.purgeTraceFailed'))
+    } finally {
+      setPurging(false)
+      setConfirmingPurge(false)
+    }
+  }
+
+  const exportDiagnostics = async () => {
+    try {
+      const outcome = await saveFromUrl(api.diagnosticsExportUrl(includeTraceInExport), `metricstudio-diagnostics-${new Date().toISOString().slice(0, 10)}.zip`)
+      logInfo('diagnostics_exported', 'settings', undefined, { outcome, includeTrace: includeTraceInExport })
+      addNotification('success', t('settings.diagnosticsExportStarted'))
+    } catch (error) {
+      addNotification('error', error instanceof Error ? error.message : t('settings.diagnosticsExportFailed'))
     }
   }
 
@@ -381,6 +415,37 @@ export function SettingsDialog() {
                 </span>
               )}
             </div>
+          </section>
+
+          <section className="flex flex-col gap-2 border-t border-border pt-4">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t('settings.diagnostics')}</h3>
+              <p className="mt-1 text-[11px] text-muted">{t('settings.diagnosticsHint')}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="flat"
+                startContent={<FileDown className="h-4 w-4" />}
+                onPress={() => void exportDiagnostics()}
+              >
+                {t('settings.exportDiagnostics')}
+              </Button>
+              <Button
+                size="sm"
+                variant="flat"
+                color={confirmingPurge ? 'danger' : 'default'}
+                title={confirmingPurge ? t('settings.purgeTraceConfirm') : t('settings.purgeTrace')}
+                isDisabled={purging}
+                startContent={<Trash2 className="h-4 w-4" />}
+                onPress={() => void purgeTrace()}
+              >
+                {confirmingPurge ? t('settings.purgeTraceConfirm') : t('settings.purgeTrace')}
+              </Button>
+            </div>
+            <Checkbox size="sm" isSelected={includeTraceInExport} onValueChange={setIncludeTraceInExport}>
+              {t('settings.includeTraceInExport')}
+            </Checkbox>
           </section>
         </ModalBody>
         <ModalFooter>

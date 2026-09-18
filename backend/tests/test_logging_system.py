@@ -181,3 +181,43 @@ def test_client_log_batch_ingestion(log_env, client):
         line["event"] == "qa_session_deleted" and line["deleted_session_id"] == "sess-42"
         for line in trace_lines
     )
+
+
+def test_diagnostics_export_excludes_trace_by_default(log_env, client):
+    agent_trace.trace_llm_call(
+        span="chat", messages=[{"role": "user", "content": "机密提问"}],
+        reply="机密回答", model="m", elapsed_ms=1, ok=True,
+    )
+    logging_setup.get_logger("test").event("app_event_for_bundle")
+
+    response = client.get("/api/v1/logs/diagnostics/export")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+
+    import io
+    import zipfile as zipfile_mod
+
+    with zipfile_mod.ZipFile(io.BytesIO(response.content)) as zf:
+        names = zf.namelist()
+        assert "manifest.json" in names
+        assert "app.jsonl" in names
+        assert "agent-trace.jsonl" not in names
+        assert "机密提问" not in zf.read("manifest.json").decode()
+
+    # Explicit opt-in includes the trace.
+    response = client.get("/api/v1/logs/diagnostics/export?include_trace=true")
+    with zipfile_mod.ZipFile(io.BytesIO(response.content)) as zf:
+        assert "agent-trace.jsonl" in zf.namelist()
+
+
+def test_purge_trace_endpoint(log_env, client):
+    agent_trace.trace_event("llm_call", span="chat", reply="body")
+    assert (log_env / "agent-trace.jsonl").stat().st_size > 0
+    response = client.post("/api/v1/logs/purge-trace")
+    assert response.status_code == 200
+    assert response.json()["purged"] is True
+    remaining = [
+        line for line in _read_jsonl(log_env / "agent-trace.jsonl")
+        if line["event"] != "trace_purged"
+    ]
+    assert remaining == []

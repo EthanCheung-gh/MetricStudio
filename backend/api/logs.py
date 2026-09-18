@@ -8,15 +8,22 @@ skipped, never fatal.
 
 from __future__ import annotations
 
+import io
+import json
 import logging
+import platform
+import sys
+import zipfile
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from backend.core.agent_trace import purge_traces
 from backend.core.logging_setup import logs_dir
 
 router = APIRouter(prefix="/api/v1/logs", tags=["logs"])
@@ -89,3 +96,55 @@ async def ingest_client_logs(batch: ClientLogBatch):
         except Exception:
             continue
     return {"accepted": accepted}
+
+
+@router.get("/diagnostics/export")
+def export_diagnostics(include_trace: bool = Query(False, description="Include the full-body agent trace")):
+    """One-click diagnostics bundle (v1.8.0).
+
+    A zip with system metadata plus the rotating app/client logs. The
+    agent-trace file (full LLM prompts/responses) is EXCLUDED by default —
+    it is the sensitive second copy and must be an explicit opt-in.
+    """
+    base = logs_dir()
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "app": "MetricStudio",
+        "version": _app_version(),
+        "python": sys.version.split()[0],
+        "platform": platform.platform(),
+        "includes_agent_trace": include_trace,
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        for name in ("app.jsonl", "client.jsonl"):
+            path = base / name
+            if path.exists():
+                zf.write(path, name)
+        if include_trace:
+            trace = base / "agent-trace.jsonl"
+            if trace.exists():
+                zf.write(trace, "agent-trace.jsonl")
+    filename = f"metricstudio-diagnostics-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/purge-trace")
+def purge_agent_trace():
+    """Wipe the full-body agent trace (live file truncated, rotations removed)."""
+    reclaimed = purge_traces()
+    return {"purged": True, "reclaimed_bytes": reclaimed}
+
+
+def _app_version() -> str:
+    try:
+        from backend.main import app as fastapi_app
+
+        return getattr(fastapi_app, "version", "unknown")
+    except Exception:
+        return "unknown"
