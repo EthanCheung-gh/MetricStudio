@@ -156,3 +156,28 @@ def test_llm_chat_telemetry_split(log_env, monkeypatch):
     assert trace_lines[-1]["event"] == "llm_call"
     assert trace_lines[-1]["reply"] == "模型回答全文"
     assert trace_lines[-1]["prompt_messages"][0]["content"] == "用户问题全文"
+
+
+def test_client_log_batch_ingestion(log_env, client):
+    """SPA batches land in client.jsonl; privacy tombstones reach agent-trace."""
+    response = client.post("/api/v1/logs/client", json={
+        "entries": [
+            {"level": "error", "event": "window_error", "span": "global",
+             "trace_id": "t-1", "msg": "boom", "extra": {"line": 3}},
+            {"level": "info", "event": "qa_session_deleted", "span": "privacy",
+             "session_id": "sess-42"},
+        ],
+    })
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 2}
+
+    client_lines = _read_jsonl(log_env / "client.jsonl")
+    assert client_lines[0]["event"] == "window_error"
+    assert client_lines[0]["trace_id"] == "t-1"
+    assert client_lines[0]["line"] == 3
+
+    trace_lines = _read_jsonl(log_env / "agent-trace.jsonl")
+    assert any(
+        line["event"] == "qa_session_deleted" and line["deleted_session_id"] == "sess-42"
+        for line in trace_lines
+    )

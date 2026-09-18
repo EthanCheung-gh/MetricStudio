@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import data, transform, chart, project, report, recipes, nl, sql, snapshots
+from backend.api import data, transform, chart, project, report, recipes, nl, sql, snapshots, logs
 from backend.core.logging_setup import get_logger, setup_logging, trace_id_var
 
 log = get_logger("main")
@@ -156,6 +156,7 @@ app.include_router(recipes.router)
 app.include_router(nl.router)
 app.include_router(sql.router)
 app.include_router(snapshots.router)
+app.include_router(logs.router)
 
 
 if __name__ == "__main__":

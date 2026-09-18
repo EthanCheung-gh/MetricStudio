@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { generateId } from '@/utils/id'
+import { flush, log, setSessionId } from '@/utils/logger'
 
 export interface QAEvidence {
   id?: string
@@ -145,7 +146,11 @@ export const useQAStore = create<QAState>()(
       ),
     })),
 
-  deleteConversation: (id) =>
+  deleteConversation: (id) => {
+    // v1.8.0: the QA conversation is gone — leave a tombstone in the backend
+    // agent-trace so its full-body copies are known-stale (privacy review).
+    log('info', 'qa_session_deleted', 'privacy', undefined, { session_id: id })
+    void flush()
     set((state) => {
       const remaining = state.conversations.filter((item) => item.id !== id)
       if (state.activeConversationId !== id) return { conversations: remaining }
@@ -154,7 +159,8 @@ export const useQAStore = create<QAState>()(
       if (!state.datasetId) return { conversations: remaining, activeConversationId: null }
       const conversation = newConversation(state.datasetId)
       return { conversations: [...remaining, conversation], activeConversationId: conversation.id }
-    }),
+    })
+  },
 
   addTurn: (turn) =>
     set((state) => ({
@@ -244,3 +250,11 @@ export const useQAStore = create<QAState>()(
     },
   ),
 )
+
+// v1.8.0: keep the SPA logger's session id in lockstep with the active QA
+// conversation so every log/trace line carries the right session.
+useQAStore.subscribe((state, prev) => {
+  if (state.activeConversationId !== prev.activeConversationId) {
+    setSessionId(state.activeConversationId)
+  }
+})

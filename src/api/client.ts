@@ -20,6 +20,7 @@ import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
 import type { DashboardConfig } from '@/types/dashboard';
 import type { QAConversation, QAFilter } from '@/stores/qaStore';
+import { getTraceId, getSessionId, newId, newTraceId, setTurnId } from '@/utils/logger';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface DepsReport {
@@ -114,13 +115,21 @@ function getBaseUrl(): string {
   return `http://${host}:${DEFAULT_BACKEND_PORT}`;
 }
 
+/** v1.8.0: correlate every backend call with the SPA logger's trace id. */
+function tracedHeaders(extra?: Record<string, string>): Record<string, string> {
+  const id = getTraceId();
+  return { ...(id ? { 'X-Trace-Id': id } : {}), ...extra };
+}
+
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`
   let response: Response
   try {
     response = await fetch(url, {
-      headers: { 'Content-Type': 'application/json' },
       ...options,
+      headers: tracedHeaders(
+        options?.headers as Record<string, string> | undefined,
+      ),
     })
   } catch (error) {
     throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
@@ -144,6 +153,7 @@ async function postForm<T>(path: string, formData: FormData): Promise<T> {
   try {
     response = await fetch(url, {
       method: 'POST',
+      headers: tracedHeaders(),
       body: formData,
     })
   } catch (error) {
@@ -215,7 +225,7 @@ async function consumeSseStream(
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: tracedHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
       signal,
     })
@@ -272,6 +282,12 @@ async function nlAskStream(
   signal?: AbortSignal,
 ): Promise<NLAskResponse> {
   let result: NLAskResponse | null = null
+  // v1.8.0: each Q&A turn gets its own trace/turn id; the backend pins them
+  // into every agent/llm/trace log line for this request.
+  const turnId = newId()
+  setTurnId(turnId)
+  newTraceId()
+  const sessionId = getSessionId() ?? undefined
   await consumeSseStream(
     '/api/v1/nl/ask/stream',
     {
@@ -280,6 +296,8 @@ async function nlAskStream(
       history,
       snapshot_id: context?.snapshotId,
       filters: context?.filters ?? [],
+      session_id: sessionId,
+      turn_id: turnId,
     },
     (frame) => {
       const line = frame.trim()
