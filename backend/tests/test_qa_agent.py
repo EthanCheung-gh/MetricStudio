@@ -251,7 +251,7 @@ def test_extractor_ignores_tool_json_and_straddled_keys():
 
 
 def test_stream_direct_answer(sales_df, monkeypatch):
-    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages: iter(["共 6 行。"]))
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, **kw: iter(["共 6 行。"]))
     deltas, done, errors = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
     assert not errors
     assert deltas == "共 6 行。"
@@ -261,7 +261,7 @@ def test_stream_direct_answer(sales_df, monkeypatch):
 def test_stream_tool_round_then_streamed_answer(sales_df, monkeypatch):
     calls = {"n": 0}
 
-    def fake_stream(messages):
+    def fake_stream(messages, config=None, trace_ids=None):
         calls["n"] += 1
         if calls["n"] == 1:
             yield '{"tools": [{"name": "row_count", "args": {}}'
@@ -280,7 +280,7 @@ def test_stream_tool_round_then_streamed_answer(sales_df, monkeypatch):
 
 
 def test_stream_caps_rounds_and_falls_back_to_facts(sales_df, monkeypatch):
-    def always_tools(messages):
+    def always_tools(messages, config=None, trace_ids=None):
         yield '{"tools": [{"name": "row_count", "args": {}}]}'
 
     monkeypatch.setattr(qa_agent, "chat_stream", always_tools)
@@ -292,13 +292,13 @@ def test_stream_caps_rounds_and_falls_back_to_facts(sales_df, monkeypatch):
 
 
 def test_stream_plain_text_reply_is_final_answer(sales_df, monkeypatch):
-    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages: iter(["直接文字回答。"]))
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, **kw: iter(["直接文字回答。"]))
     deltas, done, _ = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
     assert done["answer"] == "直接文字回答。" and deltas == "直接文字回答。"
 
 
 def test_stream_first_failure_emits_error(sales_df, monkeypatch):
-    def boom(messages):
+    def boom(messages, config=None, trace_ids=None):
         raise RuntimeError("no llm")
         yield  # pragma: no cover - make it a generator
 
@@ -310,7 +310,7 @@ def test_stream_first_failure_emits_error(sales_df, monkeypatch):
 def test_stream_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
     calls = {"n": 0}
 
-    def flaky(messages):
+    def flaky(messages, config=None, trace_ids=None):
         calls["n"] += 1
         if calls["n"] == 1:
             yield '{"tools": [{"name": "distinct_count", "args": {"column": "category"}}]}'
@@ -325,7 +325,7 @@ def test_stream_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
 
 
 def test_stream_truncated_json_trusts_streamed_answer(sales_df, monkeypatch):
-    def truncated(messages):
+    def truncated(messages, config=None, trace_ids=None):
         yield '{"answer": "部分回答'  # broken JSON, no closing braces
 
     monkeypatch.setattr(qa_agent, "chat_stream", truncated)
@@ -334,7 +334,7 @@ def test_stream_truncated_json_trusts_streamed_answer(sales_df, monkeypatch):
 
 
 def test_stream_clarify_only_answer(sales_df, monkeypatch):
-    def clarify(messages):
+    def clarify(messages, config=None, trace_ids=None):
         yield '{"answer": "", "clarify": {"question": "哪个字段？", "options": ["a", "b"]}}'
 
     monkeypatch.setattr(qa_agent, "chat_stream", clarify)

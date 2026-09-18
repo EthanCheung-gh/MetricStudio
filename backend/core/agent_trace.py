@@ -57,8 +57,13 @@ def trace_llm_call(
     ok: bool,
     error: str | None = None,
     stream: bool = False,
+    **extra_ids: Any,
 ) -> None:
-    """Full-body record of one LLM chat call (prompt + response + timing)."""
+    """Full-body record of one LLM chat call (prompt + response + timing).
+
+    extra_ids carries explicit correlation ids (session_id/turn_id/round)
+    from sync-generator call sites whose ContextVar writes don't persist.
+    """
     _write({
         "event": "llm_call",
         "span": span,
@@ -69,6 +74,7 @@ def trace_llm_call(
         "prompt_messages": messages,
         "reply": reply,
         "error": error,
+        **extra_ids,
     })
 
 

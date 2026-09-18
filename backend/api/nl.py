@@ -532,8 +532,7 @@ def nl_ask_stream(request: NLAskRequest):
     ``done`` carries the same payload as the sync /ask response. A sync def
     keeps the blocking LLM stream on FastAPI's threadpool.
     """
-    with _qa_turn_context(request):
-        return _ask_stream_response(request)
+    return _ask_stream_response(request)
 
 
 def _ask_stream_response(request: NLAskRequest):
@@ -548,49 +547,66 @@ def _ask_stream_response(request: NLAskRequest):
     started = time.monotonic()
 
     def event_stream():
+        # The generator iterates AFTER this sync endpoint returned, in a fresh
+        # context: correlation ids must be pinned here (not at endpoint scope),
+        # or every agent/trace line would lose session/turn. They are ALSO
+        # passed explicitly to run_agent_stream — sync generators are iterated
+        # on the threadpool, where per-next ContextVar copies don't persist
+        # (and token.reset() across contexts raises — reset by value instead).
+        ids = {"session_id": request.session_id, "turn_id": request.turn_id or uuid.uuid4().hex[:12]}
+        session_id_var.set(request.session_id)
+        turn_id_var.set(ids["turn_id"])
         try:
-            config = load_config()
-            evidence = _build_data_evidence(dataset, df, snapshot_id)
-            fact_source: dict[str, str] = {"datasetId": dataset.id}
-            if snapshot_id:
-                fact_source["snapshotId"] = snapshot_id
-            agent_result: dict[str, Any] | None = None
-            for event in run_agent_stream(request.question, df, context, history):
-                if event["type"] == "done":
-                    agent_result = event["result"]
-                    evidence.extend(
-                        {"id": f"fact:{fact['n']}", "kind": "tool", "detail": f"[{fact['n']}] {fact['tool']}: {fact['detail']}", "source": dict(fact_source)}
-                        for fact in agent_result["facts"]
-                    )
-                    get_logger("nl").event(
-                        "ask_done", span="nl", mode="stream", dataset_id=request.dataset_id,
-                        question=request.question, rounds=agent_result["rounds_used"],
-                        tool_calls=agent_result["tool_call_count"], facts=len(agent_result["facts"]),
-                        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
-                    )
-                    yield _sse({"type": "done", "result": {
-                        **agent_result,
-                        "evidence": evidence[:20],
-                        "model": config.get("model", "unknown"),
-                        "generated_at": datetime.now(timezone.utc).isoformat(),
-                    }})
-                elif event["type"] == "error":
-                    agent_result = {}  # terminal: a error frame was already sent
-                    get_logger("nl").event("ask_failed", span="nl", mode="stream",
-                                           dataset_id=request.dataset_id, question=request.question)
-                    yield _sse(event)
-                else:
-                    yield _sse(event)
-            if agent_result is None:  # generator ended without done (defensive)
-                yield _sse({"type": "error", "message": "agent stream ended unexpectedly"})
-        except Exception as exc:  # noqa: BLE001 - stream must end with a terminal frame
-            yield _sse({"type": "error", "message": str(exc) or exc.__class__.__name__})
+            yield from _ask_stream_events(request, dataset, df, context, history, snapshot_id, started, ids)
+        finally:
+            session_id_var.set(None)
+            turn_id_var.set(None)
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+def _ask_stream_events(request, dataset, df, context, history, snapshot_id, started, ids):
+    try:
+        config = load_config()
+        evidence = _build_data_evidence(dataset, df, snapshot_id)
+        fact_source: dict[str, str] = {"datasetId": dataset.id}
+        if snapshot_id:
+            fact_source["snapshotId"] = snapshot_id
+        agent_result: dict[str, Any] | None = None
+        for event in run_agent_stream(request.question, df, context, history, trace_ids=ids):
+            if event["type"] == "done":
+                agent_result = event["result"]
+                evidence.extend(
+                    {"id": f"fact:{fact['n']}", "kind": "tool", "detail": f"[{fact['n']}] {fact['tool']}: {fact['detail']}", "source": dict(fact_source)}
+                    for fact in agent_result["facts"]
+                )
+                get_logger("nl").event(
+                    "ask_done", span="nl", mode="stream", dataset_id=request.dataset_id,
+                    question=request.question, rounds=agent_result["rounds_used"],
+                    tool_calls=agent_result["tool_call_count"], facts=len(agent_result["facts"]),
+                    elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+                )
+                yield _sse({"type": "done", "result": {
+                    **agent_result,
+                    "evidence": evidence[:20],
+                    "model": config.get("model", "unknown"),
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                }})
+            elif event["type"] == "error":
+                agent_result = {}  # terminal: a error frame was already sent
+                get_logger("nl").event("ask_failed", span="nl", mode="stream",
+                                       dataset_id=request.dataset_id, question=request.question)
+                yield _sse(event)
+            else:
+                yield _sse(event)
+        if agent_result is None:  # generator ended without done (defensive)
+            yield _sse({"type": "error", "message": "agent stream ended unexpectedly"})
+    except Exception as exc:  # noqa: BLE001 - stream must end with a terminal frame
+        yield _sse({"type": "error", "message": str(exc) or exc.__class__.__name__})
 
 
 class NLCompactRequest(BaseModel):

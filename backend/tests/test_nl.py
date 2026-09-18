@@ -361,7 +361,7 @@ def test_ask_stream_endpoint_emits_sse_frames(client, monkeypatch):
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
     # Round 1 requests a tool; round 2 answers. Distinguish via call count.
-    def fake_stream_two(messages):
+    def fake_stream_two(messages, config=None, trace_ids=None):
         fake_stream_two.calls = getattr(fake_stream_two, "calls", 0) + 1
         if fake_stream_two.calls == 1:
             yield '{"tools": [{"name": "row_count", "args": {}}'
@@ -392,7 +392,7 @@ def test_ask_stream_first_failure_yields_error_frame(client, monkeypatch):
     csv = "name,value\na,10\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
-    def boom(messages):
+    def boom(messages, config=None, trace_ids=None):
         raise RuntimeError("no llm")
         yield  # pragma: no cover
 
@@ -456,7 +456,7 @@ def test_transform_stream_invalid_output_yields_error(client, monkeypatch):
     import backend.api.nl as nl_module
 
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
-    monkeypatch.setattr(nl_module, "chat_stream", lambda messages: iter(["I cannot help with that"]))
+    monkeypatch.setattr(nl_module, "chat_stream", lambda messages, **kw: iter(["I cannot help with that"]))
     with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "x"}) as response:
         body = "".join(chunk for chunk in response.iter_text())
     frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]

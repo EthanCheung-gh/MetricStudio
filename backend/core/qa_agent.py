@@ -21,7 +21,7 @@ from typing import Any
 
 from backend.core.agent_trace import trace_event
 from backend.core.llm import chat, chat_stream
-from backend.core.logging_setup import get_logger
+from backend.core.logging_setup import get_logger, round_var
 from backend.core.qa_tools import TOOLS_DESC, run as run_tool
 
 _log = get_logger("qa_agent")
@@ -143,6 +143,7 @@ def run_agent(
     for round_index in range(1, MAX_ROUNDS + 1):
         rounds_used = round_index
         is_final_round = round_index == MAX_ROUNDS
+        round_var.set(round_index)
         trace_event("round_start", span="qa_agent", round=round_index, final=is_final_round)
         try:
             reply = chat(messages)
@@ -364,6 +365,7 @@ def run_agent_stream(
     df: Any,
     context: str,
     history: list[dict[str, str]] | None = None,
+    trace_ids: dict[str, Any] | None = None,
 ) -> Any:
     """Streaming variant of :func:`run_agent`; yields event dicts.
 
@@ -378,7 +380,17 @@ def run_agent_stream(
     The degradation ladder mirrors run_agent: mid-loop chat failures degrade
     to the best facts gathered so far; only a failure on the very first call
     yields an error event.
+
+    trace_ids: explicit correlation ids (session_id/turn_id). Sync generators
+    are iterated through anyio's threadpool where ContextVar writes do not
+    survive across next() calls, so the caller passes ids explicitly instead
+    of relying on ambient context.
     """
+    base_ids = dict(trace_ids or {})
+
+    def emit(event: str, span: str = "qa_agent", **fields: Any) -> None:
+        trace_event(event, span=span, **base_ids, **fields)
+
     messages: list[dict[str, str]] = [
         {"role": "system", "content": _SYSTEM_TEMPLATE.format(
             context=context, tools_desc=TOOLS_DESC, max_calls=MAX_CALLS_PER_ROUND,
@@ -390,36 +402,37 @@ def run_agent_stream(
     facts: list[dict[str, Any]] = []
     rounds_used = 0
     tool_call_count = 0
-    trace_event("agent_start", span="qa_agent", mode="stream", question=question)
+    emit("agent_start", mode="stream", question=question)
 
     for round_index in range(1, MAX_ROUNDS + 1):
         rounds_used = round_index
         is_final_round = round_index == MAX_ROUNDS
         yield {"type": "round_start", "round": round_index}
-        trace_event("round_start", span="qa_agent", round=round_index, final=is_final_round)
+        round_var.set(round_index)
+        emit("round_start", round=round_index, final=is_final_round)
         extractor = _AnswerExtractor()
         chunks: list[str] = []
         try:
-            for delta in chat_stream(messages):
+            for delta in chat_stream(messages, trace_ids={**base_ids, "round": round_index} if base_ids else None):
                 chunks.append(delta)
                 text = extractor.feed(delta)
                 if text:
                     yield {"type": "answer_delta", "text": text}
         except Exception as exc:
             if round_index == 1:
-                trace_event("agent_error", span="qa_agent", round=round_index, error=str(exc))
+                emit("agent_error", round=round_index, error=str(exc))
                 yield {"type": "error", "message": str(exc) or exc.__class__.__name__}
                 return
             answer = extractor.decoded if extractor.emitted and extractor.decoded.strip() else _fallback_from_facts(facts)
             if not extractor.emitted and answer:
                 yield {"type": "answer_delta", "text": answer}
-            trace_event("agent_degraded", span="qa_agent", round=round_index, reason="chat_failed", facts=len(facts))
+            emit("agent_degraded", round=round_index, reason="chat_failed", facts=len(facts))
             yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
             return
         full_text = "".join(chunks)
         parsed = _parse_reply(full_text)
-        trace_event("llm_decision", span="qa_agent", round=round_index, kind=parsed["kind"],
-                    tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
+        emit("llm_decision", round=round_index, kind=parsed["kind"],
+             tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
 
         if parsed["kind"] == "tools" and not is_final_round:
             calls = [call for call in parsed["tools"] if isinstance(call, dict)][:MAX_CALLS_PER_ROUND]
@@ -435,9 +448,9 @@ def run_agent_stream(
                     result = run_tool(df, name, args)
                     facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
                     status = "ok" if result["ok"] else "error"
-                    trace_event("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
-                                tool=name, args=args, ok=bool(result["ok"]),
-                                elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
+                    emit("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
+                         tool=name, args=args, ok=bool(result["ok"]),
+                         elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
                     result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
                     yield {"type": "tool_result", "round": round_index, "n": facts[-1]["n"], "tool": name,
                            "ok": bool(result["ok"]), "detail": result["detail"]}
@@ -454,8 +467,8 @@ def run_agent_stream(
             if not extractor.emitted and answer:
                 # clarify-only answers or providers that ignore streaming.
                 yield {"type": "answer_delta", "text": answer}
-            trace_event("agent_done", span="qa_agent", round=round_index,
-                        rounds=rounds_used, tool_calls=tool_call_count, facts=len(facts))
+            emit("agent_done", round=round_index, rounds=rounds_used,
+                 tool_calls=tool_call_count, facts=len(facts))
             yield {"type": "done", "result": _final_result(
                 answer, facts, rounds_used, tool_call_count,
                 followups=parsed["followups"], clarify=parsed["clarify"],
@@ -472,8 +485,8 @@ def run_agent_stream(
             fallback_text = _fallback_from_facts(facts)
         if fallback_text and not extractor.emitted:
             yield {"type": "answer_delta", "text": fallback_text}
-        trace_event("agent_done", span="qa_agent", round=round_index, degraded=True,
-                    reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
+        emit("agent_done", round=round_index, degraded=True,
+             reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
         yield {"type": "done", "result": _final_result(
             fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
             facts, rounds_used, tool_call_count,

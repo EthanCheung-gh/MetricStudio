@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import shutil
 import sys
@@ -343,6 +344,7 @@ def _llm_telemetry(
     ok: bool,
     error: str | None,
     stream: bool = False,
+    trace_ids: dict[str, Any] | None = None,
 ) -> None:
     """v1.8.0: metadata+preview to app.jsonl, full bodies to agent-trace.jsonl."""
     try:
@@ -351,8 +353,10 @@ def _llm_telemetry(
         elapsed_ms = (time.monotonic() - started) * 1000
         host = urlsplit(cfg.get("base_url", "")).netloc or "unknown"
         model = cfg.get("model", "")
+        empty_reply = ok and not (reply or "").strip()
         get_logger("llm").event(
-            "llm_call_error" if not ok else "llm_call",
+            "llm_call_empty_reply" if empty_reply else ("llm_call_error" if not ok else "llm_call"),
+            level=logging.WARNING if empty_reply else logging.INFO,
             span=span,
             provider_host=host,
             model=model,
@@ -369,6 +373,7 @@ def _llm_telemetry(
         trace_llm_call(
             span=span, messages=messages, reply=reply, model=model,
             elapsed_ms=elapsed_ms, ok=ok, error=error, stream=stream,
+            **(trace_ids or {}),
         )
     except Exception:
         pass
@@ -402,11 +407,18 @@ def iter_sse_deltas(lines: Any) -> Any:
             yield content
 
 
-def chat_stream(messages: list[dict[str, str]], config: dict[str, str] | None = None) -> Any:
+def chat_stream(
+    messages: list[dict[str, str]],
+    config: dict[str, str] | None = None,
+    trace_ids: dict[str, Any] | None = None,
+) -> Any:
     """Streaming variant of :func:`chat`; yields text deltas as they arrive.
 
     Raises the same way as chat() when the provider is unreachable. The
     returned iterator must be fully consumed (or closed) by the caller.
+    trace_ids: explicit correlation ids for the agent-trace sink — required
+    when called from sync generators whose ContextVar writes don't persist
+    across threadpool iterations.
     """
     cfg = config or load_config()
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
@@ -428,7 +440,8 @@ def chat_stream(messages: list[dict[str, str]], config: dict[str, str] | None = 
     except Exception as exc:
         stream.__exit__(*sys.exc_info())
         _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages, reply=None,
-                       started=started, ok=False, error=str(exc) or exc.__class__.__name__, stream=True)
+                       started=started, ok=False, error=str(exc) or exc.__class__.__name__,
+                       stream=True, trace_ids=trace_ids)
         raise
 
     def generator() -> Any:
@@ -440,7 +453,8 @@ def chat_stream(messages: list[dict[str, str]], config: dict[str, str] | None = 
         except Exception as exc:
             _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
                            reply="".join(chunks) or None, started=started, ok=False,
-                           error=str(exc) or exc.__class__.__name__, stream=True)
+                           error=str(exc) or exc.__class__.__name__, stream=True,
+                           trace_ids=trace_ids)
             raise
         finally:
             stream.__exit__(None, None, None)
@@ -448,6 +462,6 @@ def chat_stream(messages: list[dict[str, str]], config: dict[str, str] | None = 
             # closed early by a disconnect) — reply is what was streamed.
             _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
                            reply="".join(chunks) or None, started=started, ok=True,
-                           error=None, stream=True)
+                           error=None, stream=True, trace_ids=trace_ids)
 
     return generator()

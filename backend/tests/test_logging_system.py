@@ -75,6 +75,19 @@ def test_trace_llm_call_records_full_bodies(log_env):
     assert "完整的问题" not in app_text
 
 
+def test_trace_llm_call_accepts_explicit_ids(log_env):
+    """Explicit ids (sync-generator call sites) land in the trace line."""
+    agent_trace.trace_llm_call(
+        span="chat_stream", messages=[{"role": "user", "content": "q"}],
+        reply="a", model="m", elapsed_ms=1, ok=True,
+        session_id="s1", turn_id="t1", round=2,
+    )
+    line = _read_jsonl(log_env / "agent-trace.jsonl")[-1]
+    assert line["session_id"] == "s1"
+    assert line["turn_id"] == "t1"
+    assert line["round"] == 2
+
+
 def test_tombstone_and_purge(log_env):
     agent_trace.trace_event("llm_call", span="chat", reply="body")
     agent_trace.tombstone_session("sess-1")
@@ -114,14 +127,20 @@ def test_agent_stream_writes_traceable_chain(log_env, monkeypatch):
         '{"tools": [{"name": "row_count", "args": {}}]}',
         '{"answer": "共 [1] 行", "followups": [], "clarify": null}',
     ])
+    seen_llm_trace_ids: list[dict | None] = []
 
-    def fake_chat_stream(messages, config=None):
+    def fake_chat_stream(messages, config=None, trace_ids=None):
+        seen_llm_trace_ids.append(trace_ids)
         yield next(calls)
 
     monkeypatch.setattr(qa_agent, "chat_stream", fake_chat_stream)
     df = pd.DataFrame({"a": [1, 2, 3]})
-    events = list(qa_agent.run_agent_stream("有多少行？", df, "ctx", []))
+    events = list(qa_agent.run_agent_stream(
+        "有多少行？", df, "ctx", [],
+        trace_ids={"session_id": "sess-x", "turn_id": "turn-x"},
+    ))
     assert events[-1]["type"] == "done"
+    assert seen_llm_trace_ids[0] == {"session_id": "sess-x", "turn_id": "turn-x", "round": 1}
 
     lines = _read_jsonl(log_env / "agent-trace.jsonl")
     kinds = [line["event"] for line in lines]
@@ -130,6 +149,12 @@ def test_agent_stream_writes_traceable_chain(log_env, monkeypatch):
     assert "llm_decision" in kinds
     assert any(line["event"] == "tool_call" and line["tool"] == "row_count" for line in lines)
     assert kinds.count("agent_done") == 1
+    # Every trace line carries the explicit ids (ContextVar-independent).
+    for line in lines:
+        assert line["session_id"] == "sess-x"
+        assert line["turn_id"] == "turn-x"
+    # The mocked chat_stream bypasses real LLM telemetry; the explicit ids
+    # handed to chat_stream are asserted above via seen_llm_trace_ids.
 
 
 def test_llm_chat_telemetry_split(log_env, monkeypatch):
