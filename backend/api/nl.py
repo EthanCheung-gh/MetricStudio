@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import time
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -26,12 +29,27 @@ from backend.core.llm import (
     save_config,
     update_profile,
 )
+from backend.core.logging_setup import get_logger, session_id_var, turn_id_var
 from backend.core.privacy import prepare_for_llm, sensitive_columns
 from backend.core.qa_agent import run_agent, run_agent_stream
 from backend.core.session import session
 from backend.models.chart import FilterSpec
 
 router = APIRouter(prefix="/api/v1/nl", tags=["nl"])
+
+
+@contextmanager
+def _qa_turn_context(request):
+    """Pin QA correlation ids (v1.8.0) so every agent/llm/trace log line in
+    this request carries session_id/turn_id; trace_id comes from the HTTP
+    middleware (SPA-generated) via its own ContextVar."""
+    session_token = session_id_var.set(request.session_id)
+    turn_token = turn_id_var.set(request.turn_id or uuid.uuid4().hex[:12])
+    try:
+        yield
+    finally:
+        session_id_var.reset(session_token)
+        turn_id_var.reset(turn_token)
 
 
 def _sse(payload: dict) -> str:
@@ -77,6 +95,10 @@ class NLAskRequest(BaseModel):
     history: list[NLAskTurn] = Field(default_factory=list)
     snapshot_id: str | None = None
     filters: list[FilterSpec] = Field(default_factory=list)
+    # v1.8.0: optional correlation ids — the SPA sends the QA session id and
+    # a per-turn turn id so agent-trace lines join up with the UI session.
+    session_id: str | None = None
+    turn_id: str | None = None
 
 
 class LLMConfig(BaseModel):
@@ -459,19 +481,28 @@ def nl_ask(request: NLAskRequest):
     """Sync endpoint: the agent loop makes blocking LLM calls (up to 3
     rounds x 60s). A sync def keeps them on FastAPI's threadpool so the
     event loop (health checks, other LAN clients) stays responsive."""
-    try:
-        dataset = session.get(request.dataset_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    df = _ask_dataframe(dataset, request)
-    context = _build_data_context(dataset, df, request.question)
-    history = [turn.model_dump() for turn in request.history]
-    try:
-        agent = run_agent(request.question, df, context, history)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
-    config = load_config()
-    evidence = _build_data_evidence(dataset, df, request.snapshot_id)
+    with _qa_turn_context(request):
+        try:
+            dataset = session.get(request.dataset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        df = _ask_dataframe(dataset, request)
+        context = _build_data_context(dataset, df, request.question)
+        history = [turn.model_dump() for turn in request.history]
+        started = time.monotonic()
+        try:
+            agent = run_agent(request.question, df, context, history)
+        except Exception as exc:
+            get_logger("nl").event("ask_failed", span="nl", error=str(exc), exc=exc)
+            raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
+        config = load_config()
+        get_logger("nl").event(
+            "ask_done", span="nl", dataset_id=request.dataset_id,
+            question=request.question, rounds=agent["rounds_used"],
+            tool_calls=agent["tool_call_count"], facts=len(agent["facts"]),
+            elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+        )
+        evidence = _build_data_evidence(dataset, df, request.snapshot_id)
     fact_source: dict[str, str] = {"datasetId": dataset.id}
     if request.snapshot_id:
         fact_source["snapshotId"] = request.snapshot_id
@@ -501,6 +532,11 @@ def nl_ask_stream(request: NLAskRequest):
     ``done`` carries the same payload as the sync /ask response. A sync def
     keeps the blocking LLM stream on FastAPI's threadpool.
     """
+    with _qa_turn_context(request):
+        return _ask_stream_response(request)
+
+
+def _ask_stream_response(request: NLAskRequest):
     try:
         dataset = session.get(request.dataset_id)
     except KeyError as exc:
@@ -509,6 +545,7 @@ def nl_ask_stream(request: NLAskRequest):
     context = _build_data_context(dataset, df, request.question)
     history = [turn.model_dump() for turn in request.history]
     snapshot_id = request.snapshot_id
+    started = time.monotonic()
 
     def event_stream():
         try:
@@ -525,6 +562,12 @@ def nl_ask_stream(request: NLAskRequest):
                         {"id": f"fact:{fact['n']}", "kind": "tool", "detail": f"[{fact['n']}] {fact['tool']}: {fact['detail']}", "source": dict(fact_source)}
                         for fact in agent_result["facts"]
                     )
+                    get_logger("nl").event(
+                        "ask_done", span="nl", mode="stream", dataset_id=request.dataset_id,
+                        question=request.question, rounds=agent_result["rounds_used"],
+                        tool_calls=agent_result["tool_call_count"], facts=len(agent_result["facts"]),
+                        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+                    )
                     yield _sse({"type": "done", "result": {
                         **agent_result,
                         "evidence": evidence[:20],
@@ -533,6 +576,8 @@ def nl_ask_stream(request: NLAskRequest):
                     }})
                 elif event["type"] == "error":
                     agent_result = {}  # terminal: a error frame was already sent
+                    get_logger("nl").event("ask_failed", span="nl", mode="stream",
+                                           dataset_id=request.dataset_id, question=request.question)
                     yield _sse(event)
                 else:
                     yield _sse(event)

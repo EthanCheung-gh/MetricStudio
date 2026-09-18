@@ -11,6 +11,7 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response, StreamingResponse
 
 from backend.core.privacy import sensitive_columns
+from backend.core.logging_setup import get_logger
 from backend.core.session import session
 from backend.models.data import DataFrameMeta, DataPreview, DescribeResponse, ColumnMeta
 
@@ -24,7 +25,7 @@ async def import_path(payload: dict):
     if not path.is_file():
         raise HTTPException(status_code=400, detail="Source file does not exist")
     try:
-        return [
+        datasets = [
             dataset.to_meta()
             for dataset in session.import_file(
                 path,
@@ -33,7 +34,12 @@ async def import_path(payload: dict):
                 original_path=path,
             )
         ]
+        get_logger("data").event("import_done", span="data", source="path", name=path.name,
+                                 datasets=len(datasets))
+        return datasets
     except Exception as exc:
+        get_logger("data").event("import_failed", span="data", source="path", name=path.name,
+                                 error=str(exc), exc=exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -47,8 +53,12 @@ async def import_file(file: UploadFile = File(...), merge_sheets: bool = Form(Fa
             tmp_path = tmp.name
         datasets = session.import_file(tmp_path, name=file.filename, merge_sheets=merge_sheets)
         Path(tmp_path).unlink(missing_ok=True)
+        get_logger("data").event("import_done", span="data", source="upload", name=file.filename,
+                                 datasets=len(datasets), bytes=len(contents))
         return [ds.to_meta() for ds in datasets]
     except Exception as exc:
+        get_logger("data").event("import_failed", span="data", source="upload",
+                                 name=file.filename, error=str(exc), exc=exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 

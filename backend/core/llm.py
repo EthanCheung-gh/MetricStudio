@@ -24,11 +24,14 @@ import os
 import shutil
 import sys
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+from backend.core.logging_setup import get_logger
 
 PROFILE_FIELDS = ("base_url", "model", "api_key", "provider", "data_scope")
 
@@ -315,10 +318,60 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
         "temperature": 0,
         "stream": False,
     }
-    resp = httpx.post(url, json=payload, headers=headers, timeout=60.0)
-    resp.raise_for_status()
-    data = resp.json()
-    return data["choices"][0]["message"]["content"]
+    started = time.monotonic()
+    try:
+        resp = httpx.post(url, json=payload, headers=headers, timeout=60.0)
+        resp.raise_for_status()
+        data = resp.json()
+        reply = data["choices"][0]["message"]["content"]
+    except Exception as exc:
+        _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=None,
+                       started=started, ok=False, error=str(exc) or exc.__class__.__name__)
+        raise
+    _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=reply,
+                   started=started, ok=True, error=None)
+    return reply
+
+
+def _llm_telemetry(
+    *,
+    span: str,
+    cfg: dict[str, str],
+    messages: list[dict[str, str]],
+    reply: str | None,
+    started: float,
+    ok: bool,
+    error: str | None,
+    stream: bool = False,
+) -> None:
+    """v1.8.0: metadata+preview to app.jsonl, full bodies to agent-trace.jsonl."""
+    try:
+        from urllib.parse import urlsplit
+
+        elapsed_ms = (time.monotonic() - started) * 1000
+        host = urlsplit(cfg.get("base_url", "")).netloc or "unknown"
+        model = cfg.get("model", "")
+        get_logger("llm").event(
+            "llm_call_error" if not ok else "llm_call",
+            span=span,
+            provider_host=host,
+            model=model,
+            elapsed_ms=round(elapsed_ms, 1),
+            ok=ok,
+            stream=stream,
+            prompt_messages=len(messages),
+            prompt_chars=sum(len(m.get("content", "")) for m in messages),
+            reply_chars=len(reply or ""),
+            error=error,
+        )
+        from backend.core.agent_trace import trace_llm_call
+
+        trace_llm_call(
+            span=span, messages=messages, reply=reply, model=model,
+            elapsed_ms=elapsed_ms, ok=ok, error=error, stream=stream,
+        )
+    except Exception:
+        pass
 
 
 def iter_sse_deltas(lines: Any) -> Any:
@@ -367,18 +420,34 @@ def chat_stream(messages: list[dict[str, str]], config: dict[str, str] | None = 
         "temperature": 0,
         "stream": True,
     }
+    started = time.monotonic()
     stream = httpx.stream("POST", url, json=payload, headers=headers, timeout=120.0)
     response = stream.__enter__()
     try:
         response.raise_for_status()
-    except Exception:
+    except Exception as exc:
         stream.__exit__(*sys.exc_info())
+        _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages, reply=None,
+                       started=started, ok=False, error=str(exc) or exc.__class__.__name__, stream=True)
         raise
 
     def generator() -> Any:
+        chunks: list[str] = []
         try:
-            yield from iter_sse_deltas(response.iter_lines())
+            for delta in iter_sse_deltas(response.iter_lines()):
+                chunks.append(delta)
+                yield delta
+        except Exception as exc:
+            _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
+                           reply="".join(chunks) or None, started=started, ok=False,
+                           error=str(exc) or exc.__class__.__name__, stream=True)
+            raise
         finally:
             stream.__exit__(None, None, None)
+            # Success telemetry fires after the generator is exhausted (or
+            # closed early by a disconnect) — reply is what was streamed.
+            _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
+                           reply="".join(chunks) or None, started=started, ok=True,
+                           error=None, stream=True)
 
     return generator()

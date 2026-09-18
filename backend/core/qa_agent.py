@@ -16,10 +16,15 @@ Protocol (JSON-in-prompt, provider-agnostic):
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 
+from backend.core.agent_trace import trace_event
 from backend.core.llm import chat, chat_stream
+from backend.core.logging_setup import get_logger
 from backend.core.qa_tools import TOOLS_DESC, run as run_tool
+
+_log = get_logger("qa_agent")
 
 MAX_ROUNDS = 3
 MAX_CALLS_PER_ROUND = 3
@@ -133,17 +138,21 @@ def run_agent(
     facts: list[dict[str, Any]] = []
     rounds_used = 0
     tool_call_count = 0
+    trace_event("agent_start", span="qa_agent", mode="sync", question=question)
 
     for round_index in range(1, MAX_ROUNDS + 1):
         rounds_used = round_index
         is_final_round = round_index == MAX_ROUNDS
+        trace_event("round_start", span="qa_agent", round=round_index, final=is_final_round)
         try:
             reply = chat(messages)
-        except Exception:
+        except Exception as exc:
             if round_index == 1:
+                trace_event("agent_error", span="qa_agent", round=round_index, error=str(exc))
                 raise  # No content at all: surface the 502 like the v1.1 path.
             # Mid-loop failure: degrade to the best facts collected so far.
             fallback = "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts) or "抱歉，本次未能生成有效回答，请重试。"
+            trace_event("agent_degraded", span="qa_agent", round=round_index, reason="chat_failed", facts=len(facts))
             return {
                 "answer": fallback,
                 "followups": [],
@@ -153,6 +162,8 @@ def run_agent(
                 "tool_call_count": tool_call_count,
             }
         parsed = _parse_reply(reply)
+        trace_event("llm_decision", span="qa_agent", round=round_index, kind=parsed["kind"],
+                    tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
 
         if parsed["kind"] == "tools" and not is_final_round:
             calls = [call for call in parsed["tools"] if isinstance(call, dict)][:MAX_CALLS_PER_ROUND]
@@ -162,9 +173,13 @@ def run_agent(
                     tool_call_count += 1
                     name = str(call.get("name", ""))
                     args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                    _t0 = time.monotonic()
                     result = run_tool(df, name, args)
                     facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
                     status = "ok" if result["ok"] else "error"
+                    trace_event("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
+                                tool=name, args=args, ok=bool(result["ok"]),
+                                elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
                     result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
                 messages.append({"role": "assistant", "content": reply})
                 messages.append({"role": "user", "content": "\n".join([
@@ -175,6 +190,8 @@ def run_agent(
                 continue
 
         if parsed["kind"] == "answer":
+            trace_event("agent_done", span="qa_agent", round=round_index,
+                        rounds=rounds_used, tool_calls=tool_call_count, facts=len(facts))
             return {
                 "answer": parsed["answer"],
                 "followups": parsed["followups"],
@@ -188,6 +205,8 @@ def run_agent(
         fallback_text = parsed.get("text", "").strip()
         if facts and not fallback_text:
             fallback_text = "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts)
+        trace_event("agent_done", span="qa_agent", round=round_index, degraded=True,
+                    reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
         return {
             "answer": fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
             "followups": [],
@@ -371,11 +390,13 @@ def run_agent_stream(
     facts: list[dict[str, Any]] = []
     rounds_used = 0
     tool_call_count = 0
+    trace_event("agent_start", span="qa_agent", mode="stream", question=question)
 
     for round_index in range(1, MAX_ROUNDS + 1):
         rounds_used = round_index
         is_final_round = round_index == MAX_ROUNDS
         yield {"type": "round_start", "round": round_index}
+        trace_event("round_start", span="qa_agent", round=round_index, final=is_final_round)
         extractor = _AnswerExtractor()
         chunks: list[str] = []
         try:
@@ -386,15 +407,19 @@ def run_agent_stream(
                     yield {"type": "answer_delta", "text": text}
         except Exception as exc:
             if round_index == 1:
+                trace_event("agent_error", span="qa_agent", round=round_index, error=str(exc))
                 yield {"type": "error", "message": str(exc) or exc.__class__.__name__}
                 return
             answer = extractor.decoded if extractor.emitted and extractor.decoded.strip() else _fallback_from_facts(facts)
             if not extractor.emitted and answer:
                 yield {"type": "answer_delta", "text": answer}
+            trace_event("agent_degraded", span="qa_agent", round=round_index, reason="chat_failed", facts=len(facts))
             yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
             return
         full_text = "".join(chunks)
         parsed = _parse_reply(full_text)
+        trace_event("llm_decision", span="qa_agent", round=round_index, kind=parsed["kind"],
+                    tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
 
         if parsed["kind"] == "tools" and not is_final_round:
             calls = [call for call in parsed["tools"] if isinstance(call, dict)][:MAX_CALLS_PER_ROUND]
@@ -406,9 +431,13 @@ def run_agent_stream(
                     tool_call_count += 1
                     name = str(call.get("name", ""))
                     args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                    _t0 = time.monotonic()
                     result = run_tool(df, name, args)
                     facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
                     status = "ok" if result["ok"] else "error"
+                    trace_event("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
+                                tool=name, args=args, ok=bool(result["ok"]),
+                                elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
                     result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
                     yield {"type": "tool_result", "round": round_index, "n": facts[-1]["n"], "tool": name,
                            "ok": bool(result["ok"]), "detail": result["detail"]}
@@ -425,6 +454,8 @@ def run_agent_stream(
             if not extractor.emitted and answer:
                 # clarify-only answers or providers that ignore streaming.
                 yield {"type": "answer_delta", "text": answer}
+            trace_event("agent_done", span="qa_agent", round=round_index,
+                        rounds=rounds_used, tool_calls=tool_call_count, facts=len(facts))
             yield {"type": "done", "result": _final_result(
                 answer, facts, rounds_used, tool_call_count,
                 followups=parsed["followups"], clarify=parsed["clarify"],
@@ -441,6 +472,8 @@ def run_agent_stream(
             fallback_text = _fallback_from_facts(facts)
         if fallback_text and not extractor.emitted:
             yield {"type": "answer_delta", "text": fallback_text}
+        trace_event("agent_done", span="qa_agent", round=round_index, degraded=True,
+                    reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
         yield {"type": "done", "result": _final_result(
             fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
             facts, rounds_used, tool_call_count,

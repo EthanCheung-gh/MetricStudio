@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, UploadFile, File
 
 import pandas as pd
 
+from backend.core.logging_setup import get_logger
 from backend.core.session import session
 
 router = APIRouter(prefix="/api/v1/project", tags=["project"])
@@ -89,11 +90,15 @@ async def save_project(payload: dict):
 
     try:
         datasets = _write_zip(path, payload)
+        get_logger("project").event("project_saved", span="project", path=str(path),
+                                   datasets=datasets, fallback=False)
         return {"path": str(path), "datasets": datasets}
     except (PermissionError, OSError) as exc:
         if path.is_absolute():
             # The user picked an unwritable absolute location — tell them
             # plainly instead of silently saving somewhere else.
+            get_logger("project").event("project_save_failed", span="project",
+                                        path=str(path), error=str(exc), exc=exc)
             raise HTTPException(
                 status_code=500,
                 detail=f"Cannot write to {path}: {exc}. Try a writable directory "
@@ -104,8 +109,12 @@ async def save_project(payload: dict):
         # app). Fall back to the storage root and report the real location.
         fallback = Path.home() / ".metricstudio" / "projects" / path.name
         datasets = _write_zip(fallback, payload)
+        get_logger("project").event("project_saved", span="project", path=str(fallback),
+                                    datasets=datasets, fallback=True, requested=str(path))
         return {"path": str(fallback), "datasets": datasets, "fallback": True, "requested": str(path)}
     except Exception as exc:
+        get_logger("project").event("project_save_failed", span="project",
+                                    path=str(path), error=str(exc), exc=exc)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
