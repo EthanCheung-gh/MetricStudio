@@ -45,6 +45,9 @@ export interface QATurn {
   followups?: string[]
   clarify?: QAClarify | null
   verifiedSteps?: number
+  /** v1.9.0: generation was stopped by the user; partial answer kept for
+   *  display only — excluded from history and compaction. */
+  stopped?: boolean
   /** v1.6.0: compaction turns replace runs of past dialog turns. */
   kind?: 'dialog' | 'compaction'
   summary?: string

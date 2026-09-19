@@ -404,91 +404,98 @@ def run_agent_stream(
     tool_call_count = 0
     emit("agent_start", mode="stream", question=question)
 
-    for round_index in range(1, MAX_ROUNDS + 1):
-        rounds_used = round_index
-        is_final_round = round_index == MAX_ROUNDS
-        yield {"type": "round_start", "round": round_index}
-        round_var.set(round_index)
-        emit("round_start", round=round_index, final=is_final_round)
-        extractor = _AnswerExtractor()
-        chunks: list[str] = []
-        try:
-            for delta in chat_stream(messages, trace_ids={**base_ids, "round": round_index} if base_ids else None):
-                chunks.append(delta)
-                text = extractor.feed(delta)
-                if text:
-                    yield {"type": "answer_delta", "text": text}
-        except Exception as exc:
-            if round_index == 1:
-                emit("agent_error", round=round_index, error=str(exc))
-                yield {"type": "error", "message": str(exc) or exc.__class__.__name__}
+    try:
+        for round_index in range(1, MAX_ROUNDS + 1):
+            rounds_used = round_index
+            is_final_round = round_index == MAX_ROUNDS
+            yield {"type": "round_start", "round": round_index}
+            round_var.set(round_index)
+            emit("round_start", round=round_index, final=is_final_round)
+            extractor = _AnswerExtractor()
+            chunks: list[str] = []
+            try:
+                for delta in chat_stream(messages, trace_ids={**base_ids, "round": round_index} if base_ids else None):
+                    chunks.append(delta)
+                    text = extractor.feed(delta)
+                    if text:
+                        yield {"type": "answer_delta", "text": text}
+            except Exception as exc:
+                if round_index == 1:
+                    emit("agent_error", round=round_index, error=str(exc))
+                    yield {"type": "error", "message": str(exc) or exc.__class__.__name__}
+                    return
+                answer = extractor.decoded if extractor.emitted and extractor.decoded.strip() else _fallback_from_facts(facts)
+                if not extractor.emitted and answer:
+                    yield {"type": "answer_delta", "text": answer}
+                emit("agent_degraded", round=round_index, reason="chat_failed", facts=len(facts))
+                yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
                 return
-            answer = extractor.decoded if extractor.emitted and extractor.decoded.strip() else _fallback_from_facts(facts)
-            if not extractor.emitted and answer:
-                yield {"type": "answer_delta", "text": answer}
-            emit("agent_degraded", round=round_index, reason="chat_failed", facts=len(facts))
-            yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
-            return
-        full_text = "".join(chunks)
-        parsed = _parse_reply(full_text)
-        emit("llm_decision", round=round_index, kind=parsed["kind"],
-             tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
+            full_text = "".join(chunks)
+            parsed = _parse_reply(full_text)
+            emit("llm_decision", round=round_index, kind=parsed["kind"],
+                 tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
 
-        if parsed["kind"] == "tools" and not is_final_round:
-            calls = [call for call in parsed["tools"] if isinstance(call, dict)][:MAX_CALLS_PER_ROUND]
-            if calls:
-                yield {"type": "tool_call", "round": round_index,
-                       "calls": [{"name": str(call.get("name", "")), "args": call.get("args") if isinstance(call.get("args"), dict) else {}} for call in calls]}
-                result_lines: list[str] = []
-                for call in calls:
-                    tool_call_count += 1
-                    name = str(call.get("name", ""))
-                    args = call.get("args") if isinstance(call.get("args"), dict) else {}
-                    _t0 = time.monotonic()
-                    result = run_tool(df, name, args)
-                    facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
-                    status = "ok" if result["ok"] else "error"
-                    emit("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
-                         tool=name, args=args, ok=bool(result["ok"]),
-                         elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
-                    result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
-                    yield {"type": "tool_result", "round": round_index, "n": facts[-1]["n"], "tool": name,
-                           "ok": bool(result["ok"]), "detail": result["detail"]}
-                messages.append({"role": "assistant", "content": full_text})
-                messages.append({"role": "user", "content": "\n".join([
-                    "Tool results:",
-                    *result_lines,
-                    "Continue: answer now citing facts as [n], or call more tools if still needed.",
-                ])})
-                continue
+            if parsed["kind"] == "tools" and not is_final_round:
+                calls = [call for call in parsed["tools"] if isinstance(call, dict)][:MAX_CALLS_PER_ROUND]
+                if calls:
+                    yield {"type": "tool_call", "round": round_index,
+                           "calls": [{"name": str(call.get("name", "")), "args": call.get("args") if isinstance(call.get("args"), dict) else {}} for call in calls]}
+                    result_lines: list[str] = []
+                    for call in calls:
+                        tool_call_count += 1
+                        name = str(call.get("name", ""))
+                        args = call.get("args") if isinstance(call.get("args"), dict) else {}
+                        _t0 = time.monotonic()
+                        result = run_tool(df, name, args)
+                        facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
+                        status = "ok" if result["ok"] else "error"
+                        emit("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
+                             tool=name, args=args, ok=bool(result["ok"]),
+                             elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
+                        result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
+                        yield {"type": "tool_result", "round": round_index, "n": facts[-1]["n"], "tool": name,
+                               "ok": bool(result["ok"]), "detail": result["detail"]}
+                    messages.append({"role": "assistant", "content": full_text})
+                    messages.append({"role": "user", "content": "\n".join([
+                        "Tool results:",
+                        *result_lines,
+                        "Continue: answer now citing facts as [n], or call more tools if still needed.",
+                    ])})
+                    continue
 
-        if parsed["kind"] == "answer":
-            answer = parsed["answer"]
-            if not extractor.emitted and answer:
-                # clarify-only answers or providers that ignore streaming.
-                yield {"type": "answer_delta", "text": answer}
-            emit("agent_done", round=round_index, rounds=rounds_used,
-                 tool_calls=tool_call_count, facts=len(facts))
+            if parsed["kind"] == "answer":
+                answer = parsed["answer"]
+                if not extractor.emitted and answer:
+                    # clarify-only answers or providers that ignore streaming.
+                    yield {"type": "answer_delta", "text": answer}
+                emit("agent_done", round=round_index, rounds=rounds_used,
+                     tool_calls=tool_call_count, facts=len(facts))
+                yield {"type": "done", "result": _final_result(
+                    answer, facts, rounds_used, tool_call_count,
+                    followups=parsed["followups"], clarify=parsed["clarify"],
+                )}
+                return
+
+            # Plain text, or an unactionable/late tool call: degrade gracefully.
+            fallback_text = parsed.get("text", "").strip()
+            if extractor.emitted and extractor.decoded.strip():
+                # The stream already showed the answer value; trust it over the
+                # raw text (which may be a truncated JSON wrapper).
+                fallback_text = extractor.decoded
+            elif facts and not fallback_text:
+                fallback_text = _fallback_from_facts(facts)
+            if fallback_text and not extractor.emitted:
+                yield {"type": "answer_delta", "text": fallback_text}
+            emit("agent_done", round=round_index, degraded=True,
+                 reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
             yield {"type": "done", "result": _final_result(
-                answer, facts, rounds_used, tool_call_count,
-                followups=parsed["followups"], clarify=parsed["clarify"],
+                fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
+                facts, rounds_used, tool_call_count,
             )}
             return
 
-        # Plain text, or an unactionable/late tool call: degrade gracefully.
-        fallback_text = parsed.get("text", "").strip()
-        if extractor.emitted and extractor.decoded.strip():
-            # The stream already showed the answer value; trust it over the
-            # raw text (which may be a truncated JSON wrapper).
-            fallback_text = extractor.decoded
-        elif facts and not fallback_text:
-            fallback_text = _fallback_from_facts(facts)
-        if fallback_text and not extractor.emitted:
-            yield {"type": "answer_delta", "text": fallback_text}
-        emit("agent_done", round=round_index, degraded=True,
-             reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
-        yield {"type": "done", "result": _final_result(
-            fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
-            facts, rounds_used, tool_call_count,
-        )}
-        return
+    except GeneratorExit:  # v1.9.0: client disconnected mid-stream
+        emit("agent_cancelled", round=rounds_used, facts=len(facts), tool_calls=tool_call_count)
+        _log.event("agent_cancelled", span="qa_agent", mode="stream",
+                   round=rounds_used, facts=len(facts), tool_calls=tool_call_count)
+        raise

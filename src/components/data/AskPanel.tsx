@@ -19,6 +19,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Square,
   Trash2,
   User,
   Wrench,
@@ -80,6 +81,10 @@ export function AskPanel() {
   const [loading, setLoading] = useState(false)
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null)
   const [streamState, setStreamState] = useState<StreamState | null>(null)
+  // v1.9.0 stop-generation: the in-flight request's controller plus a ref mirror
+  // of the stream state, so the abort handler can keep the partial answer.
+  const abortRef = useRef<AbortController | null>(null)
+  const streamRef = useRef<StreamState | null>(null)
   // v1.5.0 turn display: explicit visibility overrides; default = only the
   // latest turn expanded. Cleared whenever the turn list shifts.
   const [turnVisibility, setTurnVisibility] = useState<Map<number, boolean>>(new Map())
@@ -122,11 +127,15 @@ export function AskPanel() {
   const compact = async () => {
     if (!activeDataFrameId || !canCompact || compacting) return
     const endIndex = dialogIndexes[compactibleCount - 1]
-    const turnsToCompact = dialogIndexes.slice(0, compactibleCount).map((i) => {
-      const t = turns[i]
-      if (t.kind === 'compaction') return { question: '（此前对话摘要）', answer: t.summary ?? '' }
-      return { question: t.question, answer: t.answer }
-    })
+    const turnsToCompact = dialogIndexes
+      .slice(0, compactibleCount)
+      .map((i) => turns[i])
+      // v1.9.0: stopped turns hold partial answers — never summarize them.
+      .filter((t) => !(t.kind !== 'compaction' && t.stopped))
+      .map((t) => {
+        if (t.kind === 'compaction') return { question: '（此前对话摘要）', answer: t.summary ?? '' }
+        return { question: t.question, answer: t.answer }
+      })
     setCompacting(true)
     try {
       const res = await api.nlCompact(activeDataFrameId, turnsToCompact)
@@ -140,41 +149,59 @@ export function AskPanel() {
   }
 
   const toHistory = (list: typeof turns) =>
-    list.map((t) => ({
-      question: t.kind === 'compaction' ? '' : t.question,
-      answer: t.kind === 'compaction' ? (t.summary ?? '') : t.answer,
-      kind: (t.kind ?? 'dialog') as 'dialog' | 'compaction',
-      summary: t.summary,
-      compacted_range: t.compactedRange,
-    }))
+    list
+      // Stopped turns keep a partial answer — exclude them from LLM context.
+      .filter((t) => !t.stopped)
+      .map((t) => ({
+        question: t.kind === 'compaction' ? '' : t.question,
+        answer: t.kind === 'compaction' ? (t.summary ?? '') : t.answer,
+        kind: (t.kind ?? 'dialog') as 'dialog' | 'compaction',
+        summary: t.summary,
+        compacted_range: t.compactedRange,
+      }))
+
+  const isAbortError = (err: unknown) =>
+    err instanceof DOMException
+      ? err.name === 'AbortError'
+      : err instanceof Error && err.name === 'AbortError'
 
   const applyStreamEvent = (event: NLAskStreamEvent) => {
     setStreamState((prev) => {
       if (!prev) return prev
-      if (event.type === 'round_start') return { ...prev, round: event.round ?? prev.round + 1 }
-      if (event.type === 'tool_call') {
+      let next: StreamState
+      if (event.type === 'round_start') next = { ...prev, round: event.round ?? prev.round + 1 }
+      else if (event.type === 'tool_call') {
         const incoming = (event.calls ?? []).map((call) => ({ name: call.name, status: 'running' as const }))
-        return { ...prev, tools: [...prev.tools, ...incoming] }
-      }
-      if (event.type === 'tool_result') {
+        next = { ...prev, tools: [...prev.tools, ...incoming] }
+      } else if (event.type === 'tool_result') {
         const tools = [...prev.tools]
         const index = tools.findIndex((tool) => tool.status === 'running')
         if (index >= 0) {
           tools[index] = { name: event.tool ?? tools[index].name, status: event.ok ? 'ok' : 'error', detail: event.detail }
         }
-        return { ...prev, tools }
-      }
-      if (event.type === 'answer_delta') return { ...prev, answer: prev.answer + (event.text ?? '') }
-      return prev
+        next = { ...prev, tools }
+      } else if (event.type === 'answer_delta') next = { ...prev, answer: prev.answer + (event.text ?? '') }
+      else next = prev
+      streamRef.current = next
+      return next
     })
+  }
+
+  const stopStream = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
   }
 
   const ask = async (value = question) => {
     if (!activeDataFrameId || !activeConversationId || !value.trim() || loading || regeneratingIndex !== null) return
     const currentQuestion = value.trim()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setQuestion('')
-    setStreamState({ question: currentQuestion, answer: '', tools: [], round: 0 })
+    const initial: StreamState = { question: currentQuestion, answer: '', tools: [], round: 0 }
+    streamRef.current = initial
+    setStreamState(initial)
     try {
       const response = await api.nlAskStream(
         activeDataFrameId,
@@ -182,6 +209,7 @@ export function AskPanel() {
         toHistory(turns),
         { snapshotId: boundSnapshotId, filters },
         applyStreamEvent,
+        controller.signal,
       )
       addTurn({
         question: currentQuestion,
@@ -195,19 +223,37 @@ export function AskPanel() {
         verifiedSteps: response.tool_call_count ?? 0,
       })
     } catch (err) {
-      setQuestion(currentQuestion)
-      addNotification('error', err instanceof Error ? err.message : 'Ask failed')
+      if (isAbortError(err)) {
+        // Keep whatever arrived before the stop; marked stopped so it stays
+        // out of history/compaction and shows a badge.
+        addTurn({
+          question: currentQuestion,
+          answer: streamRef.current?.answer ?? '',
+          evidence: [],
+          context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters },
+          stopped: true,
+        })
+      } else {
+        setQuestion(currentQuestion)
+        addNotification('error', err instanceof Error ? err.message : 'Ask failed')
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null
       setLoading(false)
       setStreamState(null)
+      streamRef.current = null
     }
   }
 
   const regenerate = async (index: number) => {
     if (!activeDataFrameId || !activeConversationId || loading || regeneratingIndex !== null) return
+    const controller = new AbortController()
+    abortRef.current = controller
     setRegeneratingIndex(index)
     const turn = turns[index]
-    setStreamState({ question: turn.question, answer: '', tools: [], round: 0 })
+    const initial: StreamState = { question: turn.question, answer: '', tools: [], round: 0 }
+    streamRef.current = initial
+    setStreamState(initial)
     try {
       const requestDatasetId = turn.context?.datasetId ?? activeDataFrameId
       const context = { snapshotId: turn.context?.snapshotId, filters: turn.context?.filters ?? [] }
@@ -217,6 +263,7 @@ export function AskPanel() {
         toHistory(turns.slice(0, index)),
         context,
         applyStreamEvent,
+        controller.signal,
       )
       replaceTurn(index, {
         question: turn.question,
@@ -230,10 +277,15 @@ export function AskPanel() {
         verifiedSteps: response.tool_call_count ?? 0,
       })
     } catch (err) {
-      addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')
+      // Aborted regenerate: keep the previous answer untouched.
+      if (!isAbortError(err)) {
+        addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null
       setRegeneratingIndex(null)
       setStreamState(null)
+      streamRef.current = null
     }
   }
 
@@ -536,6 +588,11 @@ export function AskPanel() {
                         {t('ai.verified', { count: turn.verifiedSteps })}
                       </div>
                     )}
+                    {turn.stopped && (
+                      <div className="mb-1 inline-flex items-center rounded-full bg-default/60 px-1.5 py-0.5 text-[9px] text-muted">
+                        {t('ai.stopped')}
+                      </div>
+                    )}
                     {turn.clarify && (
                       <div className="mb-1.5 rounded border border-warning/40 bg-warning/10 p-1.5">
                         <div className="text-[11px] font-medium text-foreground">{turn.clarify.question}</div>
@@ -685,6 +742,19 @@ export function AskPanel() {
         <Button size="sm" variant="light" onPress={clearHistory} isDisabled={turns.length === 0}>{t('ai.clearHistory')}</Button>
         <div className="flex flex-1 gap-1 pl-1">
           <Input size="sm" placeholder={t('ai.askPlaceholder')} value={question} onValueChange={setQuestion} onKeyDown={(e) => { if (e.key === 'Enter') ask() }} />
+          {(loading || regeneratingIndex !== null) && (
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              className="text-danger"
+              onPress={stopStream}
+              aria-label={t('ai.stop')}
+              title={t('ai.stop')}
+            >
+              <Square className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button isIconOnly size="sm" color="primary" isLoading={loading} onPress={() => ask()} aria-label={t('ai.ask')}>
             <Send className="h-3.5 w-3.5" />
           </Button>

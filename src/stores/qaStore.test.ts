@@ -76,6 +76,17 @@ describe('QA conversation store', () => {
     expect(turns[1].question).toBe('Q6')
   })
 
+  it('keeps a stopped turn flagged so it can be excluded from context', () => {
+    useQAStore.getState().setDataset('dataset-1')
+    useQAStore.getState().addTurn({ question: 'Q1', answer: '部分回答', evidence: [], stopped: true })
+    useQAStore.getState().addTurn({ question: 'Q2', answer: 'A2', evidence: [] })
+
+    const activeId = useQAStore.getState().activeConversationId
+    const turns = useQAStore.getState().conversations.find((item) => item.id === activeId)?.turns ?? []
+    expect(turns[0].stopped).toBe(true)
+    expect(turns[1].stopped).toBeUndefined()
+  })
+
   it('clears the selected snapshot when switching datasets', () => {
     useQAStore.getState().setDataset('dataset-1')
     useQAStore.getState().setSnapshotId('snapshot-1')

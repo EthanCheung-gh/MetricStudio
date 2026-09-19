@@ -170,6 +170,8 @@ export default {
   'ai.emptyHistory': '还没有问答，向当前数据集提一个问题吧。',
   'ai.verified': '已查证 {{count}} 步',
   'ai.thinking': '正在思考…',
+  'ai.stop': '停止生成',
+  'ai.stopped': '已停止',
   'ai.turnCount': '{{count}} 轮',
   'ai.noDataset': '请先在左侧选择一个数据集，再开始问答。',
   'ai.collapseTurn': '收起此轮',

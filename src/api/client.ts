@@ -230,6 +230,9 @@ async function consumeSseStream(
       signal,
     })
   } catch (error) {
+    // User aborts must surface as-is so callers can distinguish "stopped by
+    // the user" from a real connection failure (v1.9.0 stop-generation).
+    if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error
     throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
   }
   if (!response.ok || !response.body) {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Wand2, Wrench, X } from 'lucide-react'
+import { FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Square, Wand2, Wrench, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api, type NLAskStreamEvent, type NLTransformStreamEvent } from '@/api/client'
 import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
@@ -59,6 +59,8 @@ export function AICommandBar() {
   const [process, setProcess] = useState<ProcessCard | null>(null)
   const [loading, setLoading] = useState(false)
   const [applying, setApplying] = useState(false)
+  // v1.9.0 stop-generation: one controller per in-flight ask/query stream.
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (datasetId !== activeDataFrameId) setDataset(activeDataFrameId)
@@ -69,12 +71,25 @@ export function AICommandBar() {
   const filters = dashboardFiltersForDataset(activeDashboard?.filters ?? [], activeDataFrameId ?? '')
   const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
 
+  const isAbortError = (err: unknown) =>
+    err instanceof DOMException
+      ? err.name === 'AbortError'
+      : err instanceof Error && err.name === 'AbortError'
+
+  const stopStream = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+  }
+
   const submit = async () => {
     if (!activeDataFrameId || !input.trim() || loading) return
     const runMode = mode
     const value = input.trim()
+    const controller = new AbortController()
+    abortRef.current = controller
     setLoading(true)
     setInput('')
+    let partialAnswer = '' // captured outside state: readable in the abort handler
     setProcess({ mode: runMode, question: value, phase: 'thinking', tools: [], ops: [], answer: '', operations: null })
     try {
       if (runMode === 'query') {
@@ -85,22 +100,26 @@ export function AICommandBar() {
             if (event.type === 'op' && event.op) return { ...prev, phase: 'working', ops: [...prev.ops, event.op] }
             return prev
           })
-        })
+        }, controller.signal)
         setProcess((prev) => (prev ? { ...prev, phase: 'done', operations } : prev))
       } else {
         const currentQuestion = value
         const res = await api.nlAskStream(
           activeDataFrameId,
           currentQuestion,
-          turns.map((t) => ({
-            question: t.question,
-            answer: t.answer,
-            kind: t.kind ?? 'dialog',
-            summary: t.summary,
-            compacted_range: t.compactedRange,
-          })),
+          turns
+            // Stopped turns keep partial answers — exclude them from context.
+            .filter((t) => !t.stopped)
+            .map((t) => ({
+              question: t.question,
+              answer: t.answer,
+              kind: t.kind ?? 'dialog',
+              summary: t.summary,
+              compacted_range: t.compactedRange,
+            })),
           { snapshotId: boundSnapshotId, filters },
           (event: NLAskStreamEvent) => {
+            if (event.type === 'answer_delta') partialAnswer += event.text ?? ''
             setProcess((prev) => {
               if (!prev) return prev
               if (event.type === 'round_start') return { ...prev, phase: 'working' }
@@ -120,6 +139,7 @@ export function AICommandBar() {
               return prev
             })
           },
+          controller.signal,
         )
         addTurn({
           question: currentQuestion,
@@ -135,9 +155,24 @@ export function AICommandBar() {
         setProcess((prev) => (prev ? { ...prev, phase: 'done', answer: res.answer } : prev))
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : t('ai.requestFailed')
-      setProcess((prev) => (prev ? { ...prev, phase: 'error', error: message } : prev))
+      if (isAbortError(err)) {
+        // Ask mode: keep the partial answer as a stopped turn; query mode: just dismiss.
+        if (runMode === 'ask' && partialAnswer) {
+          addTurn({
+            question: value,
+            answer: partialAnswer,
+            evidence: [],
+            context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters },
+            stopped: true,
+          })
+        }
+        setProcess(null)
+      } else {
+        const message = err instanceof Error ? err.message : t('ai.requestFailed')
+        setProcess((prev) => (prev ? { ...prev, phase: 'error', error: message } : prev))
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null
       setLoading(false)
     }
   }
@@ -330,17 +365,30 @@ export function AICommandBar() {
           placeholder={placeholder}
           className="min-w-0 flex-1 rounded-full bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted"
         />
-        <Button
-          isIconOnly
-          size="sm"
-          color="primary"
-          isLoading={loading}
-          onPress={submit}
-          aria-label={t('ai.send')}
-          className="rounded-full"
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+        {loading ? (
+          <Button
+            isIconOnly
+            size="sm"
+            variant="light"
+            onPress={stopStream}
+            aria-label={t('ai.stop')}
+            title={t('ai.stop')}
+            className="rounded-full text-danger"
+          >
+            <Square className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            isIconOnly
+            size="sm"
+            color="primary"
+            onPress={submit}
+            aria-label={t('ai.send')}
+            className="rounded-full"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   )

@@ -170,6 +170,8 @@ export default {
   'ai.emptyHistory': 'No questions yet. Ask something about the current dataset.',
   'ai.verified': 'Verified in {{count}} steps',
   'ai.thinking': 'Thinking…',
+  'ai.stop': 'Stop',
+  'ai.stopped': 'Stopped',
   'ai.turnCount': '{{count}} turns',
   'ai.noDataset': 'Select a dataset on the left to start asking.',
   'ai.collapseTurn': 'Collapse this turn',

@@ -342,6 +342,33 @@ def test_stream_clarify_only_answer(sales_df, monkeypatch):
     assert deltas == "" and done["clarify"]["question"] == "哪个字段？"
 
 
+def test_stream_close_records_agent_cancelled(sales_df, monkeypatch):
+    """v1.9.0: closing the stream early (user stop) records agent_cancelled."""
+    seen: list[tuple[str, dict]] = []
+    monkeypatch.setattr(qa_agent, "trace_event", lambda event, **kw: seen.append((event, kw)))
+
+    def partial(messages, config=None, trace_ids=None):
+        yield '{"answer": "部分回答'
+
+    monkeypatch.setattr(qa_agent, "chat_stream", partial)
+    gen = qa_agent.run_agent_stream("q", sales_df, "context")
+    next(gen)  # round_start
+    next(gen)  # answer_delta — suspended mid-answer
+    assert not any(event == "agent_cancelled" for event, _ in seen)
+    gen.close()  # what a client disconnect does to the SSE generator
+    cancelled = [kw for event, kw in seen if event == "agent_cancelled"]
+    assert len(cancelled) == 1
+    assert cancelled[0]["round"] == 1 and cancelled[0]["facts"] == 0 and cancelled[0]["tool_calls"] == 0
+
+
+def test_stream_completion_does_not_record_cancelled(sales_df, monkeypatch):
+    seen: list[tuple[str, dict]] = []
+    monkeypatch.setattr(qa_agent, "trace_event", lambda event, **kw: seen.append((event, kw)))
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, config=None, trace_ids=None: iter(["共 6 行。"]))
+    list(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert not any(event == "agent_cancelled" for event, _ in seen)
+
+
 # --- adaptive context (D) --------------------------------------------------------
 
 def test_context_categorical_and_datetime_lines():
