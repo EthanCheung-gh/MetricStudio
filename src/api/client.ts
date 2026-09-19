@@ -47,6 +47,7 @@ export interface LLMProfileView {
   model: string;
   provider: LLMProviderKind;
   data_scope: LLMDataScope;
+  max_tokens?: string;
   has_api_key: boolean;
   api_key_hint: string;
 }

@@ -16,6 +16,7 @@ Protocol (JSON-in-prompt, provider-agnostic):
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any
 
@@ -32,6 +33,26 @@ MAX_FOLLOWUPS = 3
 MAX_CLARIFY_OPTIONS = 4
 HISTORY_ROUNDS = 8
 HISTORY_SUMMARY_LIMIT = 2000
+DEFAULT_BUDGET_SECONDS = 240.0
+
+
+def _budget_seconds() -> float:
+    """Wall-clock budget for one full agent run (v1.9.0).
+
+    Checked before each round after the first; when exceeded the run degrades
+    to the facts gathered so far instead of starting another LLM round.
+    """
+    raw = os.environ.get("METRICSTUDIO_QA_BUDGET_S", "").strip()
+    if not raw:
+        return DEFAULT_BUDGET_SECONDS
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return DEFAULT_BUDGET_SECONDS
+
+
+def _facts_fallback(facts: list[dict[str, Any]]) -> str:
+    return "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts)
 
 _SYSTEM_TEMPLATE = """You are MetricStudio's data-analysis assistant. You answer questions about ONE dataset using the data context below and, when needed, deterministic tools computed on the real data.
 
@@ -139,8 +160,21 @@ def run_agent(
     rounds_used = 0
     tool_call_count = 0
     trace_event("agent_start", span="qa_agent", mode="sync", question=question)
+    budget = _budget_seconds()
+    started = time.monotonic()
 
     for round_index in range(1, MAX_ROUNDS + 1):
+        if round_index > 1 and time.monotonic() - started >= budget:
+            trace_event("agent_budget_exhausted", span="qa_agent", round=round_index, facts=len(facts))
+            _log.event("agent_budget_exhausted", span="qa_agent", mode="sync", round=round_index, facts=len(facts))
+            return {
+                "answer": _facts_fallback(facts) or "抱歉，本次未能生成有效回答，请重试。",
+                "followups": [],
+                "clarify": None,
+                "facts": facts,
+                "rounds_used": rounds_used,
+                "tool_call_count": tool_call_count,
+            }
         rounds_used = round_index
         is_final_round = round_index == MAX_ROUNDS
         round_var.set(round_index)
@@ -405,7 +439,19 @@ def run_agent_stream(
     emit("agent_start", mode="stream", question=question)
 
     try:
+        budget = _budget_seconds()
+        started = time.monotonic()
         for round_index in range(1, MAX_ROUNDS + 1):
+            if round_index > 1 and time.monotonic() - started >= budget:
+                emit("agent_budget_exhausted", round=round_index, facts=len(facts), tool_calls=tool_call_count)
+                _log.event("agent_budget_exhausted", span="qa_agent", mode="stream",
+                           round=round_index, facts=len(facts), tool_calls=tool_call_count)
+                answer = _facts_fallback(facts)
+                if answer:
+                    yield {"type": "answer_delta", "text": answer}
+                yield {"type": "done", "result": _final_result(
+                    answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
+                return
             rounds_used = round_index
             is_final_round = round_index == MAX_ROUNDS
             yield {"type": "round_start", "round": round_index}

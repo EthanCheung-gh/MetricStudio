@@ -20,9 +20,10 @@ interface EditableProfileForm {
   api_key: string
   provider: LLMProviderKind
   data_scope: LLMDataScope
+  max_tokens: string
 }
 
-const EMPTY_FORM: EditableProfileForm = { name: '', base_url: '', model: '', api_key: '', provider: 'local', data_scope: 'all' }
+const EMPTY_FORM: EditableProfileForm = { name: '', base_url: '', model: '', api_key: '', provider: 'local', data_scope: 'all', max_tokens: '0' }
 
 function formFromProfile(profile: LLMProfileView): EditableProfileForm {
   return {
@@ -32,6 +33,7 @@ function formFromProfile(profile: LLMProfileView): EditableProfileForm {
     api_key: '',
     provider: profile.provider,
     data_scope: profile.data_scope,
+    max_tokens: profile.max_tokens ?? '0',
   }
 }
 
@@ -132,6 +134,7 @@ export function SettingsDialog() {
         api_key: form.api_key.trim(),
         provider: form.provider,
         data_scope: form.data_scope,
+        max_tokens: form.max_tokens.trim() || '0',
         clear_api_key: clearApiKey,
       }
       if (isNew) {
@@ -392,6 +395,16 @@ export function SettingsDialog() {
                 setForm((current) => ({ ...current, api_key }))
               }}
               isDisabled={loading || clearApiKey}
+            />
+            <Input
+              size="sm"
+              label={t('settings.maxTokens')}
+              placeholder="0"
+              inputMode="numeric"
+              value={form.max_tokens}
+              onValueChange={(max_tokens) => setForm((current) => ({ ...current, max_tokens: max_tokens.replace(/[^0-9]/g, '') }))}
+              description={t('settings.maxTokensHint')}
+              isDisabled={loading}
             />
             {!isNew && selectedProfile?.has_api_key && (
               <Checkbox size="sm" isSelected={clearApiKey} onValueChange={setClearApiKey} isDisabled={loading}>

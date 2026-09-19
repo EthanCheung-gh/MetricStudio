@@ -34,7 +34,7 @@ import httpx
 
 from backend.core.logging_setup import get_logger
 
-PROFILE_FIELDS = ("base_url", "model", "api_key", "provider", "data_scope")
+PROFILE_FIELDS = ("base_url", "model", "api_key", "provider", "data_scope", "max_tokens")
 
 DEFAULT_CONFIG: dict[str, str] = {
     "base_url": "http://localhost:11434/v1",
@@ -42,6 +42,7 @@ DEFAULT_CONFIG: dict[str, str] = {
     "api_key": "",
     "provider": "local",
     "data_scope": "all",
+    "max_tokens": "0",
 }
 
 # v1.9.0 transient-failure retry: 1 try + 2 retries with 0.4s -> 1.2s backoff.
@@ -229,6 +230,22 @@ def load_config() -> dict[str, str]:
     return {**DEFAULT_CONFIG, **{k: profile.get(k, DEFAULT_CONFIG[k]) for k in PROFILE_FIELDS}}
 
 
+def max_tokens_from_config(cfg: dict[str, str]) -> int:
+    """Parse the profile's max_tokens cap (v1.9.0). 0 / invalid = no cap.
+
+    The cap is stored as a string like every other profile field; the API
+    payload only carries it when positive so providers keep their defaults.
+    """
+    raw = str(cfg.get("max_tokens", "") or "").strip()
+    if not raw:
+        return 0
+    try:
+        value = int(float(raw))
+    except ValueError:
+        return 0
+    return max(0, value)
+
+
 def save_config(config: dict[str, str]) -> None:
     """Update the active profile in place (back-compat POST /config path)."""
     updates = {k: str(config.get(k, DEFAULT_CONFIG[k])) for k in PROFILE_FIELDS}
@@ -353,6 +370,9 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
         "temperature": 0,
         "stream": False,
     }
+    max_tokens = max_tokens_from_config(cfg)
+    if max_tokens > 0:
+        payload["max_tokens"] = max_tokens
     started = time.monotonic()
     attempts = 0
     while True:
@@ -478,6 +498,9 @@ def chat_stream(
         "temperature": 0,
         "stream": True,
     }
+    max_tokens = max_tokens_from_config(cfg)
+    if max_tokens > 0:
+        payload["max_tokens"] = max_tokens
     started = time.monotonic()
 
     def _close_quietly(active: Any) -> None:

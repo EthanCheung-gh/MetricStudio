@@ -172,6 +172,8 @@ export default {
   'ai.thinking': 'Thinking…',
   'ai.stop': 'Stop',
   'ai.stopped': 'Stopped',
+  'settings.maxTokens': 'Max tokens per reply',
+  'settings.maxTokensHint': '0 = no cap, use the provider default',
   'ai.turnCount': '{{count}} turns',
   'ai.noDataset': 'Select a dataset on the left to start asking.',
   'ai.collapseTurn': 'Collapse this turn',

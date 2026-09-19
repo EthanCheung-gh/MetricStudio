@@ -168,3 +168,12 @@ def test_test_endpoint_falls_back_to_active_config(client, monkeypatch):
     base_url, model, _ = list(calls)[0]
     assert base_url == llm.DEFAULT_CONFIG["base_url"]
     assert model == llm.DEFAULT_CONFIG["model"]
+
+
+def test_profile_max_tokens_roundtrip(tmp_path, monkeypatch):
+    """v1.9.0: the max_tokens cap persists with the profile (0 = no cap)."""
+    monkeypatch.setattr(llm, "_config_dir", lambda: tmp_path)
+    llm.save_config({**llm.load_config(), "max_tokens": "1024"})
+    assert llm.load_config()["max_tokens"] == "1024"
+    llm.save_config({**llm.load_config(), "max_tokens": "0"})
+    assert llm.load_config()["max_tokens"] == "0"

@@ -107,6 +107,8 @@ class LLMConfig(BaseModel):
     api_key: str = ""
     provider: Literal["local", "cloud"] = "local"
     data_scope: Literal["all", "redact_sensitive", "exclude_sensitive"] = "all"
+    # v1.9.0: optional per-response output cap; "0" / empty = provider default.
+    max_tokens: str = "0"
     clear_api_key: bool = False
 
     @field_validator("base_url", "model")
@@ -757,6 +759,7 @@ def _profile_view(profile: dict[str, Any]) -> dict[str, Any]:
         "model": profile["model"],
         "provider": profile["provider"],
         "data_scope": profile["data_scope"],
+        "max_tokens": str(profile.get("max_tokens", "0")),
         "has_api_key": bool(api_key),
         "api_key_hint": api_key[-4:] if api_key else "",
     }

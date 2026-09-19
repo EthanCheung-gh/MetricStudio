@@ -552,7 +552,7 @@ def test_llm_config_round_trip(client, monkeypatch, tmp_path):
     monkeypatch.setenv("METRICSTUDIO_CONFIG_DIR", str(tmp_path))
     config_path = tmp_path / "llm-profiles.json"
 
-    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret", "provider": "cloud", "data_scope": "redact_sensitive"}
+    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret", "provider": "cloud", "data_scope": "redact_sensitive", "max_tokens": "512"}
     response = client.post("/api/v1/nl/config", json=payload)
     assert response.status_code == 200, response.text
     public_payload = {**payload, "api_key": ""}
@@ -564,7 +564,7 @@ def test_llm_config_round_trip(client, monkeypatch, tmp_path):
     assert not config_path.with_suffix(".tmp").exists()
 
     # Leaving the key blank updates endpoint/model without erasing the saved secret.
-    updated = {**payload, "base_url": "https://other.invalid/v1", "model": "other-model", "api_key": ""}
+    updated = {**payload, "base_url": "https://other.invalid/v1", "model": "other-model", "api_key": "", "max_tokens": "0"}
     response = client.post("/api/v1/nl/config", json=updated)
     assert response.status_code == 200
     assert response.json() == updated

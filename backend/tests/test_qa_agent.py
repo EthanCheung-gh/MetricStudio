@@ -342,6 +342,37 @@ def test_stream_clarify_only_answer(sales_df, monkeypatch):
     assert deltas == "" and done["clarify"]["question"] == "哪个字段？"
 
 
+def test_budget_exhausted_degrades_to_facts_sync(sales_df, monkeypatch):
+    """v1.9.0: an exhausted budget skips further rounds and answers from facts."""
+    monkeypatch.setattr(qa_agent, "_budget_seconds", lambda: 0.0)
+    calls = {"n": 0}
+
+    def fake(messages, config=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return '{"tools": [{"name": "row_count", "args": {}}]}'
+        return '{"answer": "不应走到第二轮"}'
+
+    monkeypatch.setattr(qa_agent, "chat", fake)
+    result = qa_agent.run_agent("q", sales_df, "context")
+    assert calls["n"] == 1
+    assert result["tool_call_count"] == 1
+    assert "[1] row_count" in result["answer"]
+
+
+def test_budget_exhausted_degrades_to_facts_stream(sales_df, monkeypatch):
+    monkeypatch.setattr(qa_agent, "_budget_seconds", lambda: 0.0)
+
+    def tools_only(messages, config=None, trace_ids=None):
+        yield '{"tools": [{"name": "row_count", "args": {}}]}'
+
+    monkeypatch.setattr(qa_agent, "chat_stream", tools_only)
+    deltas, done, errors = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert not errors
+    assert done["tool_call_count"] == 1
+    assert "[1] row_count" in done["answer"] and deltas == done["answer"]
+
+
 def test_stream_close_records_agent_cancelled(sales_df, monkeypatch):
     """v1.9.0: closing the stream early (user stop) records agent_cancelled."""
     seen: list[tuple[str, dict]] = []

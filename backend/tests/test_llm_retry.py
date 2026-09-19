@@ -140,3 +140,41 @@ class BrokenAtStart:
     def __iter__(self):
         raise httpx.ReadTimeout("broke before content")
         yield  # pragma: no cover - make it a generator
+
+
+# --- v1.9.0 max_tokens cap -------------------------------------------------------
+
+def test_max_tokens_from_config_parsing():
+    assert llm.max_tokens_from_config({"max_tokens": "512"}) == 512
+    assert llm.max_tokens_from_config({}) == 0
+    assert llm.max_tokens_from_config({"max_tokens": ""}) == 0
+    assert llm.max_tokens_from_config({"max_tokens": "abc"}) == 0
+    assert llm.max_tokens_from_config({"max_tokens": "-5"}) == 0
+    assert llm.max_tokens_from_config({"max_tokens": "20.9"}) == 20
+
+
+def test_chat_sends_max_tokens_when_positive(monkeypatch, cfg):
+    captured: dict = {}
+
+    def fake_post(url, json=None, **k):
+        captured["payload"] = json
+        return ok_response()
+
+    monkeypatch.setattr(llm.httpx, "post", fake_post)
+    llm.chat(MESSAGES, config={**CFG, "max_tokens": "512"})
+    assert captured["payload"]["max_tokens"] == 512
+
+    llm.chat(MESSAGES, config={**CFG, "max_tokens": "abc"})
+    assert "max_tokens" not in captured["payload"]
+
+
+def test_chat_omits_max_tokens_by_default(monkeypatch, cfg):
+    captured: dict = {}
+
+    def fake_post(url, json=None, **k):
+        captured["payload"] = json
+        return ok_response()
+
+    monkeypatch.setattr(llm.httpx, "post", fake_post)
+    llm.chat(MESSAGES)
+    assert "max_tokens" not in captured["payload"]
