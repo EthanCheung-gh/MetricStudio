@@ -481,3 +481,29 @@ def test_usage_accumulates_across_rounds(sales_df, monkeypatch):
     _, done, _ = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
     assert done["tool_call_count"] == 1
     assert done["usage"]["total"] == 30 and done["usage"]["estimated"] is False
+
+
+def test_prompt_version_stamps_events_and_result(sales_df, monkeypatch):
+    seen: list[tuple[str, dict]] = []
+    monkeypatch.setattr(qa_agent, "trace_event", lambda event, **kw: seen.append((event, kw)))
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, **kw: iter(["共 6 行。"]))
+    events = list(qa_agent.run_agent_stream("q", sales_df, "context"))
+    start = dict(kw for event, kw in seen if event == "agent_start")
+    done_event = dict(kw for event, kw in seen if event == "agent_done")
+    assert start["prompt_version"] == qa_agent.PROMPT_VERSION
+    assert done_event["prompt_version"] == qa_agent.PROMPT_VERSION
+    assert events[-1]["result"]["prompt_version"] == qa_agent.PROMPT_VERSION
+
+
+def test_sync_result_carries_prompt_version(sales_df, monkeypatch):
+    monkeypatch.setattr(qa_agent, "chat", lambda messages, **kw: '{"answer": "ok"}')
+    result = qa_agent.run_agent("q", sales_df, "context")
+    assert result["prompt_version"] == qa_agent.PROMPT_VERSION
+
+
+def test_prompt_version_binds_template_hash():
+    """The version auto-tracks _SYSTEM_TEMPLATE content (edit ⇒ new version)."""
+    import hashlib
+
+    expected = hashlib.sha256(qa_agent._SYSTEM_TEMPLATE.encode("utf-8")).hexdigest()[:8]
+    assert qa_agent.PROMPT_VERSION == f"qa-1.{expected}"

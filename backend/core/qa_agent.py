@@ -15,6 +15,7 @@ Protocol (JSON-in-prompt, provider-agnostic):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -92,6 +93,11 @@ Behavior:
 - If the data context already answers the question, give the final answer immediately in round 1.
 - After tool results arrive, answer immediately if they are sufficient.
 - Invalid tool results (ok=false) mean your arguments were wrong: fix them and retry with a corrected call, or answer without that fact."""
+
+# v1.10.0: the prompt version binds to the template's content hash, so ANY
+# edit to _SYSTEM_TEMPLATE automatically produces a new version that shows up
+# in trace events, the done payload and evaluation reports.
+PROMPT_VERSION = "qa-1." + hashlib.sha256(_SYSTEM_TEMPLATE.encode("utf-8")).hexdigest()[:8]
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
@@ -174,7 +180,8 @@ def run_agent(
     rounds_used = 0
     tool_call_count = 0
     usage_total = _zero_usage()
-    trace_event("agent_start", span="qa_agent", mode="sync", question=question)
+    trace_event("agent_start", span="qa_agent", mode="sync", question=question,
+                prompt_version=PROMPT_VERSION)
     budget = _budget_seconds()
     started = time.monotonic()
 
@@ -187,6 +194,7 @@ def run_agent(
             "rounds_used": rounds_used,
             "tool_call_count": tool_call_count,
             "usage": dict(usage_total),
+            "prompt_version": PROMPT_VERSION,
         }
 
     for round_index in range(1, MAX_ROUNDS + 1):
@@ -240,7 +248,8 @@ def run_agent(
 
         if parsed["kind"] == "answer":
             trace_event("agent_done", span="qa_agent", round=round_index,
-                        rounds=rounds_used, tool_calls=tool_call_count, facts=len(facts))
+                        rounds=rounds_used, tool_calls=tool_call_count, facts=len(facts),
+                        prompt_version=PROMPT_VERSION)
             return _result(parsed["answer"], followups=parsed["followups"], clarify=parsed["clarify"])
 
         # Plain text, or an unactionable/late tool call: degrade gracefully.
@@ -248,7 +257,8 @@ def run_agent(
         if facts and not fallback_text:
             fallback_text = "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts)
         trace_event("agent_done", span="qa_agent", round=round_index, degraded=True,
-                    reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
+                    reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count,
+                    prompt_version=PROMPT_VERSION)
         return _result(fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。")
 
     # Unreachable (every branch returns), kept as a safety net.
@@ -382,6 +392,7 @@ def _final_result(
         "rounds_used": rounds_used,
         "tool_call_count": tool_call_count,
         "usage": dict(usage) if usage else _zero_usage(),
+        "prompt_version": PROMPT_VERSION,
     }
 
 
@@ -432,7 +443,7 @@ def run_agent_stream(
     rounds_used = 0
     tool_call_count = 0
     usage_total = _zero_usage()
-    emit("agent_start", mode="stream", question=question)
+    emit("agent_start", mode="stream", question=question, prompt_version=PROMPT_VERSION)
 
     try:
         budget = _budget_seconds()
@@ -519,7 +530,7 @@ def run_agent_stream(
                     # clarify-only answers or providers that ignore streaming.
                     yield {"type": "answer_delta", "text": answer}
                 emit("agent_done", round=round_index, rounds=rounds_used,
-                     tool_calls=tool_call_count, facts=len(facts))
+                     tool_calls=tool_call_count, facts=len(facts), prompt_version=PROMPT_VERSION)
                 yield {"type": "done", "result": _final_result(
                     answer, facts, rounds_used, tool_call_count,
                     followups=parsed["followups"], clarify=parsed["clarify"], usage=usage_total,
@@ -537,7 +548,8 @@ def run_agent_stream(
             if fallback_text and not extractor.emitted:
                 yield {"type": "answer_delta", "text": fallback_text}
             emit("agent_done", round=round_index, degraded=True,
-                 reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
+                 reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count,
+                 prompt_version=PROMPT_VERSION)
             yield {"type": "done", "result": _final_result(
                 fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
                 facts, rounds_used, tool_call_count, usage=usage_total,
