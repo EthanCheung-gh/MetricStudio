@@ -332,6 +332,16 @@ def _question_tokens(question: str) -> list[str]:
     return list(tokens)[:12]
 
 
+_CELL_CAP = 200
+
+
+def _cap_cell(value: Any, limit: int = _CELL_CAP) -> str:
+    """Cap one data-derived cell (v1.11.0) so a single value can't flood the
+    prompt with an injection payload or megabytes of text."""
+    text = str(value)
+    return text if len(text) <= limit else text[:limit] + "…"
+
+
 def _relevant_sample_rows(df: Any, question: str, limit: int = 5) -> Any:
     """Pick sample rows whose text matches question keywords, else head(limit)."""
     tokens = _question_tokens(question)
@@ -363,7 +373,7 @@ def _categorical_line(df: Any, column: str) -> str | None:
     if cardinality <= 50:
         counts = series.value_counts().head(5)
         total = len(series)
-        parts = ", ".join(f"{index}={int(value)}({value / total:.0%})" for index, value in counts.items())
+        parts = ", ".join(f"{_cap_cell(index)}={int(value)}({value / total:.0%})" for index, value in counts.items())
         return f"{column} (categorical, {cardinality} distinct): {parts}"
     examples = ", ".join(str(value)[:40] for value in series.unique()[:3])
     return f"{column} (high-cardinality, {cardinality} distinct): e.g. {examples}"
@@ -414,7 +424,7 @@ def _build_data_context(dataset: Any, df: Any, question: str = "") -> str:
     sample = _relevant_sample_rows(df, question)
     lines.append("Sample rows (closest to the question):" if question else "Sample rows:")
     for _, row in sample.iterrows():
-        lines.append("  " + ", ".join(f"{key}={value}" for key, value in row.items()))
+        lines.append("  " + ", ".join(f"{key}={_cap_cell(value)}" for key, value in row.items()))
     insights = generate_insights(df)
     if insights:
         lines.append("Insights: " + "; ".join(item["text"] for item in insights))
