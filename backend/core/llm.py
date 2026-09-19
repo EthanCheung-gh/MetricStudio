@@ -22,8 +22,8 @@ import copy
 import json
 import logging
 import os
+import random
 import shutil
-import sys
 import threading
 import time
 import uuid
@@ -44,7 +44,39 @@ DEFAULT_CONFIG: dict[str, str] = {
     "data_scope": "all",
 }
 
+# v1.9.0 transient-failure retry: 1 try + 2 retries with 0.4s -> 1.2s backoff.
+MAX_LLM_ATTEMPTS = 3
+_BACKOFF_BASE_S = 0.4
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
 _LOCK = threading.Lock()
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Transient failures only: transport errors and 429/5xx.
+
+    Auth errors, unknown models and bad requests are deterministic — retrying
+    them just adds latency before the same failure.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _RETRYABLE_STATUS
+    return isinstance(exc, httpx.TransportError)
+
+
+def _retry_delay_s(attempt: int) -> float:
+    """Exponential backoff (0.4s, 1.2s) with +/-20% jitter."""
+    delay = _BACKOFF_BASE_S * (3 ** (attempt - 1))
+    return delay * (0.8 + 0.4 * random.random())
+
+
+def _log_llm_retry(*, span: str, attempt: int, error: str, delay_s: float) -> None:
+    get_logger("llm").event(
+        "llm_retry",
+        span=span,
+        attempt=attempt,
+        error=error,
+        delay_ms=round(delay_s * 1000, 1),
+    )
 
 
 def _config_dir() -> Path:
@@ -305,7 +337,9 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
     """Send a chat request and return the assistant's text content.
 
     Raises an exception when the provider is unreachable or returns an error
-    (the caller surfaces it to the user; no silent fallback).
+    (the caller surfaces it to the user; no silent fallback). Transient
+    failures (transport errors, 429/5xx) are retried up to MAX_LLM_ATTEMPTS
+    with backoff before surfacing (v1.9.0).
     """
     cfg = config or load_config()
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
@@ -320,18 +354,27 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
         "stream": False,
     }
     started = time.monotonic()
-    try:
-        resp = httpx.post(url, json=payload, headers=headers, timeout=60.0)
-        resp.raise_for_status()
-        data = resp.json()
-        reply = data["choices"][0]["message"]["content"]
-    except Exception as exc:
-        _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=None,
-                       started=started, ok=False, error=str(exc) or exc.__class__.__name__)
-        raise
-    _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=reply,
-                   started=started, ok=True, error=None)
-    return reply
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            resp = httpx.post(url, json=payload, headers=headers, timeout=60.0)
+            resp.raise_for_status()
+            data = resp.json()
+            reply = data["choices"][0]["message"]["content"]
+        except Exception as exc:
+            if attempts < MAX_LLM_ATTEMPTS and _is_retryable(exc):
+                delay_s = _retry_delay_s(attempts)
+                _log_llm_retry(span="chat", attempt=attempts,
+                               error=str(exc) or exc.__class__.__name__, delay_s=delay_s)
+                time.sleep(delay_s)
+                continue
+            _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=None,
+                           started=started, ok=False, error=str(exc) or exc.__class__.__name__)
+            raise
+        _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=reply,
+                       started=started, ok=True, error=None)
+        return reply
 
 
 def _llm_telemetry(
@@ -416,6 +459,9 @@ def chat_stream(
 
     Raises the same way as chat() when the provider is unreachable. The
     returned iterator must be fully consumed (or closed) by the caller.
+    Transient failures are retried (v1.9.0) — but only while nothing has been
+    yielded yet: after the first delta a retry would duplicate content, so
+    mid-stream breaks keep the caller's degradation path.
     trace_ids: explicit correlation ids for the agent-trace sink — required
     when called from sync generators whose ContextVar writes don't persist
     across threadpool iterations.
@@ -433,35 +479,80 @@ def chat_stream(
         "stream": True,
     }
     started = time.monotonic()
-    stream = httpx.stream("POST", url, json=payload, headers=headers, timeout=120.0)
-    response = stream.__enter__()
-    try:
-        response.raise_for_status()
-    except Exception as exc:
-        stream.__exit__(*sys.exc_info())
-        _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages, reply=None,
-                       started=started, ok=False, error=str(exc) or exc.__class__.__name__,
-                       stream=True, trace_ids=trace_ids)
-        raise
+
+    def _close_quietly(active: Any) -> None:
+        try:
+            active.__exit__(None, None, None)
+        except Exception:  # noqa: BLE001 - cleanup must never mask the real error
+            pass
+
+    def _open() -> tuple[Any, Any]:
+        stream = httpx.stream("POST", url, json=payload, headers=headers, timeout=120.0)
+        response = stream.__enter__()
+        try:
+            response.raise_for_status()
+        except BaseException:
+            _close_quietly(stream)
+            raise
+        return stream, response
+
+    attempts = 0
+    while True:
+        attempts += 1
+        try:
+            stream, response = _open()
+        except Exception as exc:
+            if attempts < MAX_LLM_ATTEMPTS and _is_retryable(exc):
+                delay_s = _retry_delay_s(attempts)
+                _log_llm_retry(span="chat_stream", attempt=attempts,
+                               error=str(exc) or exc.__class__.__name__, delay_s=delay_s)
+                time.sleep(delay_s)
+                continue
+            _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages, reply=None,
+                           started=started, ok=False, error=str(exc) or exc.__class__.__name__,
+                           stream=True, trace_ids=trace_ids)
+            raise
+        break
 
     def generator() -> Any:
+        nonlocal stream, response, attempts
         chunks: list[str] = []
+        failed = False
         try:
-            for delta in iter_sse_deltas(response.iter_lines()):
-                chunks.append(delta)
-                yield delta
+            while True:
+                produced = False
+                retry_error: str | None = None
+                try:
+                    for delta in iter_sse_deltas(response.iter_lines()):
+                        produced = True
+                        chunks.append(delta)
+                        yield delta
+                    return  # stream ended normally
+                except Exception as exc:
+                    if produced or attempts >= MAX_LLM_ATTEMPTS or not _is_retryable(exc):
+                        raise
+                    retry_error = str(exc) or exc.__class__.__name__
+                # Transient break before the first delta: reconnect and replay.
+                delay_s = _retry_delay_s(attempts - 1)
+                _log_llm_retry(span="chat_stream", attempt=attempts - 1,
+                               error=retry_error or "unknown", delay_s=delay_s)
+                time.sleep(delay_s)
+                attempts += 1
+                stream, response = _open()
         except Exception as exc:
+            failed = True
             _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
                            reply="".join(chunks) or None, started=started, ok=False,
                            error=str(exc) or exc.__class__.__name__, stream=True,
                            trace_ids=trace_ids)
             raise
         finally:
-            stream.__exit__(None, None, None)
-            # Success telemetry fires after the generator is exhausted (or
-            # closed early by a disconnect) — reply is what was streamed.
-            _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
-                           reply="".join(chunks) or None, started=started, ok=True,
-                           error=None, stream=True, trace_ids=trace_ids)
+            _close_quietly(stream)
+            if not failed:
+                # Success telemetry fires after the generator is exhausted (or
+                # closed early by a disconnect) — reply is what was streamed.
+                _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
+                               reply="".join(chunks) or None, started=started, ok=True,
+                               error=None, stream=True, trace_ids=trace_ids)
 
     return generator()
