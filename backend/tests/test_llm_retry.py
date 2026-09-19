@@ -178,3 +178,83 @@ def test_chat_omits_max_tokens_by_default(monkeypatch, cfg):
     monkeypatch.setattr(llm.httpx, "post", fake_post)
     llm.chat(MESSAGES)
     assert "max_tokens" not in captured["payload"]
+
+
+# --- v1.10.0 token usage ---------------------------------------------------------
+
+def test_usage_from_variants():
+    assert llm._usage_from({"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}}) == {
+        "prompt": 10, "completion": 5, "total": 15,
+    }
+    assert llm._usage_from({"usage": None}) is None
+    assert llm._usage_from({"choices": []}) is None
+    assert llm._usage_from(None) is None
+
+
+def test_chat_fills_usage_out_from_provider(monkeypatch, cfg):
+    captured_usage: dict = {}
+
+    def fake_post(url, json=None, **k):
+        return FakeResponse(payload={
+            "choices": [{"message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        })
+
+    monkeypatch.setattr(llm.httpx, "post", fake_post)
+    assert llm.chat(MESSAGES, usage_out=captured_usage) == "ok"
+    assert captured_usage == {"prompt": 10, "completion": 5, "total": 15, "estimated": False}
+
+
+def test_chat_estimates_when_provider_has_no_usage(monkeypatch, cfg):
+    captured_usage: dict = {}
+    monkeypatch.setattr(llm.httpx, "post", lambda url, json=None, **k: ok_response())
+    llm.chat(MESSAGES, usage_out=captured_usage)
+    assert captured_usage["estimated"] is True
+    assert captured_usage["completion"] > 0
+
+
+def test_stream_usage_chunk_collected(monkeypatch, cfg):
+    lines = [
+        'data: {"choices":[{"delta":{"content":"你好"}}]}',
+        'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":3,"total_tokens":10}}',
+        "data: [DONE]",
+    ]
+    captured_usage: dict = {}
+    monkeypatch.setattr(llm.httpx, "stream", lambda *a, **k: FakeStream(response=FakeResponse(lines=lines)))
+    deltas = "".join(llm.chat_stream(MESSAGES, usage_out=captured_usage))
+    assert deltas == "你好"
+    assert captured_usage == {"prompt": 7, "completion": 3, "total": 10, "estimated": False}
+
+
+def test_stream_payload_includes_stream_options(monkeypatch, cfg):
+    payloads: list[dict] = []
+
+    def fake_stream(method, url, json=None, **k):
+        payloads.append(json)
+        return FakeStream(response=FakeResponse(lines=[]))
+
+    monkeypatch.setattr(llm.httpx, "stream", fake_stream)
+    list(llm.chat_stream(MESSAGES))
+    assert payloads[0]["stream_options"] == {"include_usage": True}
+
+
+def test_stream_demotes_on_400_stream_options(monkeypatch, cfg, retry_log):
+    llm._STREAM_USAGE_DEMOTED.clear()
+    payloads: list[dict] = []
+
+    def fake_stream(method, url, json=None, **k):
+        payloads.append(json)
+        if json.get("stream_options"):
+            request = httpx.Request("POST", "http://test/chat/completions")
+            response = httpx.Response(400, request=request, text="Unknown field: stream_options")
+            raise httpx.HTTPStatusError("HTTP 400", request=request, response=response)
+        return FakeStream(response=FakeResponse(lines=[]))
+
+    monkeypatch.setattr(llm.httpx, "stream", fake_stream)
+    deltas = "".join(llm.chat_stream(MESSAGES))
+    assert deltas == ""
+    assert len(payloads) == 2 and "stream_options" not in payloads[1]
+    assert any("localhost:11434" in key for key in llm._STREAM_USAGE_DEMOTED)
+    # The demote probe is not counted as a transient retry.
+    assert retry_log == []
+    llm._STREAM_USAGE_DEMOTED.clear()

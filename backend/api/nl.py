@@ -109,6 +109,8 @@ class LLMConfig(BaseModel):
     data_scope: Literal["all", "redact_sensitive", "exclude_sensitive"] = "all"
     # v1.9.0: optional per-response output cap; "0" / empty = provider default.
     max_tokens: str = "0"
+    # v1.10.0: request token usage in streaming mode (auto-demoted per provider).
+    stream_usage: str = "true"
     clear_api_key: bool = False
 
     @field_validator("base_url", "model")
@@ -520,6 +522,7 @@ def nl_ask(request: NLAskRequest):
         "clarify": agent["clarify"],
         "rounds_used": agent["rounds_used"],
         "tool_call_count": agent["tool_call_count"],
+        "usage": agent.get("usage") or {"prompt": 0, "completion": 0, "total": 0, "estimated": True},
         "model": config.get("model", "unknown"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

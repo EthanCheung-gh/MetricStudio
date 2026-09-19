@@ -151,6 +151,7 @@ export function AICommandBar() {
           followups: res.followups,
           clarify: res.clarify,
           verifiedSteps: res.tool_call_count ?? 0,
+          usage: res.usage,
         })
         setProcess((prev) => (prev ? { ...prev, phase: 'done', answer: res.answer } : prev))
       }

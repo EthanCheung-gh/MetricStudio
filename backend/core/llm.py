@@ -34,7 +34,7 @@ import httpx
 
 from backend.core.logging_setup import get_logger
 
-PROFILE_FIELDS = ("base_url", "model", "api_key", "provider", "data_scope", "max_tokens")
+PROFILE_FIELDS = ("base_url", "model", "api_key", "provider", "data_scope", "max_tokens", "stream_usage")
 
 DEFAULT_CONFIG: dict[str, str] = {
     "base_url": "http://localhost:11434/v1",
@@ -43,7 +43,12 @@ DEFAULT_CONFIG: dict[str, str] = {
     "provider": "local",
     "data_scope": "all",
     "max_tokens": "0",
+    "stream_usage": "true",
 }
+
+# v1.10.0: providers that reject stream_options are remembered here
+# (keyed by base_url|model) so later calls skip the field entirely.
+_STREAM_USAGE_DEMOTED: set[str] = set()
 
 # v1.9.0 transient-failure retry: 1 try + 2 retries with 0.4s -> 1.2s backoff.
 MAX_LLM_ATTEMPTS = 3
@@ -246,6 +251,49 @@ def max_tokens_from_config(cfg: dict[str, str]) -> int:
     return max(0, value)
 
 
+def stream_usage_from_config(cfg: dict[str, str]) -> bool:
+    """Whether to request token usage in streaming mode (v1.10.0).
+
+    Defaults to true; providers that reject stream_options are demoted
+    automatically for the lifetime of the process.
+    """
+    raw = str(cfg.get("stream_usage", "true")).strip().lower()
+    return raw not in ("false", "0", "no", "off")
+
+
+def _estimate_tokens(length: int) -> int:
+    """~3.2 chars per token, a conservative middle for mixed zh/en text."""
+    return int(round(length / 3.2)) if length > 0 else 0
+
+
+def _usage_from(obj: Any) -> dict[str, Any] | None:
+    """Extract {prompt, completion, total} from an OpenAI usage object."""
+    if not isinstance(obj, dict):
+        return None
+    usage = obj.get("usage")
+    if not isinstance(usage, dict):
+        return None
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if not isinstance(prompt, int) or not isinstance(completion, int):
+        return None
+    total = usage.get("total_tokens")
+    return {
+        "prompt": prompt,
+        "completion": completion,
+        "total": total if isinstance(total, int) else prompt + completion,
+    }
+
+
+def _finalize_usage(usage: dict[str, Any] | None, prompt_chars: int, reply_chars: int) -> dict[str, Any]:
+    """Attach the estimated flag; fall back to a chars-based estimate."""
+    if usage is not None:
+        return {**usage, "estimated": False}
+    prompt = _estimate_tokens(prompt_chars)
+    completion = _estimate_tokens(reply_chars)
+    return {"prompt": prompt, "completion": completion, "total": prompt + completion, "estimated": True}
+
+
 def save_config(config: dict[str, str]) -> None:
     """Update the active profile in place (back-compat POST /config path)."""
     updates = {k: str(config.get(k, DEFAULT_CONFIG[k])) for k in PROFILE_FIELDS}
@@ -350,13 +398,20 @@ def probe_llm(base_url: str, model: str, api_key: str = "", timeout: float = 10.
     return True, int(response.elapsed.total_seconds() * 1000), ""
 
 
-def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -> str:
+def chat(
+    messages: list[dict[str, str]],
+    config: dict[str, str] | None = None,
+    usage_out: dict[str, Any] | None = None,
+) -> str:
     """Send a chat request and return the assistant's text content.
 
     Raises an exception when the provider is unreachable or returns an error
     (the caller surfaces it to the user; no silent fallback). Transient
     failures (transport errors, 429/5xx) are retried up to MAX_LLM_ATTEMPTS
-    with backoff before surfacing (v1.9.0).
+    with backoff before surfacing (v1.9.0). When ``usage_out`` is given it is
+    filled with the call's token usage — real numbers when the provider
+    reports them, a chars-based estimate flagged estimated=True otherwise
+    (v1.10.0).
     """
     cfg = config or load_config()
     url = cfg["base_url"].rstrip("/") + "/chat/completions"
@@ -374,6 +429,7 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
     if max_tokens > 0:
         payload["max_tokens"] = max_tokens
     started = time.monotonic()
+    prompt_chars = sum(len(m.get("content", "")) for m in messages)
     attempts = 0
     while True:
         attempts += 1
@@ -392,8 +448,12 @@ def chat(messages: list[dict[str, str]], config: dict[str, str] | None = None) -
             _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=None,
                            started=started, ok=False, error=str(exc) or exc.__class__.__name__)
             raise
+        usage = _finalize_usage(_usage_from(data), prompt_chars, len(reply or ""))
+        if usage_out is not None:
+            usage_out.clear()
+            usage_out.update(usage)
         _llm_telemetry(span="chat", cfg=cfg, messages=messages, reply=reply,
-                       started=started, ok=True, error=None)
+                       started=started, ok=True, error=None, tokens=usage)
         return reply
 
 
@@ -408,6 +468,7 @@ def _llm_telemetry(
     error: str | None,
     stream: bool = False,
     trace_ids: dict[str, Any] | None = None,
+    tokens: dict[str, Any] | None = None,
 ) -> None:
     """v1.8.0: metadata+preview to app.jsonl, full bodies to agent-trace.jsonl."""
     try:
@@ -430,6 +491,7 @@ def _llm_telemetry(
             prompt_chars=sum(len(m.get("content", "")) for m in messages),
             reply_chars=len(reply or ""),
             error=error,
+            tokens=tokens,
         )
         from backend.core.agent_trace import trace_llm_call
 
@@ -442,11 +504,11 @@ def _llm_telemetry(
         pass
 
 
-def iter_sse_deltas(lines: Any) -> Any:
-    """Yield text deltas from an OpenAI-compatible SSE byte/line iterator.
+def iter_sse_events(lines: Any) -> Any:
+    """Yield parsed JSON event dicts from an OpenAI-compatible SSE stream.
 
-    Accepts any iterable of ``bytes``/``str`` lines (httpx stream lines).
-    Non-delta lines (role-only chunks, ``[DONE]``, keep-alives) are skipped.
+    Non-event lines (keep-alives, ``[DONE]``, unparsable fragments) are
+    skipped. v1.10.0: usage-only final chunks surface here too.
     """
     for line in lines:
         if isinstance(line, bytes):
@@ -461,6 +523,13 @@ def iter_sse_deltas(lines: Any) -> Any:
             event = json.loads(chunk)
         except json.JSONDecodeError:
             continue
+        if isinstance(event, dict):
+            yield event
+
+
+def iter_sse_deltas(lines: Any) -> Any:
+    """Yield text deltas from an OpenAI-compatible SSE byte/line iterator."""
+    for event in iter_sse_events(lines):
         choices = event.get("choices") or []
         if not choices:
             continue
@@ -474,6 +543,7 @@ def chat_stream(
     messages: list[dict[str, str]],
     config: dict[str, str] | None = None,
     trace_ids: dict[str, Any] | None = None,
+    usage_out: dict[str, Any] | None = None,
 ) -> Any:
     """Streaming variant of :func:`chat`; yields text deltas as they arrive.
 
@@ -482,6 +552,10 @@ def chat_stream(
     Transient failures are retried (v1.9.0) — but only while nothing has been
     yielded yet: after the first delta a retry would duplicate content, so
     mid-stream breaks keep the caller's degradation path.
+    Token usage (v1.10.0): requests ``stream_options.include_usage`` unless
+    the provider already demoted it; a 400 complaining about stream_options
+    demotes it for this process and retries once without the field. Without
+    provider usage, tokens are estimated from char counts (estimated=True).
     trace_ids: explicit correlation ids for the agent-trace sink — required
     when called from sync generators whose ContextVar writes don't persist
     across threadpool iterations.
@@ -492,15 +566,23 @@ def chat_stream(
     if cfg.get("api_key"):
         headers["Authorization"] = f"Bearer {cfg['api_key']}"
 
-    payload: dict[str, Any] = {
-        "model": cfg["model"],
-        "messages": messages,
-        "temperature": 0,
-        "stream": True,
-    }
     max_tokens = max_tokens_from_config(cfg)
-    if max_tokens > 0:
-        payload["max_tokens"] = max_tokens
+    demote_key = f"{cfg.get('base_url', '')}|{cfg.get('model', '')}"
+    include_usage = stream_usage_from_config(cfg) and demote_key not in _STREAM_USAGE_DEMOTED
+
+    def _build_payload(with_usage: bool) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": cfg["model"],
+            "messages": messages,
+            "temperature": 0,
+            "stream": True,
+        }
+        if max_tokens > 0:
+            payload["max_tokens"] = max_tokens
+        if with_usage:
+            payload["stream_options"] = {"include_usage": True}
+        return payload
+
     started = time.monotonic()
 
     def _close_quietly(active: Any) -> None:
@@ -509,7 +591,7 @@ def chat_stream(
         except Exception:  # noqa: BLE001 - cleanup must never mask the real error
             pass
 
-    def _open() -> tuple[Any, Any]:
+    def _open(payload: dict[str, Any]) -> tuple[Any, Any]:
         stream = httpx.stream("POST", url, json=payload, headers=headers, timeout=120.0)
         response = stream.__enter__()
         try:
@@ -519,12 +601,35 @@ def chat_stream(
             raise
         return stream, response
 
+    def _is_unsupported_stream_options(exc: BaseException) -> bool:
+        if not (isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 400):
+            return False
+        detail = ""
+        try:
+            detail = exc.response.text
+        except Exception:  # noqa: BLE001 - body best-effort only
+            detail = ""
+        return "stream_options" in detail or "stream option" in detail
+
     attempts = 0
+    demoted_here = False
     while True:
         attempts += 1
         try:
-            stream, response = _open()
+            stream, response = _open(_build_payload(include_usage))
         except Exception as exc:
+            if not demoted_here and include_usage and _is_unsupported_stream_options(exc):
+                # v1.10.0: provider rejects stream_options — drop it for this
+                # call and remember the demotion (not counted as a retry).
+                _STREAM_USAGE_DEMOTED.add(demote_key)
+                demoted_here = True
+                include_usage = False
+                get_logger("llm").event(
+                    "llm_stream_usage_demoted", span="chat_stream",
+                    provider_model=cfg.get("model", ""), error=str(exc)[:200],
+                )
+                attempts -= 1
+                continue
             if attempts < MAX_LLM_ATTEMPTS and _is_retryable(exc):
                 delay_s = _retry_delay_s(attempts)
                 _log_llm_retry(span="chat_stream", attempt=attempts,
@@ -540,16 +645,27 @@ def chat_stream(
     def generator() -> Any:
         nonlocal stream, response, attempts
         chunks: list[str] = []
+        collected_usage: dict[str, Any] | None = None
         failed = False
         try:
             while True:
                 produced = False
                 retry_error: str | None = None
                 try:
-                    for delta in iter_sse_deltas(response.iter_lines()):
-                        produced = True
-                        chunks.append(delta)
-                        yield delta
+                    for event in iter_sse_events(response.iter_lines()):
+                        found = _usage_from(event)
+                        if found is not None:
+                            collected_usage = found
+                            continue
+                        choices = event.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = (choices[0] or {}).get("delta") or {}
+                        content = delta.get("content")
+                        if isinstance(content, str) and content:
+                            produced = True
+                            chunks.append(content)
+                            yield content
                     return  # stream ended normally
                 except Exception as exc:
                     if produced or attempts >= MAX_LLM_ATTEMPTS or not _is_retryable(exc):
@@ -561,7 +677,7 @@ def chat_stream(
                                error=retry_error or "unknown", delay_s=delay_s)
                 time.sleep(delay_s)
                 attempts += 1
-                stream, response = _open()
+                stream, response = _open(_build_payload(include_usage))
         except Exception as exc:
             failed = True
             _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
@@ -571,11 +687,17 @@ def chat_stream(
             raise
         finally:
             _close_quietly(stream)
+            usage = _finalize_usage(collected_usage,
+                                    sum(len(m.get("content", "")) for m in messages),
+                                    len("".join(chunks)))
+            if usage_out is not None:
+                usage_out.clear()
+                usage_out.update(usage)
             if not failed:
                 # Success telemetry fires after the generator is exhausted (or
                 # closed early by a disconnect) — reply is what was streamed.
                 _llm_telemetry(span="chat_stream", cfg=cfg, messages=messages,
                                reply="".join(chunks) or None, started=started, ok=True,
-                               error=None, stream=True, trace_ids=trace_ids)
+                               error=None, stream=True, trace_ids=trace_ids, tokens=usage)
 
     return generator()

@@ -189,6 +189,7 @@ export interface NLAskResponse {  answer: string
   clarify?: { question: string; options: string[] } | null
   rounds_used?: number
   tool_call_count?: number
+  usage?: { prompt: number; completion: number; total: number; estimated?: boolean }
   model?: string
   generated_at?: string
 }

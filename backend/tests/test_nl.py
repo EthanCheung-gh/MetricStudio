@@ -88,7 +88,7 @@ def test_nl_transform_llm_unavailable(client, monkeypatch):
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
     dsid = resp.json()[0]["id"]
 
-    def boom(messages):
+    def boom(messages, **kw):
         raise RuntimeError("no llm")
 
     monkeypatch.setattr(nl_module, "chat", boom)
@@ -117,7 +117,7 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
 
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         captured["system"] = messages[0]["content"]
         return "The max value is 30 (row c)."
 
@@ -149,7 +149,7 @@ def test_ask_endpoint_uses_bound_snapshot_and_filters(client, monkeypatch):
     snapshot = client.post(f"/api/v1/data/{dataset_id}/snapshots", json={"name": "Original"}).json()
     client.post(f"/api/v1/transform/{dataset_id}/filter", json={"column": "value", "operator": "gt", "value": 20})
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         return "North values are 10 and 30."
 
     monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
@@ -191,7 +191,7 @@ def test_ask_endpoint_includes_previous_conversation(client, monkeypatch):
     dsid = resp.json()[0]["id"]
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         captured["messages"] = messages
         return "b 最高。"
 
@@ -218,7 +218,7 @@ def test_ask_llm_unavailable(client, monkeypatch):
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
     dsid = resp.json()[0]["id"]
 
-    monkeypatch.setattr(qa_agent_module, "chat", lambda messages: (_ for _ in ()).throw(RuntimeError("no llm")))
+    monkeypatch.setattr(qa_agent_module, "chat", lambda messages, **kw: (_ for _ in ()).throw(RuntimeError("no llm")))
     resp = client.post("/api/v1/nl/ask", json={"dataset_id": dsid, "question": "anything"})
     assert resp.status_code == 502
 
@@ -234,7 +234,7 @@ def test_ask_tool_call_feeds_exact_facts(client, monkeypatch):
     calls = {"n": 0}
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             assert "Available tools" in messages[0]["content"]
@@ -270,7 +270,7 @@ def test_ask_midloop_llm_failure_degrades_to_facts(client, monkeypatch):
 
     calls = {"n": 0}
 
-    def flaky_chat(messages):
+    def flaky_chat(messages, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             return '{"tools": [{"name": "row_count", "args": {}}]}'
@@ -293,7 +293,7 @@ def test_ask_plain_text_reply_is_final_answer(client, monkeypatch):
 
     calls = {"n": 0}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         calls["n"] += 1
         return "我觉得不需要工具，数据概览已足够。"
 
@@ -316,7 +316,7 @@ def test_ask_tool_errors_are_fed_back(client, monkeypatch):
     calls = {"n": 0}
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             return '{"tools": [{"name": "column_stats", "args": {"column": "name"}}, {"name": "distinct_count", "args": {"column": "missing_col"}}]}'
@@ -341,7 +341,7 @@ def test_ask_clarify_payload_passes_through(client, monkeypatch):
     csv = "name,value\na,10\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         return '{"answer": "", "followups": [], "clarify": {"question": "你指的是哪一列的平均值？", "options": ["value", "name"]}}'
 
     monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
@@ -361,7 +361,7 @@ def test_ask_stream_endpoint_emits_sse_frames(client, monkeypatch):
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
     # Round 1 requests a tool; round 2 answers. Distinguish via call count.
-    def fake_stream_two(messages, config=None, trace_ids=None):
+    def fake_stream_two(messages, config=None, trace_ids=None, **kw):
         fake_stream_two.calls = getattr(fake_stream_two, "calls", 0) + 1
         if fake_stream_two.calls == 1:
             yield '{"tools": [{"name": "row_count", "args": {}}'
@@ -392,7 +392,7 @@ def test_ask_stream_first_failure_yields_error_frame(client, monkeypatch):
     csv = "name,value\na,10\n"
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
-    def boom(messages, config=None, trace_ids=None):
+    def boom(messages, config=None, trace_ids=None, **kw):
         raise RuntimeError("no llm")
         yield  # pragma: no cover
 
@@ -470,7 +470,7 @@ def test_transform_stream_llm_failure_yields_error(client, monkeypatch):
 
     dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
 
-    def boom(messages):
+    def boom(messages, **kw):
         raise RuntimeError("no llm")
         yield  # pragma: no cover
 
@@ -490,7 +490,7 @@ def test_narrate_endpoint(client, monkeypatch):
 
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         captured["prompt"] = messages[0]["content"]
         return "value 均值从 100 上升到 200，涨幅 100%。"
 
@@ -511,7 +511,7 @@ def test_explain_chart_endpoint(client, monkeypatch):
 
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         captured["prompt"] = messages[0]["content"]
         return "value 从 100 上升到 200，接近翻倍。"
 
@@ -552,7 +552,7 @@ def test_llm_config_round_trip(client, monkeypatch, tmp_path):
     monkeypatch.setenv("METRICSTUDIO_CONFIG_DIR", str(tmp_path))
     config_path = tmp_path / "llm-profiles.json"
 
-    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret", "provider": "cloud", "data_scope": "redact_sensitive", "max_tokens": "512"}
+    payload = {"base_url": "https://example.invalid/v1", "model": "test-model", "api_key": "secret", "provider": "cloud", "data_scope": "redact_sensitive", "max_tokens": "512", "stream_usage": "true"}
     response = client.post("/api/v1/nl/config", json=payload)
     assert response.status_code == 200, response.text
     public_payload = {**payload, "api_key": ""}

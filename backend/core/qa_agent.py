@@ -54,6 +54,20 @@ def _budget_seconds() -> float:
 def _facts_fallback(facts: list[dict[str, Any]]) -> str:
     return "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts)
 
+
+def _zero_usage() -> dict[str, Any]:
+    return {"prompt": 0, "completion": 0, "total": 0, "estimated": False}
+
+
+def _accumulate_usage(total: dict[str, Any], round_usage: dict[str, Any]) -> None:
+    """Sum per-round token usage into the run total (v1.10.0)."""
+    if not round_usage:
+        return
+    total["prompt"] += round_usage.get("prompt", 0)
+    total["completion"] += round_usage.get("completion", 0)
+    total["total"] += round_usage.get("total", 0)
+    total["estimated"] = bool(total["estimated"] or round_usage.get("estimated"))
+
 _SYSTEM_TEMPLATE = """You are MetricStudio's data-analysis assistant. You answer questions about ONE dataset using the data context below and, when needed, deterministic tools computed on the real data.
 
 Data context:
@@ -159,28 +173,34 @@ def run_agent(
     facts: list[dict[str, Any]] = []
     rounds_used = 0
     tool_call_count = 0
+    usage_total = _zero_usage()
     trace_event("agent_start", span="qa_agent", mode="sync", question=question)
     budget = _budget_seconds()
     started = time.monotonic()
+
+    def _result(answer: str, *, followups: list[str] | None = None, clarify: Any = None) -> dict[str, Any]:
+        return {
+            "answer": answer,
+            "followups": followups or [],
+            "clarify": clarify,
+            "facts": facts,
+            "rounds_used": rounds_used,
+            "tool_call_count": tool_call_count,
+            "usage": dict(usage_total),
+        }
 
     for round_index in range(1, MAX_ROUNDS + 1):
         if round_index > 1 and time.monotonic() - started >= budget:
             trace_event("agent_budget_exhausted", span="qa_agent", round=round_index, facts=len(facts))
             _log.event("agent_budget_exhausted", span="qa_agent", mode="sync", round=round_index, facts=len(facts))
-            return {
-                "answer": _facts_fallback(facts) or "抱歉，本次未能生成有效回答，请重试。",
-                "followups": [],
-                "clarify": None,
-                "facts": facts,
-                "rounds_used": rounds_used,
-                "tool_call_count": tool_call_count,
-            }
+            return _result(_facts_fallback(facts) or "抱歉，本次未能生成有效回答，请重试。")
         rounds_used = round_index
         is_final_round = round_index == MAX_ROUNDS
         round_var.set(round_index)
         trace_event("round_start", span="qa_agent", round=round_index, final=is_final_round)
+        round_usage: dict[str, Any] = {}
         try:
-            reply = chat(messages)
+            reply = chat(messages, usage_out=round_usage)
         except Exception as exc:
             if round_index == 1:
                 trace_event("agent_error", span="qa_agent", round=round_index, error=str(exc))
@@ -188,14 +208,8 @@ def run_agent(
             # Mid-loop failure: degrade to the best facts collected so far.
             fallback = "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts) or "抱歉，本次未能生成有效回答，请重试。"
             trace_event("agent_degraded", span="qa_agent", round=round_index, reason="chat_failed", facts=len(facts))
-            return {
-                "answer": fallback,
-                "followups": [],
-                "clarify": None,
-                "facts": facts,
-                "rounds_used": rounds_used,
-                "tool_call_count": tool_call_count,
-            }
+            return _result(fallback)
+        _accumulate_usage(usage_total, round_usage)
         parsed = _parse_reply(reply)
         trace_event("llm_decision", span="qa_agent", round=round_index, kind=parsed["kind"],
                     tools=parsed.get("tools") if parsed["kind"] == "tools" else None)
@@ -227,14 +241,7 @@ def run_agent(
         if parsed["kind"] == "answer":
             trace_event("agent_done", span="qa_agent", round=round_index,
                         rounds=rounds_used, tool_calls=tool_call_count, facts=len(facts))
-            return {
-                "answer": parsed["answer"],
-                "followups": parsed["followups"],
-                "clarify": parsed["clarify"],
-                "facts": facts,
-                "rounds_used": rounds_used,
-                "tool_call_count": tool_call_count,
-            }
+            return _result(parsed["answer"], followups=parsed["followups"], clarify=parsed["clarify"])
 
         # Plain text, or an unactionable/late tool call: degrade gracefully.
         fallback_text = parsed.get("text", "").strip()
@@ -242,24 +249,10 @@ def run_agent(
             fallback_text = "\n".join(f"[{fact['n']}] {fact['detail']}" for fact in facts)
         trace_event("agent_done", span="qa_agent", round=round_index, degraded=True,
                     reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
-        return {
-            "answer": fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
-            "followups": [],
-            "clarify": None,
-            "facts": facts,
-            "rounds_used": rounds_used,
-            "tool_call_count": tool_call_count,
-        }
+        return _result(fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。")
 
     # Unreachable (every branch returns), kept as a safety net.
-    return {
-        "answer": "",
-        "followups": [],
-        "clarify": None,
-        "facts": facts,
-        "rounds_used": rounds_used,
-        "tool_call_count": tool_call_count,
-    }
+    return _result("")
 
 
 # --- v1.3.0 streaming agent ----------------------------------------------------
@@ -379,6 +372,7 @@ def _final_result(
     tool_call_count: int,
     followups: list[str] | None = None,
     clarify: dict[str, Any] | None = None,
+    usage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "answer": answer,
@@ -387,6 +381,7 @@ def _final_result(
         "facts": facts,
         "rounds_used": rounds_used,
         "tool_call_count": tool_call_count,
+        "usage": dict(usage) if usage else _zero_usage(),
     }
 
 
@@ -436,6 +431,7 @@ def run_agent_stream(
     facts: list[dict[str, Any]] = []
     rounds_used = 0
     tool_call_count = 0
+    usage_total = _zero_usage()
     emit("agent_start", mode="stream", question=question)
 
     try:
@@ -450,7 +446,8 @@ def run_agent_stream(
                 if answer:
                     yield {"type": "answer_delta", "text": answer}
                 yield {"type": "done", "result": _final_result(
-                    answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
+                    answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count,
+                    usage=usage_total)}
                 return
             rounds_used = round_index
             is_final_round = round_index == MAX_ROUNDS
@@ -459,8 +456,13 @@ def run_agent_stream(
             emit("round_start", round=round_index, final=is_final_round)
             extractor = _AnswerExtractor()
             chunks: list[str] = []
+            round_usage: dict[str, Any] = {}
             try:
-                for delta in chat_stream(messages, trace_ids={**base_ids, "round": round_index} if base_ids else None):
+                for delta in chat_stream(
+                    messages,
+                    trace_ids={**base_ids, "round": round_index} if base_ids else None,
+                    usage_out=round_usage,
+                ):
                     chunks.append(delta)
                     text = extractor.feed(delta)
                     if text:
@@ -474,8 +476,10 @@ def run_agent_stream(
                 if not extractor.emitted and answer:
                     yield {"type": "answer_delta", "text": answer}
                 emit("agent_degraded", round=round_index, reason="chat_failed", facts=len(facts))
-                yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count)}
+                _accumulate_usage(usage_total, round_usage)
+                yield {"type": "done", "result": _final_result(answer or "抱歉，本次未能生成有效回答，请重试。", facts, rounds_used, tool_call_count, usage=usage_total)}
                 return
+            _accumulate_usage(usage_total, round_usage)
             full_text = "".join(chunks)
             parsed = _parse_reply(full_text)
             emit("llm_decision", round=round_index, kind=parsed["kind"],
@@ -518,7 +522,7 @@ def run_agent_stream(
                      tool_calls=tool_call_count, facts=len(facts))
                 yield {"type": "done", "result": _final_result(
                     answer, facts, rounds_used, tool_call_count,
-                    followups=parsed["followups"], clarify=parsed["clarify"],
+                    followups=parsed["followups"], clarify=parsed["clarify"], usage=usage_total,
                 )}
                 return
 
@@ -536,7 +540,7 @@ def run_agent_stream(
                  reason="unparseable_or_late_tools", rounds=rounds_used, tool_calls=tool_call_count)
             yield {"type": "done", "result": _final_result(
                 fallback_text or "抱歉，本次未能生成有效回答，请重试或换个问法。",
-                facts, rounds_used, tool_call_count,
+                facts, rounds_used, tool_call_count, usage=usage_total,
             )}
             return
 

@@ -121,7 +121,7 @@ def test_resolve_column_candidates(sales_df):
 # --- agent loop ----------------------------------------------------------------
 
 def test_agent_direct_answer_without_tools(sales_df, monkeypatch):
-    monkeypatch.setattr(qa_agent, "chat", lambda messages: "数据共 6 行。")
+    monkeypatch.setattr(qa_agent, "chat", lambda messages, **kw: "数据共 6 行。")
     result = qa_agent.run_agent("有多少行？", sales_df, "Dataset overview: 6 rows × 4 columns")
     assert result["answer"] == "数据共 6 行。"
     assert result["rounds_used"] == 1 and result["tool_call_count"] == 0
@@ -130,7 +130,7 @@ def test_agent_direct_answer_without_tools(sales_df, monkeypatch):
 def test_agent_two_round_tool_cycle(sales_df, monkeypatch):
     seen = {"n": 0}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         seen["n"] += 1
         if seen["n"] == 1:
             return '{"tools": [{"name": "row_count", "args": {}}]}'
@@ -147,7 +147,7 @@ def test_agent_two_round_tool_cycle(sales_df, monkeypatch):
 def test_agent_caps_rounds_and_ignores_late_tool_calls(sales_df, monkeypatch):
     seen = {"n": 0}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         seen["n"] += 1
         return '{"tools": [{"name": "row_count", "args": {}}]}'
 
@@ -159,7 +159,7 @@ def test_agent_caps_rounds_and_ignores_late_tool_calls(sales_df, monkeypatch):
 
 
 def test_agent_garbage_reply_falls_back_to_text(sales_df, monkeypatch):
-    monkeypatch.setattr(qa_agent, "chat", lambda messages: "我觉得不需要工具。")
+    monkeypatch.setattr(qa_agent, "chat", lambda messages, **kw: "我觉得不需要工具。")
     result = qa_agent.run_agent("test", sales_df, "context")
     assert result["answer"] == "我觉得不需要工具。"
 
@@ -167,7 +167,7 @@ def test_agent_garbage_reply_falls_back_to_text(sales_df, monkeypatch):
 def test_agent_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
     seen = {"n": 0}
 
-    def flaky(messages):
+    def flaky(messages, **kw):
         seen["n"] += 1
         if seen["n"] == 1:
             return '{"tools": [{"name": "distinct_count", "args": {"column": "category"}}]}'
@@ -180,7 +180,7 @@ def test_agent_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
 
 
 def test_agent_first_call_failure_raises(sales_df, monkeypatch):
-    def boom(messages):
+    def boom(messages, **kw):
         raise RuntimeError("no llm")
 
     monkeypatch.setattr(qa_agent, "chat", boom)
@@ -191,7 +191,7 @@ def test_agent_first_call_failure_raises(sales_df, monkeypatch):
 def test_agent_history_injected_into_user_message(sales_df, monkeypatch):
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         captured["user"] = messages[-1]["content"]
         return "ok"
 
@@ -204,7 +204,7 @@ def test_agent_history_injected_into_user_message(sales_df, monkeypatch):
 def test_agent_history_is_capped(sales_df, monkeypatch):
     captured = {}
 
-    def fake_chat(messages):
+    def fake_chat(messages, **kw):
         captured["user"] = messages[-1]["content"]
         return "ok"
 
@@ -261,7 +261,7 @@ def test_stream_direct_answer(sales_df, monkeypatch):
 def test_stream_tool_round_then_streamed_answer(sales_df, monkeypatch):
     calls = {"n": 0}
 
-    def fake_stream(messages, config=None, trace_ids=None):
+    def fake_stream(messages, config=None, trace_ids=None, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             yield '{"tools": [{"name": "row_count", "args": {}}'
@@ -280,7 +280,7 @@ def test_stream_tool_round_then_streamed_answer(sales_df, monkeypatch):
 
 
 def test_stream_caps_rounds_and_falls_back_to_facts(sales_df, monkeypatch):
-    def always_tools(messages, config=None, trace_ids=None):
+    def always_tools(messages, config=None, trace_ids=None, **kw):
         yield '{"tools": [{"name": "row_count", "args": {}}]}'
 
     monkeypatch.setattr(qa_agent, "chat_stream", always_tools)
@@ -298,7 +298,7 @@ def test_stream_plain_text_reply_is_final_answer(sales_df, monkeypatch):
 
 
 def test_stream_first_failure_emits_error(sales_df, monkeypatch):
-    def boom(messages, config=None, trace_ids=None):
+    def boom(messages, config=None, trace_ids=None, **kw):
         raise RuntimeError("no llm")
         yield  # pragma: no cover - make it a generator
 
@@ -310,7 +310,7 @@ def test_stream_first_failure_emits_error(sales_df, monkeypatch):
 def test_stream_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
     calls = {"n": 0}
 
-    def flaky(messages, config=None, trace_ids=None):
+    def flaky(messages, config=None, trace_ids=None, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             yield '{"tools": [{"name": "distinct_count", "args": {"column": "category"}}]}'
@@ -325,7 +325,7 @@ def test_stream_midloop_failure_degrades_to_facts(sales_df, monkeypatch):
 
 
 def test_stream_truncated_json_trusts_streamed_answer(sales_df, monkeypatch):
-    def truncated(messages, config=None, trace_ids=None):
+    def truncated(messages, config=None, trace_ids=None, **kw):
         yield '{"answer": "部分回答'  # broken JSON, no closing braces
 
     monkeypatch.setattr(qa_agent, "chat_stream", truncated)
@@ -334,7 +334,7 @@ def test_stream_truncated_json_trusts_streamed_answer(sales_df, monkeypatch):
 
 
 def test_stream_clarify_only_answer(sales_df, monkeypatch):
-    def clarify(messages, config=None, trace_ids=None):
+    def clarify(messages, config=None, trace_ids=None, **kw):
         yield '{"answer": "", "clarify": {"question": "哪个字段？", "options": ["a", "b"]}}'
 
     monkeypatch.setattr(qa_agent, "chat_stream", clarify)
@@ -347,7 +347,7 @@ def test_budget_exhausted_degrades_to_facts_sync(sales_df, monkeypatch):
     monkeypatch.setattr(qa_agent, "_budget_seconds", lambda: 0.0)
     calls = {"n": 0}
 
-    def fake(messages, config=None):
+    def fake(messages, config=None, **kw):
         calls["n"] += 1
         if calls["n"] == 1:
             return '{"tools": [{"name": "row_count", "args": {}}]}'
@@ -363,7 +363,7 @@ def test_budget_exhausted_degrades_to_facts_sync(sales_df, monkeypatch):
 def test_budget_exhausted_degrades_to_facts_stream(sales_df, monkeypatch):
     monkeypatch.setattr(qa_agent, "_budget_seconds", lambda: 0.0)
 
-    def tools_only(messages, config=None, trace_ids=None):
+    def tools_only(messages, config=None, trace_ids=None, **kw):
         yield '{"tools": [{"name": "row_count", "args": {}}]}'
 
     monkeypatch.setattr(qa_agent, "chat_stream", tools_only)
@@ -378,7 +378,7 @@ def test_stream_close_records_agent_cancelled(sales_df, monkeypatch):
     seen: list[tuple[str, dict]] = []
     monkeypatch.setattr(qa_agent, "trace_event", lambda event, **kw: seen.append((event, kw)))
 
-    def partial(messages, config=None, trace_ids=None):
+    def partial(messages, config=None, trace_ids=None, **kw):
         yield '{"answer": "部分回答'
 
     monkeypatch.setattr(qa_agent, "chat_stream", partial)
@@ -395,7 +395,7 @@ def test_stream_close_records_agent_cancelled(sales_df, monkeypatch):
 def test_stream_completion_does_not_record_cancelled(sales_df, monkeypatch):
     seen: list[tuple[str, dict]] = []
     monkeypatch.setattr(qa_agent, "trace_event", lambda event, **kw: seen.append((event, kw)))
-    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, config=None, trace_ids=None: iter(["共 6 行。"]))
+    monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, config=None, trace_ids=None, **kw: iter(["共 6 行。"]))
     list(qa_agent.run_agent_stream("q", sales_df, "context"))
     assert not any(event == "agent_cancelled" for event, _ in seen)
 
@@ -463,3 +463,21 @@ def test_context_handles_mixed_dtypes_and_nan():
     context = nl_module._build_data_context(FakeDataset(), df, "a 的 value")
     assert "Dataset overview: 3 rows × 4 columns" in context
     assert "Sample rows" in context
+
+
+def test_usage_accumulates_across_rounds(sales_df, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_stream(messages, config=None, trace_ids=None, **kw):
+        calls["n"] += 1
+        if kw.get("usage_out") is not None:
+            kw["usage_out"].update({"prompt": 10, "completion": 5, "total": 15, "estimated": False})
+        if calls["n"] == 1:
+            yield '{"tools": [{"name": "row_count", "args": {}}]}'
+        else:
+            yield '{"answer": "共 6 行 [1]。"}'
+
+    monkeypatch.setattr(qa_agent, "chat_stream", fake_stream)
+    _, done, _ = _collect(qa_agent.run_agent_stream("q", sales_df, "context"))
+    assert done["tool_call_count"] == 1
+    assert done["usage"]["total"] == 30 and done["usage"]["estimated"] is False

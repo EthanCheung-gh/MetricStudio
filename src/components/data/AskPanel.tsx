@@ -102,6 +102,8 @@ export function AskPanel() {
   )
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId)
   const turns = activeConversation?.turns ?? []
+  // v1.10.0: cumulative tokens across the conversation's turns.
+  const totalTokens = turns.reduce((sum, t) => sum + (t.usage?.total ?? 0), 0)
   const activeDashboard = dashboards.find((dashboard) => dashboard.id === activeDashboardId)
   const filters = dashboardFiltersForDataset(activeDashboard?.filters ?? [], activeDataFrameId ?? '')
   const boundSnapshotId = datasetId === activeDataFrameId ? snapshotId ?? undefined : undefined
@@ -221,6 +223,7 @@ export function AskPanel() {
         followups: response.followups,
         clarify: response.clarify,
         verifiedSteps: response.tool_call_count ?? 0,
+        usage: response.usage,
       })
     } catch (err) {
       if (isAbortError(err)) {
@@ -275,6 +278,7 @@ export function AskPanel() {
         followups: response.followups,
         clarify: response.clarify,
         verifiedSteps: response.tool_call_count ?? 0,
+        usage: response.usage,
       })
     } catch (err) {
       // Aborted regenerate: keep the previous answer untouched.
@@ -399,6 +403,11 @@ export function AskPanel() {
             />
           ) : (
             <span className="truncate">{activeConversation?.name ?? t('ai.newConversation')}</span>
+          )}
+          {totalTokens > 0 && (
+            <span className="shrink-0 text-[9px] font-normal text-muted/80">
+              {t('ai.tokensTotal', { count: totalTokens })}
+            </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -586,6 +595,14 @@ export function AskPanel() {
                       <div className="mb-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] text-primary">
                         <ShieldCheck className="h-3 w-3" />
                         {t('ai.verified', { count: turn.verifiedSteps })}
+                      </div>
+                    )}
+                    {turn.usage && turn.usage.total > 0 && (
+                      <div
+                        className="mb-1 inline-flex items-center rounded-full bg-default/50 px-1.5 py-0.5 text-[9px] text-muted"
+                        title={t('ai.tokensDetail', { prompt: turn.usage.prompt.toLocaleString(), completion: turn.usage.completion.toLocaleString() })}
+                      >
+                        {turn.usage.estimated ? t('ai.tokensEstimated', { count: turn.usage.total }) : t('ai.tokens', { count: turn.usage.total })}
                       </div>
                     )}
                     {turn.stopped && (

@@ -129,7 +129,7 @@ def test_agent_stream_writes_traceable_chain(log_env, monkeypatch):
     ])
     seen_llm_trace_ids: list[dict | None] = []
 
-    def fake_chat_stream(messages, config=None, trace_ids=None):
+    def fake_chat_stream(messages, config=None, trace_ids=None, **kw):
         seen_llm_trace_ids.append(trace_ids)
         yield next(calls)
 

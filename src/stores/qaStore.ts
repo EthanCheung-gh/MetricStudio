@@ -45,6 +45,8 @@ export interface QATurn {
   followups?: string[]
   clarify?: QAClarify | null
   verifiedSteps?: number
+  /** v1.10.0: token usage for this turn (estimated=true when provider gave no numbers). */
+  usage?: { prompt: number; completion: number; total: number; estimated?: boolean }
   /** v1.9.0: generation was stopped by the user; partial answer kept for
    *  display only — excluded from history and compaction. */
   stopped?: boolean
