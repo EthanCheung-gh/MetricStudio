@@ -156,8 +156,18 @@ pnpm tauri build   # 打包安装程序（CI 同款流程）
 pnpm test              # 前端 Vitest
 pnpm lint              # oxlint
 pnpm build             # tsc + vite 生产构建
-pnpm test:backend      # 后端 pytest（264 用例）
+pnpm test:backend      # 后端 pytest
 ```
+
+**AI 问答评测集**（v1.11.0）：14 条固定数据集上的黄金用例（含注入攻击用例），双模式运行：
+
+```bash
+python scripts/eval_qa.py --mode replay   # 确定性回放：零网络验证循环/工具/引用链路，CI 必过
+python scripts/eval_qa.py --mode live     # 真实模型：验证工具命中、数字来源与引用存在性
+python scripts/eval_qa.py --mode live --profile deepseek --baseline   # 与基线对比，回归即失败
+```
+
+replay 模式已接入发布流水线（`eval` job）；live 模式建议在改动 prompt 或工具后手动运行，报告（含 `prompt_version`、逐条断言明细）落盘为 `eval-report-*.json`。
 
 ## 代码图谱
 

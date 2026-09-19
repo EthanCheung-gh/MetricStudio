@@ -156,8 +156,18 @@ In production the Rust shell starts the Python sidecar on a random port; the fro
 pnpm test              # frontend Vitest
 pnpm lint              # oxlint
 pnpm build             # tsc + vite production build
-pnpm test:backend      # backend pytest (264 cases)
+pnpm test:backend      # backend pytest
 ```
+
+**AI Q&A evaluation set** (v1.11.0): 14 golden cases on deterministic fixtures (including a prompt-injection case), in two modes:
+
+```bash
+python scripts/eval_qa.py --mode replay   # deterministic replay: loop/tools/citations with zero network, required to pass in CI
+python scripts/eval_qa.py --mode live     # real model: checks tool hits, number provenance and citation validity
+python scripts/eval_qa.py --mode live --profile deepseek --baseline   # compare against baseline, fail on regression
+```
+
+The replay mode is wired into the release pipeline (the `eval` job). Run the live mode manually after changing prompts or tools; reports (with `prompt_version` and per-assertion details) land in `eval-report-*.json`.
 
 ## Code map
 

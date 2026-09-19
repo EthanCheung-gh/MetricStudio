@@ -13,8 +13,38 @@ env:
   PNPM_VERSION: 10.12.4
 
 jobs:
+  eval:
+    # v1.11.0: deterministic replay evaluation (no network, no model) — runs
+    # the real agent loop/tools/citations over the golden set before any
+    # platform build is spent.
+    name: Replay evaluation
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Run replay evaluation
+        run: python scripts/eval_qa.py --mode replay --min-pass 1.0
+
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report-replay
+          path: eval-report-replay-*.json
+          if-no-files-found: error
+
   build:
     name: Build ${{ matrix.os }}
+    needs: eval
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

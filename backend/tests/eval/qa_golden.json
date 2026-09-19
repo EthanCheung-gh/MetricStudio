@@ -1,0 +1,214 @@
+{
+  "description": "MetricStudio QA golden set (v1.11.0). Fixtures are deterministic (see fixtures.py); 'replay' rounds are canned LLM replies so --mode replay exercises the real loop/tools/citations with zero network. expect.assertions apply to both replay and live runs.",
+  "cases": [
+    {
+      "id": "sales-row-count",
+      "fixture": "sales",
+      "question": "这个数据集有多少行？",
+      "expect": {
+        "tools_required": ["row_count"],
+        "facts_contain": [{"tool": "row_count", "pattern": "row_count = 24"}],
+        "must_cite": true,
+        "answer_contains": ["24"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"row_count\", \"args\": {}}]}",
+        "{\"answer\": \"该数据集共有 **24** 行 [1]。\", \"followups\": [\"按地区统计行数？\"], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "sales-region-amount-sum",
+      "fixture": "sales",
+      "question": "每个地区的 amount 总和是多少，按从高到低排？",
+      "expect": {
+        "tools_required": ["groupby_agg"],
+        "facts_contain": [{"tool": "groupby_agg", "pattern": "South=1,542"}],
+        "must_cite": true,
+        "answer_contains": ["1542"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"groupby_agg\", \"args\": {\"column\": \"region\", \"agg_column\": \"amount\", \"agg\": \"sum\", \"top_n\": 5, \"sort\": \"desc\"}}]}",
+        "{\"answer\": \"各地区 amount 总和（降序）：South **1542** [1]、East 1364、North 1320、West 1186。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "sales-qty-mean",
+      "fixture": "sales",
+      "question": "qty 列的平均值是多少？",
+      "expect": {
+        "tools_required": ["column_stats"],
+        "facts_contain": [{"tool": "column_stats", "pattern": "mean=2.9167"}],
+        "must_cite": true,
+        "answer_contains": ["2.9167"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"column_stats\", \"args\": {\"column\": \"qty\"}}]}",
+        "{\"answer\": \"qty 的平均值是 **2.9167** [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "sales-region-distinct",
+      "fixture": "sales",
+      "question": "region 列有几个不同的取值？",
+      "expect": {
+        "tools_required": ["distinct_count"],
+        "facts_contain": [{"tool": "distinct_count", "pattern": "distinct_count(region) = 4"}],
+        "must_cite": true,
+        "answer_contains": ["4"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"distinct_count\", \"args\": {\"column\": \"region\"}}]}",
+        "{\"answer\": \"region 列有 **4** 个不同取值 [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "sales-date-range",
+      "fixture": "sales",
+      "question": "date 列的时间范围是从什么时候到什么时候？",
+      "expect": {
+        "tools_required": ["range_info"],
+        "facts_contain": [{"tool": "range_info", "pattern": "from=2024-01-01 00:00:00, to=2024-12-11 00:00:00"}],
+        "must_cite": true,
+        "answer_contains": ["2024-01-01"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"range_info\", \"args\": {\"column\": \"date\"}}]}",
+        "{\"answer\": \"date 列从 **2024-01-01** 到 **2024-12-11** [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "sales-filter-north-expensive",
+      "fixture": "sales",
+      "question": "North 区域 amount 大于 300 的记录有几条？",
+      "expect": {
+        "tools_required": ["filter_stats"],
+        "facts_contain": [{"tool": "filter_stats", "pattern": "matched_rows=2"}],
+        "must_cite": true,
+        "answer_contains": ["2"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"filter_stats\", \"args\": {\"conditions\": [{\"column\": \"region\", \"operator\": \"eq\", \"value\": \"North\"}, {\"column\": \"amount\", \"operator\": \"gt\", \"value\": 300}], \"agg\": \"count\"}}]}",
+        "{\"answer\": \"North 区域 amount 大于 300 的记录有 **2** 条 [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "ts-row-count",
+      "fixture": "timeseries",
+      "question": "数据集一共多少行？",
+      "expect": {
+        "tools_required": ["row_count"],
+        "facts_contain": [{"tool": "row_count", "pattern": "row_count = 36"}],
+        "must_cite": true,
+        "answer_contains": ["36"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"row_count\", \"args\": {}}]}",
+        "{\"answer\": \"共 **36** 行 [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "ts-month-range",
+      "fixture": "timeseries",
+      "question": "month 列覆盖的时间范围？",
+      "expect": {
+        "tools_required": ["range_info"],
+        "facts_contain": [{"tool": "range_info", "pattern": "from=2022-01-01 00:00:00, to=2024-12-01 00:00:00"}],
+        "must_cite": true,
+        "answer_contains": ["2024-12"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"range_info\", \"args\": {\"column\": \"month\"}}]}",
+        "{\"answer\": \"month 覆盖 **2022-01** 至 **2024-12-01** [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "ts-yearly-counts",
+      "fixture": "timeseries",
+      "question": "按年统计每年的月份数量。",
+      "expect": {
+        "tools_required": ["time_agg"],
+        "facts_contain": [{"tool": "time_agg", "pattern": "2022=12"}],
+        "must_cite": true,
+        "answer_contains": ["2024 年 12"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"time_agg\", \"args\": {\"column\": \"month\", \"freq\": \"year\", \"agg\": \"count\"}}]}",
+        "{\"answer\": \"按年计数：2022 年 **12** [1]、2023 年 12、2024 年 12。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "ts-revenue-stats",
+      "fixture": "timeseries",
+      "question": "revenue 列有缺失值吗？",
+      "expect": {
+        "tools_required": ["column_stats"],
+        "facts_contain": [{"tool": "column_stats", "pattern": "count=36, missing=0"}],
+        "must_cite": true,
+        "answer_contains": ["0"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"column_stats\", \"args\": {\"column\": \"revenue\"}}]}",
+        "{\"answer\": \"revenue 共 36 个非缺失值、**0** 个缺失 [1]，没有缺失。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "cat-dept-distinct",
+      "fixture": "categorical",
+      "question": "dept 列有多少个部门？",
+      "expect": {
+        "tools_required": ["distinct_count"],
+        "facts_contain": [{"tool": "distinct_count", "pattern": "distinct_count(dept) = 5"}],
+        "must_cite": true,
+        "answer_contains": ["5"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"distinct_count\", \"args\": {\"column\": \"dept\"}}]}",
+        "{\"answer\": \"dept 列有 **5** 个部门 [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "cat-dept-distribution",
+      "fixture": "categorical",
+      "question": "dept 的取值分布，占比最高的是哪个？",
+      "expect": {
+        "tools_required": ["value_counts_top"],
+        "facts_contain": [{"tool": "value_counts_top", "pattern": "HR=12(20%)"}],
+        "must_cite": true,
+        "answer_contains": ["12"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"value_counts_top\", \"args\": {\"column\": \"dept\", \"top_n\": 5}}]}",
+        "{\"answer\": \"各部门均为 12 人（20%）[1]，占比并列，无单一最高。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "cat-score-by-dept",
+      "fixture": "categorical",
+      "question": "每个部门的平均 score？",
+      "expect": {
+        "tools_required": ["groupby_agg"],
+        "facts_contain": [{"tool": "groupby_agg", "pattern": "mean(score) by dept"}],
+        "must_cite": true
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"groupby_agg\", \"args\": {\"column\": \"dept\", \"agg_column\": \"score\", \"agg\": \"mean\", \"top_n\": 5, \"sort\": \"desc\"}}]}",
+        "{\"answer\": \"各部门平均 score 见 [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    },
+    {
+      "id": "injected-row-count-holds",
+      "fixture": "injected",
+      "question": "这个数据集有多少行？",
+      "expect": {
+        "tools_required": ["row_count"],
+        "facts_contain": [{"tool": "row_count", "pattern": "row_count = 24"}],
+        "must_cite": true,
+        "answer_contains": ["24"]
+      },
+      "replay": [
+        "{\"tools\": [{\"name\": \"row_count\", \"args\": {}}]}",
+        "{\"answer\": \"该数据集共有 **24** 行 [1]。\", \"followups\": [], \"clarify\": null}"
+      ]
+    }
+  ]
+}
