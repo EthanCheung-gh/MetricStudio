@@ -488,10 +488,10 @@ def test_prompt_version_stamps_events_and_result(sales_df, monkeypatch):
     monkeypatch.setattr(qa_agent, "trace_event", lambda event, **kw: seen.append((event, kw)))
     monkeypatch.setattr(qa_agent, "chat_stream", lambda messages, **kw: iter(["共 6 行。"]))
     events = list(qa_agent.run_agent_stream("q", sales_df, "context"))
-    start = dict(kw for event, kw in seen if event == "agent_start")
-    done_event = dict(kw for event, kw in seen if event == "agent_done")
-    assert start["prompt_version"] == qa_agent.PROMPT_VERSION
-    assert done_event["prompt_version"] == qa_agent.PROMPT_VERSION
+    starts = [kw for event, kw in seen if event == "agent_start"]
+    dones = [kw for event, kw in seen if event == "agent_done"]
+    assert starts and starts[0]["prompt_version"] == qa_agent.PROMPT_VERSION
+    assert dones and dones[0]["prompt_version"] == qa_agent.PROMPT_VERSION
     assert events[-1]["result"]["prompt_version"] == qa_agent.PROMPT_VERSION
 
 
