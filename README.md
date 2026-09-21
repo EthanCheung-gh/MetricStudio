@@ -8,13 +8,15 @@
 
 ## 界面预览
 
-| 数据表与质量中心 | 可视化图表 |
+| **数据表与质量中心** | **可视化图表** |
 |---|---|
 | ![数据表与质量中心](png/01-metricstudio-datasheet.png) | ![可视化图表](png/02-metricstudio-plot.png) |
 | **拖拽式图表配置** | **Dashboard 编排** |
 | ![拖拽式图表配置](png/03-metricstudio-config-properties-panel.png) | ![Dashboard 编排](png/04-metricstudio-dashboard.png) |
 | **命令面板** | **SQL 工作台** |
 | ![命令面板](png/05-metricstudio-command-panel.png) | ![SQL 工作台](png/06-metricstudio-sql-stat.png) |
+| **Agent问答面板** | **设置面板** |
+| ![Agent问答面板](png/07-metricstudio-qa-panel.png) | ![设置面板](png/08-metricstudio-setup-panel.png) |
 
 ## 设计决策
 

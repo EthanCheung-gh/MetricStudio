@@ -8,13 +8,15 @@ Current version: **1.11.0**
 
 ## Screenshots
 
-| Data sheet & quality center | Charts |
+| **Data sheet & quality center** | **Charts** |
 |---|---|
 | ![Data sheet & quality center](png/01-metricstudio-datasheet.png) | ![Charts](png/02-metricstudio-plot.png) |
 | **Drag-and-drop chart config** | **Dashboard composition** |
 | ![Drag-and-drop chart config](png/03-metricstudio-config-properties-panel.png) | ![Dashboard composition](png/04-metricstudio-dashboard.png) |
 | **Command palette** | **SQL workbench** |
 | ![Command palette](png/05-metricstudio-command-panel.png) | ![SQL workbench](png/06-metricstudio-sql-stat.png) |
+| **Agent Q&A Panel** | **Settings panel** |
+| ![Agent Q&A Panel](png/07-metricstudio-qa-panel.png) | ![Settings panel](png/08-metricstudio-setup-panel.png) |
 
 ## Design decisions
 
