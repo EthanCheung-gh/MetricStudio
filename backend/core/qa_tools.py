@@ -7,6 +7,10 @@ Every tool follows the same contract:
   correct its arguments on the next round.
 - Output details are compact, formatted strings sized to stay inside a
   prompt budget (top-N rows, capped column lists, 4-decimal floats).
+- Tabular tools (v1.13.0) additionally return ``{"data": {"columns": [...],
+  "rows": [[...], ...]}}`` — the exact numbers behind ``detail``. The data
+  travels to the SPA via facts/SSE but is NEVER spliced into the prompt,
+  so the injection surface is unchanged.
 
 The tool protocol is intentionally JSON-in-prompt (no provider-native
 function calling) so any OpenAI-compatible backend works, including local
@@ -111,6 +115,29 @@ def _series_contains(series: pd.Series, value: Any, method: str) -> pd.Series:
     return lowered.str.endswith(text.lower())
 
 
+def _json_value(value: Any) -> Any:
+    """Coerce one pandas/numpy cell into a JSON-safe Python value (v1.13.0)."""
+    try:
+        if value is None or pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass  # non-scalar (e.g. list) — stringify below
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            value = item()
+        except Exception:  # noqa: BLE001 - fall through to str()
+            pass
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _table(columns: list[str], rows: list[list[Any]]) -> dict[str, Any]:
+    """Structured tool output for the SPA (facts/SSE), never for the prompt."""
+    return {"columns": columns, "rows": rows}
+
+
 def _row_count(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
     return True, f"row_count = {len(df)}"
 
@@ -164,12 +191,18 @@ def _groupby_agg(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
     if agg_column is not None:
         result = grouped[agg_column].agg(agg)
         label = f"{agg}({agg_column}) by {group_column}"
+        value_label = f"{agg}({agg_column})"
     else:
         result = grouped.size()
         label = f"count by {group_column}"
+        value_label = "count"
     result = result.sort_values(ascending=ascending).head(top_n)
     pairs = ", ".join(_fmt_pair(str(index), value) for index, value in result.items())
-    return True, f"{label} (top {len(result)}, {'asc' if ascending else 'desc'}): {pairs}"
+    data = _table(
+        [group_column, value_label],
+        [[_json_value(index), _json_value(value)] for index, value in result.items()],
+    )
+    return True, f"{label} (top {len(result)}, {'asc' if ascending else 'desc'}): {pairs}", data
 
 
 def _filter_stats(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
@@ -249,7 +282,14 @@ def _value_counts_top(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str
     parts = [f"{index}={_fmt(value)}({value / total:.0%})" if total else f"{index}={_fmt(value)}" for index, value in counts.items()]
     missing = int(df[column].isna().sum())
     suffix = f", missing={missing}" if missing else ""
-    return True, f"value_counts({column}) top {len(counts)}: {', '.join(parts)}{suffix}"
+    data = _table(
+        [column, "count", "share"],
+        [
+            [_json_value(index), _json_value(value), _json_value(value / total if total else None)]
+            for index, value in counts.items()
+        ],
+    )
+    return True, f"value_counts({column}) top {len(counts)}: {', '.join(parts)}{suffix}", data
 
 
 def _corr(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
@@ -303,7 +343,11 @@ def _time_agg(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
     pairs = ", ".join(f"{index}={_fmt(value)}" for index, value in grouped.items())
     missing = int(parsed.isna().sum())
     suffix = f"; unparseable/missing={missing}" if missing else ""
-    return True, f"time_agg: {label} per {freq_key} ({len(grouped)} periods, chronological): {pairs}{suffix}"
+    data = _table(
+        ["period", label],
+        [[_json_value(index), _json_value(value)] for index, value in grouped.items()],
+    )
+    return True, f"time_agg: {label} per {freq_key} ({len(grouped)} periods, chronological): {pairs}{suffix}", data
 
 
 def _quantile(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
@@ -370,7 +414,14 @@ def _crosstab(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
     lines.append(f"{str(top_rows.index.name or column_a)} | {header}")
     for index, row in top_rows.iterrows():
         lines.append(f"{index} | " + " | ".join(_fmt(v) for v in row))
-    return True, "\n".join(lines)
+    data = _table(
+        [column_a, *[str(c) for c in top_rows.columns]],
+        [
+            [_json_value(index), *[_json_value(v) for v in row]]
+            for index, row in top_rows.iterrows()
+        ],
+    )
+    return True, "\n".join(lines), data
 
 
 def _range_info(df: pd.DataFrame, args: dict[str, Any]) -> tuple[bool, str]:
@@ -404,14 +455,23 @@ _TOOLS = {
 
 
 def run(df: pd.DataFrame, name: str, args: dict[str, Any]) -> dict[str, Any]:
-    """Execute one tool; never raises. Returns {'ok', 'detail'}."""
+    """Execute one tool; never raises. Returns {'ok', 'detail'} plus an
+    optional ``data`` table for tabular tools (v1.13.0)."""
     handler = _TOOLS.get(str(name))
     if handler is None:
         return {"ok": False, "detail": f"unknown tool '{name}'; available: {', '.join(_TOOLS)}"}
     if not isinstance(args, dict):
         args = {}
     try:
-        ok, detail = handler(df, args)
+        outcome = handler(df, args)
     except Exception as exc:  # noqa: BLE001 - tool failures must reach the LLM as text
         return {"ok": False, "detail": f"{name} failed: {exc}"}
-    return {"ok": bool(ok), "detail": str(detail)}
+    if len(outcome) == 3:
+        ok, detail, data = outcome
+    else:
+        ok, detail = outcome
+        data = None
+    result: dict[str, Any] = {"ok": bool(ok), "detail": str(detail)}
+    if data is not None:
+        result["data"] = data
+    return result

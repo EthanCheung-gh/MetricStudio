@@ -251,7 +251,10 @@ def run_agent(
                     args = call.get("args") if isinstance(call.get("args"), dict) else {}
                     _t0 = time.monotonic()
                     result = run_tool(df, name, args)
-                    facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
+                    fact: dict[str, Any] = {"n": len(facts) + 1, "tool": name, "detail": result["detail"]}
+                    if result.get("data") is not None:
+                        fact["data"] = result["data"]  # v1.13.0: SPA-only, never spliced into messages
+                    facts.append(fact)
                     status = "ok" if result["ok"] else "error"
                     trace_event("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
                                 tool=name, args=args, ok=bool(result["ok"]),
@@ -530,14 +533,20 @@ def run_agent_stream(
                         args = call.get("args") if isinstance(call.get("args"), dict) else {}
                         _t0 = time.monotonic()
                         result = run_tool(df, name, args)
-                        facts.append({"n": len(facts) + 1, "tool": name, "detail": result["detail"]})
+                        fact: dict[str, Any] = {"n": len(facts) + 1, "tool": name, "detail": result["detail"]}
+                        if result.get("data") is not None:
+                            fact["data"] = result["data"]  # v1.13.0: SPA-only, never spliced into messages
+                        facts.append(fact)
                         status = "ok" if result["ok"] else "error"
                         emit("tool_call", span="qa_tools", round=round_index, n=facts[-1]["n"],
                              tool=name, args=args, ok=bool(result["ok"]),
                              elapsed_ms=round((time.monotonic() - _t0) * 1000, 1))
                         result_lines.append(f"[{facts[-1]['n']}] {name} ({status}): {result['detail']}")
-                        yield {"type": "tool_result", "round": round_index, "n": facts[-1]["n"], "tool": name,
-                               "ok": bool(result["ok"]), "detail": result["detail"]}
+                        tool_result_event: dict[str, Any] = {"type": "tool_result", "round": round_index, "n": facts[-1]["n"],
+                               "tool": name, "ok": bool(result["ok"]), "detail": result["detail"]}
+                        if result.get("data") is not None:
+                            tool_result_event["data"] = result["data"]
+                        yield tool_result_event
                     messages.append({"role": "assistant", "content": full_text})
                     messages.append({"role": "user", "content": "\n".join([
                         "Tool results:",

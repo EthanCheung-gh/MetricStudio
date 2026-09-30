@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -560,3 +562,73 @@ def test_prompt_declares_untrusted_data_policy(sales_df, monkeypatch):
     qa_agent.run_agent("q", sales_df, "ctx")
     assert "Untrusted data handling" in captured["system"]
     assert "USER DATA" in captured["system"]
+
+
+# --- v1.13.0 structured tool output (chartable facts) --------------------------
+
+
+def test_groupby_agg_returns_structured_data(sales_df):
+    result = qa_tools.run(sales_df, "groupby_agg", {"column": "category", "agg_column": "value", "agg": "sum"})
+    assert result["ok"]
+    data = result["data"]
+    assert data["columns"] == ["category", "sum(value)"]
+    assert {row[0]: row[1] for row in data["rows"]} == {"A": 405, "B": 460, "C": 90}
+    json.dumps(data)  # values must be JSON-safe
+
+
+def test_groupby_agg_count_data_uses_clean_label(sales_df):
+    data = qa_tools.run(sales_df, "groupby_agg", {"column": "category", "agg": "count"})["data"]
+    assert data["columns"] == ["category", "count"]
+    assert data["rows"][0] == ["A", 3]
+
+
+def test_value_counts_data_has_share(sales_df):
+    data = qa_tools.run(sales_df, "value_counts_top", {"column": "note", "top_n": 2})["data"]
+    assert data["columns"] == ["note", "count", "share"]
+    hello = next(row for row in data["rows"] if row[0] == "hello")
+    assert hello[1] == 3 and abs(hello[2] - 0.5) < 1e-9
+
+
+def test_time_agg_and_crosstab_data(sales_df):
+    time_result = qa_tools.run(sales_df, "time_agg", {"column": "date", "freq": "month", "agg": "count"})
+    assert time_result["ok"]
+    assert time_result["data"]["columns"] == ["period", "count"]
+    assert len(time_result["data"]["rows"]) == 3  # 2024-01 .. 2024-03
+
+    cross = qa_tools.run(sales_df, "crosstab", {"column_a": "category", "column_b": "note"})
+    assert cross["ok"]
+    assert cross["data"]["columns"][0] == "category"
+    assert len(cross["data"]["rows"]) == 3
+    json.dumps(cross["data"])
+
+
+def test_single_value_tools_have_no_data(sales_df):
+    calls = (
+        ("row_count", {}),
+        ("corr", {"column_a": "value", "column_b": "value"}),
+        ("column_stats", {"column": "value"}),
+    )
+    for name, args in calls:
+        assert "data" not in qa_tools.run(sales_df, name, args)
+
+
+def test_fact_data_reaches_result_but_never_the_prompt(sales_df, monkeypatch):
+    captured: dict = {"rounds": []}
+
+    def fake(messages, **kw):
+        captured["rounds"].append([str(m["content"]) for m in messages])
+        if len(captured["rounds"]) == 1:
+            return '{"tools": [{"name": "groupby_agg", "args": {"column": "category", "agg": "count"}}]}'
+        return '{"answer": "done [1]", "followups": [], "clarify": null}'
+
+    monkeypatch.setattr(qa_agent, "chat", fake)
+    result = qa_agent.run_agent("count by category", sales_df, "ctx")
+
+    # The fact carries the structured table for the SPA...
+    assert result["facts"][0]["data"]["columns"] == ["category", "count"]
+    assert result["facts"][0]["data"]["rows"][0] == ["A", 3]
+    # ...but no message ever handed to the LLM contains it.
+    for contents in captured["rounds"]:
+        for content in contents:
+            assert '"columns"' not in content
+            assert '"rows"' not in content
