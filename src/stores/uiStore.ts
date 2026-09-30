@@ -10,6 +10,17 @@ export interface Notification {
   message: string;
 }
 
+/** v1.12.0 notification center: persisted toast history, newest first. */
+export interface NotificationRecord {
+  id: string;
+  type: Notification['type'];
+  message: string;
+  /** epoch ms */
+  createdAt: number;
+}
+
+export type NotificationFilter = 'all' | Notification['type'];
+
 export interface RecentProject {
   path: string;
   name: string;
@@ -30,6 +41,11 @@ export interface AutoSaveState {
 
 interface UIState {
   notifications: Notification[];
+  /** v1.12.0: notification-center history (persisted, newest first, capped). */
+  notificationHistory: NotificationRecord[];
+  /** Unread count for the bell badge; session-scoped (reset on reload). */
+  unreadCount: number;
+  notificationFilter: NotificationFilter;
   importModalOpen: boolean;
   chartConfigDialogOpen: boolean;
   saveProjectModalOpen: boolean;
@@ -56,9 +72,13 @@ interface UIState {
   setAiBarVisible: (visible: boolean) => void;
 
   addNotification: (type: Notification['type'], message: string) => void;
+  removeNotification: (id: string) => void;
+  removeNotificationRecord: (id: string) => void;
+  clearNotificationHistory: () => void;
+  markAllNotificationsRead: () => void;
+  setNotificationFilter: (filter: NotificationFilter) => void;
   setShortcutOverride: (actionId: string, key: ShortcutKey | null) => void;
   resetShortcuts: () => void;
-  removeNotification: (id: string) => void;
   setImportModalOpen: (open: boolean) => void;
   setChartConfigDialogOpen: (open: boolean) => void;
   setSaveProjectModalOpen: (open: boolean) => void;
@@ -81,10 +101,16 @@ interface UIState {
 
 let notificationId = 0;
 
+/** Persisted notification history keeps at most this many records. */
+const NOTIFICATION_HISTORY_CAP = 100;
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
   notifications: [],
+  notificationHistory: [],
+  unreadCount: 0,
+  notificationFilter: 'all',
   importModalOpen: false,
   chartConfigDialogOpen: false,
   saveProjectModalOpen: false,
@@ -114,8 +140,11 @@ export const useUIStore = create<UIState>()(
 
   addNotification: (type, message) => {
     const id = `${++notificationId}`;
+    const record: NotificationRecord = { id, type, message, createdAt: Date.now() };
     set((state) => ({
       notifications: [...state.notifications, { id, type, message }],
+      notificationHistory: [record, ...state.notificationHistory].slice(0, NOTIFICATION_HISTORY_CAP),
+      unreadCount: state.unreadCount + 1,
     }));
     setTimeout(() => {
       set((state) => ({
@@ -128,6 +157,17 @@ export const useUIStore = create<UIState>()(
     set((state) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
     })),
+
+  removeNotificationRecord: (id) =>
+    set((state) => ({
+      notificationHistory: state.notificationHistory.filter((n) => n.id !== id),
+    })),
+
+  clearNotificationHistory: () => set({ notificationHistory: [] }),
+
+  markAllNotificationsRead: () => set({ unreadCount: 0 }),
+
+  setNotificationFilter: (notificationFilter) => set({ notificationFilter }),
 
   setImportModalOpen: (open) => set({ importModalOpen: open }),
   setChartConfigDialogOpen: (open) => set({ chartConfigDialogOpen: open }),
@@ -165,7 +205,8 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'metricstudio-ui',
-      // Notifications/backend status are session-scoped; persist dialog + recent projects
+      // Toasts/backend status/unread are session-scoped; persist dialog state,
+      // recent projects and the notification history (v1.12.0).
       partialize: (state) => ({
         chartConfigDialogOpen: state.chartConfigDialogOpen,
         reportNotesDraft: state.reportNotesDraft,
@@ -174,6 +215,7 @@ export const useUIStore = create<UIState>()(
         language: state.language,
         shortcutOverrides: state.shortcutOverrides,
         sampleWizardDismissed: state.sampleWizardDismissed,
+        notificationHistory: state.notificationHistory,
       }),
     },
   ),
