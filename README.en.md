@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.12.0**
+Current version: **1.14.0**
 
 ## Screenshots
 
@@ -49,6 +49,8 @@ In one line: **the LLM handles understanding and narration; the data handles com
 ### AI assistance (OpenAI-compatible endpoints; works with local Ollama)
 - Natural-language cleaning: describe what you want → the operation chain lights up step by step in a live process card, applied only after confirmation; non-cleaning input degrades gracefully to an empty chain with a friendly hint instead of an error
 - Multi-turn data Q&A: bound to snapshots and dashboard filters; a 3-round iterative tool loop (11 deterministic tools: row counts, column stats, group-by aggregates, filtered stats, time aggregation, correlation, quantiles, crosstab, etc.) keeps every number exact
+- Answers to charts: tabular tool results (group-by / value counts / crosstab / time aggregation) carry structured data — one click materializes them as a new dataset with an auto chart that opens in the center panel; the chart's numbers share provenance with the answer's [n] citations
+- Charts by natural language: the AI bar's chart mode turns one sentence into a chart config (33 types) — strict validation (fields / types / aggregates), one self-correction retry, rule-based recommendation fallback; edits the currently open chart in place
 - Streaming experience: answers stream in token by token while tool calls appear live on a timeline (running → done with result summaries); stop anytime — partial answers are kept without polluting history or compaction context
 - Controllable & observable: automatic retry with backoff for transient failures (429/5xx/network), a per-reply max_tokens cap and a wall-clock budget (degrades to collected facts on timeout), per-turn token badges and conversation totals (marked as estimates when the provider reports no usage), and a prompt version that tracks the template content automatically
 - Markdown rendering: answers show tables / lists / bold text with clickable [n] citation chips that trace back to evidence; the same rendering spans the Q&A panel, AI command bar, dashboard text cards, HTML exports and reports
@@ -120,6 +122,7 @@ flowchart LR
 
 - **Where numeric accuracy comes from**: inside the loop the LLM only emits "which tool to call" JSON; row counts, aggregates and correlations are all computed by `qa_tools` directly on pandas — no mental math by the model
 - **Evidence loop**: every tool result is registered as a numbered fact; the final answer cites `[n]`, rendered as clickable citation chips that jump back to the raw evidence
+- **From answer to chart**: structured tool tables ride facts straight to the SPA (never into the prompt — zero added injection surface), then materialize as a dataset (sourceType qa) → recommended or agent-configured chart → center panel
 - **Same pattern reused**: natural-language cleaning follows the same SSE flow (LLM drafts the operation chain → process card lights up step by step → apply on confirm); chart figures are built server-side and only rendered in the frontend
 
 ## Getting started
@@ -219,6 +222,8 @@ See [package.json](package.json) for the current version (kept in sync with `src
 - **v1.10.0**: token usage accounting and display (provider numbers first, estimate fallback, auto-demote for incompatible providers), prompt version bound to the template content hash
 - **v1.11.0**: prompt-injection defense — untrusted-data marker isolation, payload neutralization and capping; a 14-case golden QA evaluation set (incl. an injection case) with replay/live modes and a CI gate
 - **v1.12.0**: notification center (bell) — persistent notification history, unread badge, type filters and per-item delete; the clean capsule degrades non-cleaning input gracefully (empty chain + friendly hint, no more 422)
+- **v1.13.0**: Q&A results to datasets — tabular tools return structured data (facts/SSE only, never the prompt); /nl/fact-to-dataset materializes a fact plus a recommended chart in one click
+- **v1.14.0**: agent-configured charts — NL → ChartEncoding (single shot + strict validation + one error-feedback retry + recommendation fallback); a Chart mode joins the AI bar; fixed fetchJson missing Content-Type, which had broken every sync POST with 422
 
 Next up (P3): discovery-oriented home page, plugin system, lightweight sharing.
 
