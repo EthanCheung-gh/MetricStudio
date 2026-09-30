@@ -30,6 +30,7 @@ from backend.core.llm import (
     update_profile,
 )
 from backend.core.logging_setup import get_logger, session_id_var, turn_id_var
+from backend.core.dataframe import Dataset
 from backend.core.privacy import prepare_for_llm, sensitive_columns
 from backend.core.qa_agent import run_agent, run_agent_stream
 from backend.core.session import session
@@ -687,6 +688,48 @@ def nl_compact(request: NLCompactRequest):
         "model": load_config().get("model", "unknown"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+class FactToDatasetRequest(BaseModel):
+    name: str = "QA Result"
+    columns: list[str]
+    rows: list[list[Any]]
+
+
+FACT_DATA_MAX_ROWS = 10
+FACT_DATA_MAX_COLUMNS = 8
+
+
+@router.post("/fact-to-dataset")
+def nl_fact_to_dataset(request: FactToDatasetRequest):
+    """Materialize one QA tool fact's structured table as a new dataset (v1.13.0).
+
+    The rows come from the deterministic tools' structured output (facts carry
+    ``data``), so every number in the new dataset is tool-computed — the same
+    provenance the answer's [n] citations point at.
+    """
+    if not request.columns or not request.rows:
+        raise HTTPException(status_code=400, detail="columns and rows must be non-empty")
+    if len(request.columns) > FACT_DATA_MAX_COLUMNS or len(request.rows) > FACT_DATA_MAX_ROWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"fact table too large: max {FACT_DATA_MAX_ROWS} rows x {FACT_DATA_MAX_COLUMNS} columns",
+        )
+    if len(set(request.columns)) != len(request.columns):
+        raise HTTPException(status_code=422, detail="columns must be unique")
+    for row in request.rows:
+        if not isinstance(row, list) or len(row) != len(request.columns):
+            raise HTTPException(status_code=422, detail="every row must match the columns length")
+    df = pd.DataFrame(request.rows, columns=[str(c) for c in request.columns])
+    dataset = Dataset(
+        df,
+        name=request.name.strip() or "QA Result",
+        engine=session.engine.auto_engine(df),
+        source_type="qa",
+    )
+    session.datasets[dataset.id] = dataset
+    session._persist(dataset)
+    return dataset.to_meta()
 
 
 @router.post("/narrate")

@@ -10,10 +10,17 @@ export interface QAEvidence {
   source?: { datasetId?: string; snapshotId?: string; field?: string; row?: string | number }
 }
 
+/** v1.13.0: structured tool output — tool-computed numbers, chartable as a dataset. */
+export interface QAFactTable {
+  columns: string[]
+  rows: (string | number | null)[][]
+}
+
 export interface QAFact {
   n: number
   tool: string
   detail: string
+  data?: QAFactTable
 }
 
 export interface QAClarify {

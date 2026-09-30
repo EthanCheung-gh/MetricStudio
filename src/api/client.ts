@@ -19,7 +19,7 @@ import type {
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
 import type { DashboardConfig } from '@/types/dashboard';
-import type { QAConversation, QAFilter } from '@/stores/qaStore';
+import type { QAConversation, QAFilter, QAFact, QAFactTable } from '@/stores/qaStore';
 import { getTraceId, getSessionId, newId, newTraceId, setTurnId } from '@/utils/logger';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -184,7 +184,7 @@ export interface QAHistoryTurn {
 
 export interface NLAskResponse {  answer: string
   evidence: { id?: string; kind: string; detail: string; source?: Record<string, string | number> }[]
-  facts?: { n: number; tool: string; detail: string }[]
+  facts?: QAFact[]
   followups?: string[]
   clarify?: { question: string; options: string[] } | null
   rounds_used?: number
@@ -202,6 +202,8 @@ export interface NLAskStreamEvent {
   tool?: string
   ok?: boolean
   detail?: string
+  /** v1.13.0: structured table for tabular tool results (SPA-only). */
+  data?: QAFactTable
   text?: string
   message?: string
   result?: NLAskResponse
@@ -723,6 +725,12 @@ export const api = {
     datasetId: string,
     turns: { question: string; answer: string }[],
   ) => nlCompact(datasetId, turns),
+  /** v1.13.0: materialize one tool fact's structured table as a new dataset. */
+  factToDataset: (name: string, columns: string[], rows: (string | number | null)[][]) =>
+    fetchJson<DataFrameMeta>('/api/v1/nl/fact-to-dataset', {
+      method: 'POST',
+      body: JSON.stringify({ name, columns, rows }),
+    }),
   explainChart: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {
       method: 'POST',

@@ -20,6 +20,7 @@ import {
   Send,
   ShieldCheck,
   Square,
+  Table2,
   Trash2,
   User,
   Wrench,
@@ -30,7 +31,8 @@ import { api, type NLAskStreamEvent } from '@/api/client'
 import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
-import { useQAStore } from '@/stores/qaStore'
+import { useQAStore, type QAFact } from '@/stores/qaStore'
+import { useChartStore } from '@/stores/chartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { dashboardFiltersForDataset } from '@/utils/qaContext'
 import { conversationToHtml, conversationToMarkdown, downloadText } from '@/utils/qaExport'
@@ -80,6 +82,9 @@ export function AskPanel() {
   const [activeCitation, setActiveCitation] = useState<{ turn: number; n: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null)
+  /** v1.13.0: turn index whose chartable facts are shown for dataset import. */
+  const [factPicker, setFactPicker] = useState<number | null>(null)
+  const [factImporting, setFactImporting] = useState(false)
   const [streamState, setStreamState] = useState<StreamState | null>(null)
   // v1.9.0 stop-generation: the in-flight request's controller plus a ref mirror
   // of the stream state, so the abort handler can keep the partial answer.
@@ -323,6 +328,39 @@ export function AskPanel() {
     setReportNotesDraft(draft ? `${draft}\n\n${paragraph}` : paragraph)
     setReportDialogOpen(true)
     addNotification('success', t('ai.addedToReport'))
+  }
+
+  // v1.13.0: materialize one tool fact's structured table as a dataset (+ a
+  // recommended chart when the columns allow one). Numbers keep tool provenance.
+  const importFact = async (question: string, fact: QAFact) => {
+    if (!fact.data) return
+    setFactPicker(null)
+    setFactImporting(true)
+    const name = question.trim().slice(0, 24) || 'QA Result'
+    try {
+      const meta = await api.factToDataset(name, fact.data.columns, fact.data.rows)
+      await useDataStore.getState().loadDataFrames()
+      let charted = false
+      try {
+        const { recommendations } = await api.chartRecommendations(meta.id)
+        const encoding = recommendations[0]?.encoding
+        if (encoding) {
+          const chart = useChartStore.getState().createChart(meta.id, name)
+          useChartStore.getState().updateEncoding(chart.id, encoding)
+          charted = true
+        }
+      } catch {
+        // No auto chart — the dataset itself is still valuable.
+      }
+      addNotification(
+        'success',
+        charted ? t('ai.factToDatasetDone', { name }) : t('ai.factToDatasetNoChart', { name }),
+      )
+    } catch (err) {
+      addNotification('error', err instanceof Error ? err.message : t('ai.requestFailed'))
+    } finally {
+      setFactImporting(false)
+    }
   }
 
   const exportConversation = (format: 'markdown' | 'html') => {
@@ -654,6 +692,40 @@ export function AskPanel() {
                       <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => addAnswerToReport(turn.question, turn.answer)} startContent={<FilePlus2 className="h-3 w-3" />}>
                         {t('ai.addToReport')}
                       </Button>
+                      {(turn.facts ?? []).some((fact) => fact.data) && (
+                        <Button
+                          size="sm"
+                          variant="light"
+                          className="h-6 min-w-0 px-1.5 text-[10px]"
+                          isLoading={factImporting}
+                          startContent={!factImporting ? <Table2 className="h-3 w-3" /> : undefined}
+                          onPress={() => {
+                            const chartable = (turn.facts ?? []).filter((fact) => fact.data)
+                            if (chartable.length === 1) {
+                              void importFact(turn.question, chartable[0])
+                            } else {
+                              setFactPicker(factPicker === index ? null : index)
+                            }
+                          }}
+                        >
+                          {t('ai.factToDataset')}
+                        </Button>
+                      )}
+                      {factPicker === index && (
+                        <span className="flex flex-wrap items-center gap-1">
+                          <span className="text-[9px] text-muted">{t('ai.factPickTitle')}:</span>
+                          {(turn.facts ?? []).filter((fact) => fact.data).map((fact) => (
+                            <button
+                              key={fact.n}
+                              type="button"
+                              className="rounded-full border border-border px-1.5 py-0.5 text-[9px] text-muted hover:text-foreground"
+                              onClick={() => void importFact(turn.question, fact)}
+                            >
+                              [{fact.n}] {fact.tool}
+                            </button>
+                          ))}
+                        </span>
+                      )}
                       <Button size="sm" variant="light" className="h-6 min-w-0 px-1.5 text-[10px]" onPress={() => regenerate(index)} isLoading={isRegenerating} startContent={<RefreshCw className="h-3 w-3" />}>
                         {t('ai.regenerate')}
                       </Button>

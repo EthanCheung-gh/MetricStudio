@@ -147,6 +147,53 @@ def test_nl_transform_invalid_output(client, monkeypatch):
     assert resp.status_code == 422
 
 
+def test_fact_to_dataset_roundtrip(client):
+    csv = "category,value\nA,10\nB,20\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    assert resp.status_code == 200, resp.text
+
+    resp = client.post(
+        "/api/v1/nl/fact-to-dataset",
+        json={
+            "name": "count by category",
+            "columns": ["category", "count"],
+            "rows": [["A", 1], ["B", 1]],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    meta = resp.json()
+    assert meta["sourceType"] == "qa"
+    assert meta["name"] == "count by category"
+
+    # The new dataset shows up in the dataset list.
+    listed = client.get("/api/v1/data/list").json()
+    assert any(item["id"] == meta["id"] for item in listed)
+
+
+def test_fact_to_dataset_validation(client):
+    # empty table -> 400
+    resp = client.post("/api/v1/nl/fact-to-dataset", json={"columns": ["a"], "rows": []})
+    assert resp.status_code == 400
+    # over the size cap -> 422
+    resp = client.post(
+        "/api/v1/nl/fact-to-dataset",
+        json={"columns": ["a"], "rows": [[i] for i in range(11)]},
+    )
+    assert resp.status_code == 422
+    # duplicate columns -> 422
+    resp = client.post(
+        "/api/v1/nl/fact-to-dataset",
+        json={"columns": ["a", "a"], "rows": [[1, 2]]},
+    )
+    assert resp.status_code == 422
+    # row length mismatch -> 422
+    resp = client.post(
+        "/api/v1/nl/fact-to-dataset",
+        json={"columns": ["a", "b"], "rows": [[1]]},
+    )
+    assert resp.status_code == 422
+
+
 def test_ask_endpoint_returns_answer(client, monkeypatch):
     import backend.core.qa_agent as qa_agent_module
 

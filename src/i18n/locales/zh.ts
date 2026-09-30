@@ -668,6 +668,10 @@ export default {
   // AI（补充）
   'ai.requestFailed': '请求失败',
   'ai.noCleaningOps': '没有识别出可执行的清洗操作。试试更具体的处理描述（如：删除空值、筛选、排序），或切换到“问答”模式提问。',
+  'ai.factToDataset': '转为数据集',
+  'ai.factToDatasetDone': '已创建数据集「{{name}}」并生成推荐图表',
+  'ai.factToDatasetNoChart': '已创建数据集「{{name}}」；暂无可自动推荐的图表，请在图表配置中手动选择',
+  'ai.factPickTitle': '选择要导入的结果',
   'ai.applyFailed': '应用失败',
   'ai.appliedOps': '已应用 {{count}} 个操作',
   'ai.send': '发送',

@@ -668,6 +668,10 @@ export default {
   // AI (extra)
   'ai.requestFailed': 'Request failed',
   'ai.noCleaningOps': 'No executable cleaning operations recognized. Try a more specific instruction (e.g. drop missing values, filter, sort) or switch to Ask mode.',
+  'ai.factToDataset': 'Turn into dataset',
+  'ai.factToDatasetDone': 'Created dataset "{{name}}" with a recommended chart',
+  'ai.factToDatasetNoChart': 'Created dataset "{{name}}"; no auto-recommended chart — configure one manually',
+  'ai.factPickTitle': 'Pick a result to import',
   'ai.applyFailed': 'Apply failed',
   'ai.appliedOps': 'Applied {{count}} operation(s)',
   'ai.send': 'Send',
