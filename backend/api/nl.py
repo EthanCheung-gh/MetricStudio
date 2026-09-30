@@ -149,12 +149,21 @@ def _build_prompt(dataset: Any, query: str) -> str:
         "User request: " + query + "\n\n"
         "Respond with ONLY a JSON array of operations, e.g. "
         '[{"type":"filter","params":{"column":"value","operator":"gt","value":100}}]. '
-        "No prose, no markdown fences."
+        "No prose, no markdown fences. "
+        "If the request is not a data cleaning/transformation task (greetings, "
+        "questions, or anything not expressible with the operators above), "
+        "respond with an empty array: []."
     )
 
 
 def _parse_chain(text: str) -> list[dict[str, Any]]:
-    """Extract a JSON array from the LLM text (tolerates markdown fences)."""
+    """Extract a JSON array from the LLM text (tolerates markdown fences).
+
+    Non-cleaning input is a valid outcome (the prompt mandates ``[]`` for it),
+    so prose or any other shape without an array degrades to an empty chain
+    instead of failing the request. A single bare op object still counts —
+    the stream extractor tolerates the same shape.
+    """
     text = text.strip()
     # strip ```json ... ``` fences if present
     fenced = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", text, re.DOTALL)
@@ -163,19 +172,25 @@ def _parse_chain(text: str) -> list[dict[str, Any]]:
     start = text.find("[")
     end = text.rfind("]")
     if start < 0 or end <= start:
-        raise ValueError("LLM response did not contain a JSON array")
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return []
+        return [parsed] if isinstance(parsed, dict) and "type" in parsed else []
     try:
         parsed = json.loads(text[start : end + 1])
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON from LLM: {exc}") from exc
+    except json.JSONDecodeError:
+        # Brackets exist but hold no valid JSON — prose with stray brackets,
+        # not an attempted op chain. Degrade to an empty chain as well.
+        return []
     if not isinstance(parsed, list):
         raise ValueError("LLM response must be a JSON array")
     return parsed
 
 
 def _validate_ops(ops: list[dict[str, Any]]) -> None:
-    if not ops:
-        raise ValueError("Empty operation chain")
+    # An empty chain is valid: the model judged the request as non-cleaning
+    # (the prompt instructs it to answer [] for that case).
     for op in ops:
         if not isinstance(op, dict):
             raise ValueError(f"Operation must be an object: {op!r}")

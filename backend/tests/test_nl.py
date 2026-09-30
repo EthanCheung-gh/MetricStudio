@@ -30,9 +30,24 @@ def test_parse_chain_tolerates_markdown_fence():
     assert ops[0]["type"] == "sort"
 
 
-def test_parse_chain_rejects_non_array():
-    with pytest.raises(ValueError):
-        _parse_chain('{"type":"filter"}')
+def test_parse_chain_degrades_non_cleaning_prose():
+    # v1.12: non-cleaning input is a valid outcome — prose becomes an empty
+    # chain instead of a 422 (parity with the OHOS kernel semantics).
+    assert _parse_chain("你好，请问有什么可以帮你？") == []
+    assert _parse_chain("I cannot help with that") == []
+    assert _parse_chain("此操作不适用 [见说明]") == []
+
+
+def test_parse_chain_wraps_bare_op_object():
+    # The stream extractor tolerates a bare object without the array wrapper;
+    # the batch parser accepts the same shape.
+    assert _parse_chain('{"type":"dedupe","params":{}}') == [
+        {"type": "dedupe", "params": {}}
+    ]
+
+
+def test_validate_ops_allows_empty_chain():
+    _validate_ops([])
 
 
 def test_validate_ops_rejects_invalid_type():
@@ -58,6 +73,8 @@ def test_build_prompt_includes_columns_and_query():
     assert "value(int64)" in prompt
     assert "delete rows where value > 100" in prompt
     assert "filter" in prompt
+    # Non-cleaning input is instructed to answer [] (v1.12 UX fix).
+    assert "respond with an empty array: []" in prompt
 
 
 def test_nl_transform_endpoint_with_mock(client, monkeypatch):
@@ -96,6 +113,26 @@ def test_nl_transform_llm_unavailable(client, monkeypatch):
     assert resp.status_code == 502
 
 
+def test_nl_transform_non_cleaning_input_returns_empty_chain(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "a\n1\n2\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    # Non-cleaning prose (or an explicit []) must NOT 422 — the UI turns the
+    # empty chain into an info notice (v1.12 UX fix, OHOS parity).
+    monkeypatch.setattr(nl_module, "chat", lambda messages: "I cannot help with that")
+    resp = client.post("/api/v1/nl/transform", json={"dataset_id": dsid, "query": "hello there"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["operations"] == []
+
+    monkeypatch.setattr(nl_module, "chat", lambda messages: "[]")
+    resp = client.post("/api/v1/nl/transform", json={"dataset_id": dsid, "query": "hi"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["operations"] == []
+
+
 def test_nl_transform_invalid_output(client, monkeypatch):
     import backend.api.nl as nl_module
 
@@ -103,7 +140,9 @@ def test_nl_transform_invalid_output(client, monkeypatch):
     resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
     dsid = resp.json()[0]["id"]
 
-    monkeypatch.setattr(nl_module, "chat", lambda messages: "I cannot help with that")
+    # A parseable chain with an unknown operator is a real LLM-output failure
+    # and still 422s.
+    monkeypatch.setattr(nl_module, "chat", lambda messages: '[{"type":"explode","params":{}}]')
     resp = client.post("/api/v1/nl/transform", json={"dataset_id": dsid, "query": "anything"})
     assert resp.status_code == 422
 
@@ -451,7 +490,7 @@ def test_transform_stream_emits_op_and_done(client, monkeypatch):
     assert frames[3]["operations"] == [frames[1]["op"], frames[2]["op"]]
 
 
-def test_transform_stream_invalid_output_yields_error(client, monkeypatch):
+def test_transform_stream_non_cleaning_input_yields_empty_done(client, monkeypatch):
     csv = "a\n1\n"
     import backend.api.nl as nl_module
 
@@ -461,6 +500,22 @@ def test_transform_stream_invalid_output_yields_error(client, monkeypatch):
         body = "".join(chunk for chunk in response.iter_text())
     frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
     assert frames[0]["type"] == "thinking"
+    # Non-cleaning prose ends as an empty done frame, not an error frame.
+    assert frames[-1]["type"] == "done" and frames[-1]["operations"] == []
+
+
+def test_transform_stream_invalid_ops_still_error(client, monkeypatch):
+    csv = "a\n1\n"
+    import backend.api.nl as nl_module
+
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+    monkeypatch.setattr(
+        nl_module, "chat_stream",
+        lambda messages, **kw: iter(['[{"type":"explode","params":{}}]']),
+    )
+    with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "x"}) as response:
+        body = "".join(chunk for chunk in response.iter_text())
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
     assert frames[-1]["type"] == "error" and "LLM output invalid" in frames[-1]["message"]
 
 

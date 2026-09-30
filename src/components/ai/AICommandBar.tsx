@@ -102,6 +102,11 @@ export function AICommandBar() {
           })
         }, controller.signal)
         setProcess((prev) => (prev ? { ...prev, phase: 'done', operations } : prev))
+        // Empty chain = the model judged the input non-cleaning (the prompt
+        // mandates [] for that) — nudge instead of showing nothing/an error.
+        if (operations.length === 0) {
+          addNotification('info', t('ai.noCleaningOps'))
+        }
       } else {
         const currentQuestion = value
         const res = await api.nlAskStream(

@@ -667,6 +667,7 @@ export default {
   'layout.importHint': 'Import a CSV, Excel, or Parquet file to begin.',
   // AI (extra)
   'ai.requestFailed': 'Request failed',
+  'ai.noCleaningOps': 'No executable cleaning operations recognized. Try a more specific instruction (e.g. drop missing values, filter, sort) or switch to Ask mode.',
   'ai.applyFailed': 'Apply failed',
   'ai.appliedOps': 'Applied {{count}} operation(s)',
   'ai.send': 'Send',
