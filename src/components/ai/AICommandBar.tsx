@@ -9,6 +9,7 @@ import { useChartStore } from '@/stores/chartStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { dashboardFiltersForDataset } from '@/utils/qaContext'
 
 interface NLOp {
@@ -133,12 +134,15 @@ export function AICommandBar() {
         if (activeChart) {
           useChartStore.getState().updateEncoding(activeChart.id, res.encoding)
           chartName = activeChart.name
+          // Show the edited chart in the center panel, not just the side list.
+          useWorkspaceStore.getState().openChartTab(activeChart.id)
           addNotification('success', t('ai.chartUpdated'))
         } else {
           const created = useChartStore.getState().createChart(activeDataFrameId, res.title || value.slice(0, 24))
           useChartStore.getState().updateEncoding(created.id, res.encoding)
           if (res.title) useChartStore.getState().updateName(created.id, res.title)
           chartName = res.title || created.name
+          useWorkspaceStore.getState().openChartTab(created.id)
           addNotification(
             res.degraded ? 'warning' : 'success',
             res.degraded ? t('ai.chartDegraded') : t('ai.chartCreated', { name: chartName }),

@@ -33,6 +33,7 @@ import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore, type QAFact } from '@/stores/qaStore'
 import { useChartStore } from '@/stores/chartStore'
+import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useUIStore } from '@/stores/uiStore'
 import { dashboardFiltersForDataset } from '@/utils/qaContext'
 import { conversationToHtml, conversationToMarkdown, downloadText } from '@/utils/qaExport'
@@ -362,6 +363,8 @@ export function AskPanel() {
         const chart = useChartStore.getState().createChart(meta.id, title || name)
         useChartStore.getState().updateEncoding(chart.id, encoding)
         if (title) useChartStore.getState().updateName(chart.id, title)
+        // Show the generated chart in the center panel, not just the side list.
+        useWorkspaceStore.getState().openChartTab(chart.id)
         charted = true
       }
       addNotification(
