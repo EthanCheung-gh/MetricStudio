@@ -732,6 +732,37 @@ def nl_fact_to_dataset(request: FactToDatasetRequest):
     return dataset.to_meta()
 
 
+class NLChartConfigRequest(BaseModel):
+    dataset_id: str
+    request: str
+    mode: Literal["create", "update"] = "create"
+    current_encoding: dict[str, Any] | None = None
+
+
+@router.post("/chart-config")
+def nl_chart_config(request: NLChartConfigRequest):
+    """NL -> validated ChartEncoding, agent-assisted chart configuration (v1.14.0).
+
+    Single LLM shot with strict validation and one error-feedback retry; falls
+    back to the rule-based recommendation (degraded=true) so callers always
+    get a usable config when one exists at all.
+    """
+    try:
+        dataset = session.get(request.dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    from backend.core.chart_agent import build_chart_config
+
+    current = request.current_encoding if request.mode == "update" else None
+    result = build_chart_config(dataset.df, request.request, current)
+    if result is None:
+        raise HTTPException(
+            status_code=422,
+            detail="No valid chart config could be produced and this dataset has no recommendation either",
+        )
+    return result
+
+
 @router.post("/narrate")
 def nl_narrate(payload: dict):
     """Generate a Chinese analysis narrative from the dataset insights."""

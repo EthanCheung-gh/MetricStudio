@@ -194,6 +194,39 @@ def test_fact_to_dataset_validation(client):
     assert resp.status_code == 422
 
 
+def test_chart_config_endpoint(client, monkeypatch):
+    import backend.core.chart_agent as chart_agent_module
+
+    csv = "region,amount\nN,10\nS,20\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    valid = {
+        "chartType": "bar",
+        "title": "amount by region",
+        "encoding": {"x": {"field": "region", "type": "nominal"},
+                     "yFields": [{"field": "amount", "type": "quantitative"}]},
+    }
+    monkeypatch.setattr(chart_agent_module, "chat", lambda messages, **kw: json.dumps(valid))
+    resp = client.post("/api/v1/nl/chart-config", json={"dataset_id": dsid, "request": "bar of amount by region"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["chartType"] == "bar"
+    assert body["degraded"] is False
+    assert body["encoding"]["chartType"] == "bar"
+
+    # Unknown dataset -> 404
+    resp = client.post("/api/v1/nl/chart-config", json={"dataset_id": "nope", "request": "x"})
+    assert resp.status_code == 404
+
+    # Nothing producible (text-only data + failing LLM) -> 422
+    text_csv = "region\na\nb\n"
+    dsid2 = client.post("/api/v1/data/import", files={"file": ("t2.csv", text_csv.encode(), "text/csv")}).json()[0]["id"]
+    monkeypatch.setattr(chart_agent_module, "chat", lambda messages, **kw: "nope")
+    resp = client.post("/api/v1/nl/chart-config", json={"dataset_id": dsid2, "request": "x"})
+    assert resp.status_code == 422
+
+
 def test_ask_endpoint_returns_answer(client, monkeypatch):
     import backend.core.qa_agent as qa_agent_module
 
