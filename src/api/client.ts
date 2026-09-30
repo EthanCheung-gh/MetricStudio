@@ -128,9 +128,13 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     response = await fetch(url, {
       ...options,
-      headers: tracedHeaders(
-        options?.headers as Record<string, string> | undefined,
-      ),
+      headers: tracedHeaders({
+        // FastAPI rejects Pydantic body params unless the body declares JSON:
+        // a bare fetch() string body defaults to text/plain and 422s (fixed
+        // after the v1.14.0 chart pill hit exactly that).
+        'Content-Type': 'application/json',
+        ...(options?.headers as Record<string, string> | undefined),
+      }),
     })
   } catch (error) {
     throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
@@ -139,7 +143,9 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
     let detail = ''
     try {
       const body = await response.json()
-      detail = body.detail || JSON.stringify(body)
+      // FastAPI validation errors carry detail as an array — render it
+      // instead of collapsing into "[object Object]".
+      detail = typeof body?.detail === 'string' ? body.detail : JSON.stringify(body?.detail ?? body)
     } catch {
       detail = await response.text().catch(() => 'Unknown error')
     }
