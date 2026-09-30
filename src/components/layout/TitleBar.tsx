@@ -7,6 +7,7 @@ import { useUIStore } from '@/stores/uiStore'
 import { useChartStore } from '@/stores/chartStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
+import { NotificationBell } from '@/components/common/NotificationBell'
 import { api } from '@/api/client'
 import { loadProjectByPath } from '@/utils/project'
 
@@ -130,6 +131,7 @@ export function TitleBar() {
               <FileJson className="h-4 w-4" />
             </Button>
           </Tooltip>
+          <NotificationBell />
           <Tooltip content={t('settings.open')} placement="bottom">
             <Button isIconOnly size="sm" variant="light" aria-label={t('settings.open')} onPress={() => setSettingsOpen(true)}>
               <Menu className="h-4 w-4" />
