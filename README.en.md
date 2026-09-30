@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.11.0**
+Current version: **1.12.0**
 
 ## Screenshots
 
@@ -47,7 +47,7 @@ In one line: **the LLM handles understanding and narration; the data handles com
 - Export: self-contained interactive HTML (records filters and generation time)
 
 ### AI assistance (OpenAI-compatible endpoints; works with local Ollama)
-- Natural-language cleaning: describe what you want → the operation chain lights up step by step in a live process card, applied only after confirmation
+- Natural-language cleaning: describe what you want → the operation chain lights up step by step in a live process card, applied only after confirmation; non-cleaning input degrades gracefully to an empty chain with a friendly hint instead of an error
 - Multi-turn data Q&A: bound to snapshots and dashboard filters; a 3-round iterative tool loop (11 deterministic tools: row counts, column stats, group-by aggregates, filtered stats, time aggregation, correlation, quantiles, crosstab, etc.) keeps every number exact
 - Streaming experience: answers stream in token by token while tool calls appear live on a timeline (running → done with result summaries); stop anytime — partial answers are kept without polluting history or compaction context
 - Controllable & observable: automatic retry with backoff for transient failures (429/5xx/network), a per-reply max_tokens cap and a wall-clock budget (degrades to collected facts on timeout), per-turn token badges and conversation totals (marked as estimates when the provider reports no usage), and a prompt version that tracks the template content automatically
@@ -65,6 +65,7 @@ In one line: **the LLM handles understanding and narration; the data handles com
 ### Desktop & reliability
 - Tauri 2 desktop app with a Python FastAPI sidecar (auto start/stop); sessions auto-recover after crashes (raw data + transform chain replay)
 - Project packaging: a single `.metricstudio` file carrying data, transform chains, charts, dashboards, Q&A conversations and snapshots; autosave
+- Notification center: top-right messages and alerts settle into a traceable history (persists across restarts, capped at 100) with an unread badge, type filters, per-item delete and clear-all
 - Bilingual UI (简体中文 / English), customizable shortcuts, command palette, dark & light themes
 
 ## Tech stack
@@ -217,6 +218,7 @@ See [package.json](package.json) for the current version (kept in sync with `src
 - **v1.9.0**: request controllability — stop streaming answers anytime (partial answers kept, context untouched), retry with backoff for transient failures, max_tokens cap and wall-clock budget degradation
 - **v1.10.0**: token usage accounting and display (provider numbers first, estimate fallback, auto-demote for incompatible providers), prompt version bound to the template content hash
 - **v1.11.0**: prompt-injection defense — untrusted-data marker isolation, payload neutralization and capping; a 14-case golden QA evaluation set (incl. an injection case) with replay/live modes and a CI gate
+- **v1.12.0**: notification center (bell) — persistent notification history, unread badge, type filters and per-item delete; the clean capsule degrades non-cleaning input gracefully (empty chain + friendly hint, no more 422)
 
 Next up (P3): discovery-oriented home page, plugin system, lightweight sharing.
 
