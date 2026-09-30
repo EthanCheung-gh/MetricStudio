@@ -217,6 +217,17 @@ export interface NLTransformStreamEvent {
   message?: string
 }
 
+/** v1.14.0: agent-generated chart configuration. */
+export interface NLChartConfigResponse {
+  chartType: string
+  encoding: ChartEncoding
+  title?: string | null
+  degraded: boolean
+  degrade_reason?: string
+  model?: string
+  generated_at?: string
+}
+
 /** POST JSON and consume the SSE response body frame by frame. */
 async function consumeSseStream(
   path: string,
@@ -730,6 +741,22 @@ export const api = {
     fetchJson<DataFrameMeta>('/api/v1/nl/fact-to-dataset', {
       method: 'POST',
       body: JSON.stringify({ name, columns, rows }),
+    }),
+  /** v1.14.0: NL -> validated chart encoding (agent-assisted). */
+  nlChartConfig: (
+    datasetId: string,
+    request: string,
+    mode: 'create' | 'update' = 'create',
+    currentEncoding?: ChartEncoding,
+  ) =>
+    fetchJson<NLChartConfigResponse>('/api/v1/nl/chart-config', {
+      method: 'POST',
+      body: JSON.stringify({
+        dataset_id: datasetId,
+        request,
+        mode,
+        current_encoding: currentEncoding,
+      }),
     }),
   explainChart: (datasetId: string, encoding: ChartEncoding) =>
     fetchJson<{ explanation: string }>('/api/v1/nl/explain-chart', {

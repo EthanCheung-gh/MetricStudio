@@ -330,8 +330,9 @@ export function AskPanel() {
     addNotification('success', t('ai.addedToReport'))
   }
 
-  // v1.13.0: materialize one tool fact's structured table as a dataset (+ a
-  // recommended chart when the columns allow one). Numbers keep tool provenance.
+  // v1.13.0/v1.14.0: materialize one tool fact's structured table as a dataset,
+  // then chart it — the agent configures the chart from the original question
+  // (server-side it degrades to the rule-based recommendation when needed).
   const importFact = async (question: string, fact: QAFact) => {
     if (!fact.data) return
     setFactPicker(null)
@@ -340,17 +341,28 @@ export function AskPanel() {
     try {
       const meta = await api.factToDataset(name, fact.data.columns, fact.data.rows)
       await useDataStore.getState().loadDataFrames()
-      let charted = false
+      let encoding: import('@/types/encoding').ChartEncoding | undefined
+      let title: string | undefined
       try {
-        const { recommendations } = await api.chartRecommendations(meta.id)
-        const encoding = recommendations[0]?.encoding
-        if (encoding) {
-          const chart = useChartStore.getState().createChart(meta.id, name)
-          useChartStore.getState().updateEncoding(chart.id, encoding)
-          charted = true
-        }
+        const config = await api.nlChartConfig(meta.id, question)
+        encoding = config.encoding
+        title = config.title ?? undefined
+        if (config.degraded) addNotification('warning', t('ai.chartDegraded'))
       } catch {
-        // No auto chart — the dataset itself is still valuable.
+        // Agent unavailable — fall back to the rule-based recommendation.
+        try {
+          const { recommendations } = await api.chartRecommendations(meta.id)
+          encoding = recommendations[0]?.encoding
+        } catch {
+          // No chart at all — the dataset itself is still valuable.
+        }
+      }
+      let charted = false
+      if (encoding) {
+        const chart = useChartStore.getState().createChart(meta.id, title || name)
+        useChartStore.getState().updateEncoding(chart.id, encoding)
+        if (title) useChartStore.getState().updateName(chart.id, title)
+        charted = true
       }
       addNotification(
         'success',

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Square, Wand2, Wrench, X } from 'lucide-react'
+import { BarChart3, FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Square, Wand2, Wrench, X } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { api, type NLAskStreamEvent, type NLTransformStreamEvent } from '@/api/client'
 import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import { useDataStore } from '@/stores/dataStore'
+import { useChartStore } from '@/stores/chartStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
 import { useQAStore } from '@/stores/qaStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -15,12 +16,19 @@ interface NLOp {
   params: Record<string, unknown>
 }
 
-type Mode = 'query' | 'ask'
+type Mode = 'query' | 'ask' | 'chart'
 
 interface ProcessTool {
   name: string
   status: 'running' | 'ok' | 'error'
   detail?: string
+}
+
+/** v1.14.0: agent-generated chart config summary for the process card. */
+interface ChartProposal {
+  chartType: string
+  summary: string
+  degraded: boolean
 }
 
 /** Unified live process card shown above the command bar while streaming. */
@@ -32,6 +40,7 @@ interface ProcessCard {
   ops: NLOp[]
   answer: string
   operations: NLOp[] | null
+  chart?: ChartProposal
   error?: string
 }
 
@@ -107,6 +116,37 @@ export function AICommandBar() {
         if (operations.length === 0) {
           addNotification('info', t('ai.noCleaningOps'))
         }
+      } else if (runMode === 'chart') {
+        // v1.14.0: agent-configured chart. If a chart of this dataset is
+        // active, the agent edits it (mode=update); otherwise it creates one.
+        const chartsState = useChartStore.getState()
+        const activeChart = chartsState.charts.find(
+          (chart) => chart.id === chartsState.activeChartId && chart.datasetId === activeDataFrameId,
+        )
+        const res = await api.nlChartConfig(
+          activeDataFrameId,
+          value,
+          activeChart ? 'update' : 'create',
+          activeChart?.encoding,
+        )
+        let chartName: string
+        if (activeChart) {
+          useChartStore.getState().updateEncoding(activeChart.id, res.encoding)
+          chartName = activeChart.name
+          addNotification('success', t('ai.chartUpdated'))
+        } else {
+          const created = useChartStore.getState().createChart(activeDataFrameId, res.title || value.slice(0, 24))
+          useChartStore.getState().updateEncoding(created.id, res.encoding)
+          if (res.title) useChartStore.getState().updateName(created.id, res.title)
+          chartName = res.title || created.name
+          addNotification(
+            res.degraded ? 'warning' : 'success',
+            res.degraded ? t('ai.chartDegraded') : t('ai.chartCreated', { name: chartName }),
+          )
+        }
+        const yFields = (res.encoding.yFields ?? []).map((item) => item.field).join(', ')
+        const summary = `${res.chartType}${res.encoding.x ? ` · x: ${res.encoding.x.field}` : ''}${yFields ? ` · y: ${yFields}` : ''}`
+        setProcess((prev) => (prev ? { ...prev, phase: 'done', chart: { chartType: res.chartType, summary, degraded: res.degraded } } : prev))
       } else {
         const currentQuestion = value
         const res = await api.nlAskStream(
@@ -220,7 +260,9 @@ export function AICommandBar() {
   const placeholder =
     mode === 'query'
       ? t('ai.cleanPlaceholder')
-      : t('ai.askPlaceholder')
+      : mode === 'chart'
+        ? t('ai.chartPlaceholder')
+        : t('ai.askPlaceholder')
 
   return (
     <div
@@ -235,6 +277,8 @@ export function AICommandBar() {
             <div className="flex min-w-0 items-center gap-1.5 text-xs">
               {process.mode === 'query' ? (
                 <Wand2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+              ) : process.mode === 'chart' ? (
+                <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary" />
               ) : (
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
               )}
@@ -285,6 +329,21 @@ export function AICommandBar() {
                   <span className="min-w-0 flex-1 truncate font-mono text-muted">{JSON.stringify(op.params)}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {process.chart && (
+            <div className="mb-1.5 rounded border border-border/60 bg-surface/40 p-1.5">
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <BarChart3 className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <span className="font-mono text-primary">{process.chart.chartType}</span>
+                {process.chart.degraded && (
+                  <span className="rounded-full bg-warning/15 px-1.5 py-0.5 text-[9px] text-warning">
+                    {t('ai.chartDegradedBadge')}
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 font-mono text-[10px] text-muted">{process.chart.summary}</div>
             </div>
           )}
 
@@ -361,6 +420,15 @@ export function AICommandBar() {
         >
           <Sparkles className="h-3.5 w-3.5" />
           {t('ai.ask')}
+        </button>
+        <button
+          className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs transition-colors ${
+            mode === 'chart' ? 'bg-primary/20 text-primary' : 'text-muted hover:text-foreground'
+          }`}
+          onClick={() => setMode('chart')}
+        >
+          <BarChart3 className="h-3.5 w-3.5" />
+          {t('ai.chart')}
         </button>
         <input
           value={input}
