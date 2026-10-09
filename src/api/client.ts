@@ -116,6 +116,13 @@ function getBaseUrl(): string {
   return `http://${host}:${DEFAULT_BACKEND_PORT}`;
 }
 
+/** v1.15.0 (from the OHOS port): detect the backend's 502 "LLM unavailable:"
+ * family on both sync and SSE paths, so UIs can offer the settings dialog
+ * instead of a raw error toast. */
+export function isLlmUnavailableError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes('LLM unavailable');
+}
+
 /** v1.8.0: correlate every backend call with the SPA logger's trace id. */
 function tracedHeaders(extra?: Record<string, string>): Record<string, string> {
   const id = getTraceId();

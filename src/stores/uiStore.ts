@@ -54,6 +54,9 @@ interface UIState {
   reportNotesDraft: string;
   settingsOpen: boolean;
   shortcutsOpen: boolean;
+  /** v1.15.0: prominent reminder when AI calls fail because the LLM is not
+   * configured/unreachable; session-scoped (from the OHOS port). */
+  llmSetupPromptOpen: boolean;
   diffModalOpen: boolean;
   backendConnected: boolean;
   backendStatusMessage: string;
@@ -89,6 +92,7 @@ interface UIState {
   setReportNotesDraft: (notes: string) => void;
   setSettingsOpen: (open: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
+  setLlmSetupPromptOpen: (open: boolean) => void;
   setDiffModalOpen: (open: boolean) => void;
   setBackendStatus: (connected: boolean, message?: string) => void;
   addRecentProject: (project: RecentProject) => void;
@@ -119,6 +123,7 @@ export const useUIStore = create<UIState>()(
   storyDialogOpen: false,
   reportNotesDraft: '',
   settingsOpen: false,
+  llmSetupPromptOpen: false,
   shortcutsOpen: false,
   diffModalOpen: false,
   backendConnected: false,
@@ -178,6 +183,7 @@ export const useUIStore = create<UIState>()(
   setReportNotesDraft: (reportNotesDraft) => set({ reportNotesDraft }),
   setSettingsOpen: (open) => set({ settingsOpen: open }),
   setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  setLlmSetupPromptOpen: (open) => set({ llmSetupPromptOpen: open }),
   setDiffModalOpen: (open) => set({ diffModalOpen: open }),
   addRecentProject: (project) =>
     set((state) => ({

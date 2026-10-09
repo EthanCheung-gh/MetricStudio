@@ -11,6 +11,7 @@ import { AICommandBar } from '@/components/ai/AICommandBar'
 import { ShortcutsPanel } from '@/components/common/ShortcutsPanel'
 import { DiffModal } from '@/components/data/DiffModal'
 import { SettingsDialog } from '@/components/common/SettingsDialog'
+import { LlmSetupPrompt } from '@/components/common/LlmSetupPrompt'
 
 export function AppShell() {
   return (
@@ -29,6 +30,7 @@ export function AppShell() {
       <AICommandBar />
       <ShortcutsPanel />
       <SettingsDialog />
+      <LlmSetupPrompt />
       <DiffModal />
     </div>
   )

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BarChart3, FilePlus2, LayoutDashboard, Loader2, Play, Send, Sparkles, Square, Wand2, Wrench, X } from 'lucide-react'
 import { Button } from '@heroui/react'
-import { api, type NLAskStreamEvent, type NLTransformStreamEvent } from '@/api/client'
+import { api, isLlmUnavailableError, type NLAskStreamEvent, type NLTransformStreamEvent } from '@/api/client'
 import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
@@ -217,6 +217,10 @@ export function AICommandBar() {
           })
         }
         setProcess(null)
+      } else if (isLlmUnavailableError(err)) {
+        // v1.15.0: prominent setup reminder instead of a raw error card.
+        setProcess(null)
+        useUIStore.getState().setLlmSetupPromptOpen(true)
       } else {
         const message = err instanceof Error ? err.message : t('ai.requestFailed')
         setProcess((prev) => (prev ? { ...prev, phase: 'error', error: message } : prev))

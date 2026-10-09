@@ -27,7 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button, Input } from '@heroui/react'
-import { api, type NLAskStreamEvent } from '@/api/client'
+import { api, isLlmUnavailableError, type NLAskStreamEvent } from '@/api/client'
 import { AnswerMarkdown } from '@/components/ai/AnswerMarkdown'
 import { useDataStore } from '@/stores/dataStore'
 import { useDashboardStore } from '@/stores/dashboardStore'
@@ -242,6 +242,10 @@ export function AskPanel() {
           context: { datasetId: activeDataFrameId, snapshotId: boundSnapshotId, filters },
           stopped: true,
         })
+      } else if (isLlmUnavailableError(err)) {
+        // v1.15.0: prominent setup reminder instead of a raw error toast.
+        setQuestion(currentQuestion)
+        useUIStore.getState().setLlmSetupPromptOpen(true)
       } else {
         setQuestion(currentQuestion)
         addNotification('error', err instanceof Error ? err.message : 'Ask failed')
@@ -288,7 +292,9 @@ export function AskPanel() {
       })
     } catch (err) {
       // Aborted regenerate: keep the previous answer untouched.
-      if (!isAbortError(err)) {
+      if (isLlmUnavailableError(err)) {
+        useUIStore.getState().setLlmSetupPromptOpen(true)
+      } else if (!isAbortError(err)) {
         addNotification('error', err instanceof Error ? err.message : 'Regenerate failed')
       }
     } finally {
