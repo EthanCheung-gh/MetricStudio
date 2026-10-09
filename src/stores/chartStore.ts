@@ -4,6 +4,7 @@ import type { ChartConfig, ChartEncoding, SelectionFilter } from '@/types/encodi
 import type { PlotlyFigure } from '@/types/plotly';
 import { api } from '@/api/client';
 import { generateId } from '@/utils/id';
+import { useDataStore } from './dataStore';
 
 export interface ChartSelection extends SelectionFilter {
   /** Source chart that produced the brush */
@@ -18,6 +19,10 @@ interface ChartState {
   selection: ChartSelection | null;
   loading: boolean;
   error: string | null;
+  /** v1.15.0 (from the OHOS port): per-chart preview cache keyed by chartId —
+   * switching back to a chart with an unchanged encoding/data version renders
+   * instantly. Session-scoped; never persisted. */
+  previewCache: Record<string, { sig: string; figure: PlotlyFigure }>;
 
   createChart: (datasetId: string, name?: string) => ChartConfig;
   duplicateChart: (id: string) => ChartConfig | null;
@@ -102,6 +107,7 @@ export const useChartStore = create<ChartState>()(
       selection: null,
       loading: false,
       error: null,
+      previewCache: {},
 
       createChart: (datasetId, name) => {
         const chart: ChartConfig = {
@@ -174,10 +180,15 @@ export const useChartStore = create<ChartState>()(
       },
 
       removeChart: (id) => {
-        set((state) => ({
-          charts: state.charts.filter((chart) => chart.id !== id),
-          activeChartId: state.activeChartId === id ? null : state.activeChartId,
-        }));
+        set((state) => {
+          const previewCache = { ...state.previewCache };
+          delete previewCache[id];
+          return {
+            charts: state.charts.filter((chart) => chart.id !== id),
+            activeChartId: state.activeChartId === id ? null : state.activeChartId,
+            previewCache,
+          };
+        });
       },
 
       previewChart: async (datasetId, encoding, chartId) => {
@@ -200,9 +211,25 @@ export const useChartStore = create<ChartState>()(
                   yRange: sel.yRange,
                 }
               : undefined;
+          // v1.15.0: instant switch — an unchanged encoding/data version
+          // replays the cached figure without a request or a loading flicker.
+          const dataVersion = useDataStore.getState().dataVersions[datasetId] || 0;
+          const sig = JSON.stringify([datasetId, encoding, applySel ?? null, dataVersion]);
+          const cached = chartId ? get().previewCache[chartId] : undefined;
+          if (cached && cached.sig === sig) {
+            if (seq !== previewSeq) return;
+            set({ previewFigure: cached.figure, loading: false, error: null });
+            return;
+          }
           const figure = await api.previewChart(datasetId, encoding, applySel);
           if (seq !== previewSeq) return; // a newer preview was issued meanwhile
-          set({ previewFigure: figure, loading: false });
+          set((state) => ({
+            previewFigure: figure,
+            loading: false,
+            previewCache: chartId
+              ? { ...state.previewCache, [chartId]: { sig, figure } }
+              : state.previewCache,
+          }));
         } catch (err) {
           if (seq !== previewSeq) return;
           set({ error: err instanceof Error ? err.message : 'Chart preview failed', loading: false });
@@ -228,13 +255,13 @@ export const useChartStore = create<ChartState>()(
         });
       },
 
-      loadCharts: (charts) => set({ charts }),
+      loadCharts: (charts) => set({ charts, previewCache: {} }),
       clearError: () => set({ error: null }),
     }),
     {
       name: 'metricstudio-charts',
       storage: createJSONStorage(() => debouncedLocalStorage),
-      partialize: (state) => ({ charts: state.charts }),
+      partialize: (state) => ({ charts: state.charts, activeChartId: state.activeChartId }),
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Record<string, unknown>) } as ChartState;
         // Migrate charts from old format (single y) to new format (yFields array)
@@ -268,6 +295,11 @@ export const useChartStore = create<ChartState>()(
             }
             return chart;
           }) as ChartConfig[];
+        }
+        // v1.15.0: a persisted selection must point at a restored chart —
+        // stale ids (deleted before the last save) would render a dead tab.
+        if (merged.activeChartId && !(merged.charts ?? []).some((c) => c.id === merged.activeChartId)) {
+          merged.activeChartId = null;
         }
         return merged as ChartState;
       },

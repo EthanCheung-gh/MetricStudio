@@ -52,6 +52,10 @@ export function PlotlyRenderer({
   const onClearSelectionRef = useRef(onClearSelection)
   onSelectedRef.current = onSelected
   onClearSelectionRef.current = onClearSelection
+  // v1.15.0 (from the OHOS port): signature of the figure currently on canvas —
+  // an identical replay (preview-cache hit) skips Plotly.react entirely; on a
+  // large workbook that full redraw is the dominant switch cost.
+  const lastSigRef = useRef('')
 
   // Check Plotly loaded
   useEffect(() => {
@@ -88,11 +92,20 @@ export function PlotlyRenderer({
       userLayout,
     )
 
+    // Identical figure already on canvas: keep it as-is (the cleanup no longer
+    // purges, so replaying a cache hit must not blank the plot).
+    const sig = JSON.stringify([themeFigure.data, themeFigure.layout])
+    if (sig === lastSigRef.current) return
+    lastSigRef.current = sig
+
     // Clear any stale error first — the canvas container now stays mounted,
     // so every new figure gets a fresh chance to render (v1.7.1).
     setRenderError(null)
     let failed = false
     try {
+      // Per-render purge lives here, not in the cleanup: an identical-figure
+      // replay skips this body and keeps the live canvas.
+      try { Plotly.purge(el) } catch { /* not initialized yet */ }
       const maybePromise = Plotly.react(el, themeFigure.data, themeFigure.layout, {
         responsive: true,
         displayModeBar: true,
@@ -101,10 +114,12 @@ export function PlotlyRenderer({
       // Async failures inside plotly (bad traces, layout NaN) reject here.
       if (maybePromise && typeof (maybePromise as Promise<unknown>).catch === 'function') {
         (maybePromise as Promise<unknown>).catch((err: unknown) => {
+          lastSigRef.current = '' // allow a retry of this exact figure
           setRenderError(err instanceof Error ? err.message : 'Plotly render failed')
         })
       }
     } catch (err) {
+      lastSigRef.current = '' // allow a retry of this exact figure
       setRenderError(err instanceof Error ? err.message : 'Plotly render failed')
       failed = true
     }
@@ -139,9 +154,19 @@ export function PlotlyRenderer({
     return () => {
       window.removeEventListener('resize', handleWindowResize)
       try { gd.removeAllListeners?.() } catch { /* ignore */ }
-      try { Plotly.purge(el) } catch { /* ignore */ }
     }
   }, [figure, ready, userLayout, isDark, renderRetry])
+
+  // Final teardown only — the per-render purge happens in the render body so
+  // an identical-figure replay can keep the live canvas (v1.15.0).
+  useEffect(() => {
+    const el = containerRef.current
+    return () => {
+      if (el) {
+        try { Plotly.purge(el) } catch { /* ignore */ }
+      }
+    }
+  }, [])
 
   // Resize chart when panelResizeVersion changes
   useEffect(() => {

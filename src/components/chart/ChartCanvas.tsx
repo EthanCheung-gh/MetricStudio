@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { PlotlyRenderer, type PlotlySelection } from './PlotlyRenderer'
-import { Button, Card, CardBody, Input } from '@heroui/react'
+import { Button, Card, CardBody, Input, Tooltip } from '@heroui/react'
 import { Download, Image, FileCode, FileText, Filter, Lightbulb, Sparkles, X } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 import { api } from '@/api/client'
@@ -170,56 +170,68 @@ export function ChartCanvas() {
               </button>
             </div>
           )}
-          <Button
-            isIconOnly size="sm" variant="light"
-            isDisabled={!activeChart || !previewFigure}
-            isLoading={explaining}
-            onPress={handleExplain}
-            aria-label={t('chart.aiExplain')}
-          >
-            <Sparkles className="h-4 w-4" />
-          </Button>
-          <Button
-            isIconOnly size="sm" variant="light"
-            isDisabled={!activeChart || !previewFigure}
-            isLoading={annotating}
-            onPress={handleAnnotateInsights}
-            aria-label={t('chart.annotateInsights')}
-          >
-            <Lightbulb className="h-4 w-4" />
-          </Button>
-          <Button
-            isIconOnly size="sm" variant="light"
-            isDisabled={charts.length === 0}
-            onPress={() => setReportDialogOpen(true)}
-            aria-label={t('cmd.generateReport')}
-          >
-            <FileText className="h-4 w-4" />
-          </Button>
-          <Button
-            isIconOnly size="sm" variant="light"
-            isDisabled={!previewFigure}
-            onPress={handleExportHtml}
-            aria-label={t('chart.exportHtml')}
-          >
-            <FileCode className="h-4 w-4" />
-          </Button>
-          <Button
-            isIconOnly size="sm" variant="light"
-            isDisabled={!previewFigure}
-            onPress={handleExportPng}
-            aria-label={t('chart.exportPng')}
-          >
-            <Image className="h-4 w-4" />
-          </Button>
-          <Button
-            isIconOnly size="sm" variant="light"
-            isDisabled={!previewFigure}
-            onPress={handleExportJson}
-            aria-label={t('chart.exportJson')}
-          >
-            <Download className="h-4 w-4" />
-          </Button>
+          <Tooltip content={t('chart.aiExplain')}>
+            <Button
+              isIconOnly size="sm" variant="light"
+              isDisabled={!activeChart || !previewFigure}
+              isLoading={explaining}
+              onPress={handleExplain}
+              aria-label={t('chart.aiExplain')}
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('chart.annotateInsights')}>
+            <Button
+              isIconOnly size="sm" variant="light"
+              isDisabled={!activeChart || !previewFigure}
+              isLoading={annotating}
+              onPress={handleAnnotateInsights}
+              aria-label={t('chart.annotateInsights')}
+            >
+              <Lightbulb className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('cmd.generateReport')}>
+            <Button
+              isIconOnly size="sm" variant="light"
+              isDisabled={charts.length === 0}
+              onPress={() => setReportDialogOpen(true)}
+              aria-label={t('cmd.generateReport')}
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('chart.exportHtml')}>
+            <Button
+              isIconOnly size="sm" variant="light"
+              isDisabled={!previewFigure}
+              onPress={handleExportHtml}
+              aria-label={t('chart.exportHtml')}
+            >
+              <FileCode className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('chart.exportPng')}>
+            <Button
+              isIconOnly size="sm" variant="light"
+              isDisabled={!previewFigure}
+              onPress={handleExportPng}
+              aria-label={t('chart.exportPng')}
+            >
+              <Image className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('chart.exportJson')}>
+            <Button
+              isIconOnly size="sm" variant="light"
+              isDisabled={!previewFigure}
+              onPress={handleExportJson}
+              aria-label={t('chart.exportJson')}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </Tooltip>
         </div>
       </div>
       <Card className="flex-1 border-border bg-surface">
