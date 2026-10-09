@@ -116,13 +116,18 @@ def _aggregate(df, encoding):
 
     # ---- Single-Y types: pie, histogram, box ----
     if chart_type == "pie":
-        if not color or not y_fields:
+        if not y_fields:
+            return {"data": [], "layout": layout}
+        # v1.15.0: a pie may arrive with the category in x (LLM-style
+        # category-as-x or an enforced bar->pie retarget) — fall back to x.
+        category = color if color else encoding.x
+        if category is None or not getattr(category, "field", None):
             return {"data": [], "layout": layout}
         primary = y_fields[0]
-        grouped = df.groupby(color.field, dropna=False)[primary.field].sum().reset_index()
+        grouped = df.groupby(category.field, dropna=False)[primary.field].sum().reset_index()
         data = [{
             "type": "pie",
-            "labels": grouped[color.field].astype(str).tolist(),
+            "labels": grouped[category.field].astype(str).tolist(),
             "values": grouped[primary.field].tolist(),
             "marker": {"colors": DEFAULT_COLORS},
         }]
