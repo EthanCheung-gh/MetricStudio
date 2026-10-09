@@ -5,6 +5,10 @@ import { useUIStore } from './uiStore';
 
 let previewRequestId = 0;
 
+/** v1.15.0 (from the OHOS port): last active dataset id, restored after a
+ * reload so the workspace context survives the backend session restore. */
+const LAST_DATASET_KEY = 'ms:lastDatasetId';
+
 export interface TsResult {
   column?: string;
   temporal_column?: string;
@@ -68,6 +72,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   setActiveDataFrame: (id) => {
     set({ activeDataFrameId: id, preview: null, describe: null, columns: [], error: null });
     if (id) {
+      try { localStorage.setItem(LAST_DATASET_KEY, id); } catch { /* storage unavailable */ }
       get().refreshActiveDataFrame();
     }
   },
@@ -77,6 +82,16 @@ export const useDataStore = create<DataState>((set, get) => ({
     try {
       const dataFrames = await api.listDataFrames();
       set({ dataFrames, loading: false });
+      // Restore the last active dataset (validated against the restored
+      // session); without this a reload drops the user into "no selection".
+      if (!get().activeDataFrameId && dataFrames.length > 0) {
+        try {
+          const last = localStorage.getItem(LAST_DATASET_KEY);
+          if (last && dataFrames.some((d) => d.id === last)) {
+            get().setActiveDataFrame(last);
+          }
+        } catch { /* storage unavailable */ }
+      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to load datasets', loading: false });
     }

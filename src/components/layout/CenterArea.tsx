@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Database, X, Plus, SlidersHorizontal, LayoutDashboard, Sparkles } from 'lucide-react'
 import { Button } from '@heroui/react'
@@ -33,6 +34,13 @@ export function CenterArea() {
   const addNotification = useUIStore((s) => s.addNotification)
   const importSample = useDataStore((s) => s.importSample)
   const dashboards = useDashboardStore((s) => s.dashboards)
+
+  // v1.15.0: persisted tabs may reference charts deleted before the last
+  // save — prune them once charts are known instead of rendering dead tabs.
+  const staleTabIds = openChartTabs.filter((id) => !charts.some((c) => c.id === id))
+  useEffect(() => {
+    staleTabIds.forEach((id) => closeChartTab(id))
+  }, [staleTabIds, closeChartTab])
 
   const startSampleTour = async () => {
     try {

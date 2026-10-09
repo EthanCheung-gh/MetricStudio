@@ -149,6 +149,10 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         theme: state.theme,
         leftPanelSize: state.leftPanelSize,
         rightPanelSize: state.rightPanelSize,
+        // v1.15.0 (from the OHOS port): the tab layout IS the user's working
+        // context — without these a reload drops every opened chart tab.
+        openChartTabs: state.openChartTabs,
+        activeChartTabIdx: state.activeChartTabIdx,
       }),
     }
   )

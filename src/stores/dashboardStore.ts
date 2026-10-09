@@ -399,7 +399,16 @@ export const useDashboardStore = create<DashboardState>()(
     }),
     {
       name: 'metricstudio-dashboards',
-      partialize: (s) => ({ dashboards: s.dashboards, layoutTemplates: s.layoutTemplates }),
+      // v1.15.0 (from the OHOS port): keep the active selection across reloads.
+      partialize: (s) => ({ dashboards: s.dashboards, layoutTemplates: s.layoutTemplates, activeDashboardId: s.activeDashboardId }),
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Record<string, unknown>) } as DashboardState;
+        // A persisted selection must point at a restored dashboard.
+        if (merged.activeDashboardId && !(merged.dashboards ?? []).some((d) => d.id === merged.activeDashboardId)) {
+          merged.activeDashboardId = null;
+        }
+        return merged;
+      },
     },
   ),
 )
