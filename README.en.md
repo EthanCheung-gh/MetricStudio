@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.15.0**
+Current version: **1.15.1**
 
 ## Screenshots
 
@@ -42,6 +42,7 @@ In one line: **the LLM handles understanding and narration; the data handles com
 
 ### Visualization & dashboards
 - 33 chart types (line / bar / pie / histogram / box / violin / heatmap / treemap / sankey / parallel coordinates, etc.) with drag-and-drop encoding
+- Large-sample downsampling: raw-row charts (scatter / line / area / step / dot / splom / parcoords / parcats) switch to even-stride sampling above **5000 points**, always keeping the first and last row and recording `layout.meta.sampled` (total / shown); `METRICSTUDIO_CHART_MAX_POINTS` changes the cap, `0` disables it. Statistical charts (histogram / box / violin / pie / heatmap) always read every row — sampling only ever touches "one point per row" marks and never changes a statistic
 - Dashboards: multi-page composition, KPI cards, text cards, cross-card selection linking, dashboard-level filters (server-side search & pagination for high-cardinality fields)
 - Editing: edit/view modes, card locking, dashboard duplication, alignment & even-spacing layout tools, dashboard-level undo/redo, sidebar width memory
 - Export: self-contained interactive HTML (records filters and generation time)
@@ -228,6 +229,7 @@ See [package.json](package.json) for the current version (kept in sync with `src
 - **v1.13.0**: Q&A results to datasets — tabular tools return structured data (facts/SSE only, never the prompt); /nl/fact-to-dataset materializes a fact plus a recommended chart in one click
 - **v1.14.0**: agent-configured charts — NL → ChartEncoding (single shot + strict validation + one error-feedback retry + recommendation fallback); a Chart mode joins the AI bar; fixed fetchJson missing Content-Type, which had broken every sync POST with 422
 - **v1.15.0**: a named chart type is a hard contract (zh/en keyword detection, three-layer enforcement, degraded-path retargeting, pie renders from x); an unconfigured-AI setup prompt; the working context (tabs / active chart / dashboard / dataset) survives a reload; per-chart preview cache with identical-figure render skip. Ported back from the HarmonyOS side (MetricStudio-OHOS) to keep both ends aligned
+- **v1.15.1**: cost and latency work — frame statistics and insights are computed once per dataset (436ms → 32ms per question on a wide frame; evidence 378ms → 2ms) and the data context moved out of the system prompt so its prefix is cacheable; raw-row charts deterministically downsample above 5000 points (a 100k-row scatter drops from 4.2MB to 212KB); the cleaning chain retries once with error feedback (still 422 when the repair fails)
 
 Next up (P3): discovery-oriented home page, plugin system, lightweight sharing.
 
