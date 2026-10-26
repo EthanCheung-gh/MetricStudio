@@ -26,11 +26,31 @@ class Dataset:
         self.name = name
         self.engine = engine
         self.source_type = source_type
+        # Monotonic counter bumped by the ``_df`` setter on EVERY frame write,
+        # including out-of-band replacements (session source auto-refresh).
+        # Consumers that cache content-derived values (the QA prompt context)
+        # key on it, so a value-only change that keeps the row labels (fillna,
+        # source refresh) cannot serve stale statistics.
+        self.revision = 0
         self.raw_df = df.copy()
         self._df = df.copy()
         self.created_at = datetime.utcnow().isoformat()
         self.history: list[dict[str, Any]] = []
         self._build_meta()
+
+    # -- frame access -----------------------------------------------------------
+    # A property (not a plain attribute) on purpose: every ``self._df = ...``
+    # write bumps ``revision``, so no future call site — including session's
+    # out-of-band source refresh — can silently leave content-derived caches
+    # (the QA prompt context) serving stale statistics.
+    @property
+    def _df(self) -> pd.DataFrame:
+        return self.__df
+
+    @_df.setter
+    def _df(self, value: pd.DataFrame) -> None:
+        self.__df = value
+        self.revision = getattr(self, "revision", 0) + 1
 
     def set_source_type(self, source_type: str) -> None:
         """Update the origin tag and refresh the cached meta."""

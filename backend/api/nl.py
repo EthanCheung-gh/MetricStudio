@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 import uuid
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -408,80 +410,145 @@ def _datetime_range_line(df: Any, column: str) -> str | None:
     return f"{column} (datetime): from={full.min()}, to={full.max()}"
 
 
-def _build_data_context(dataset: Any, df: Any, question: str = "") -> str:
-    """Adaptive overview: richer per-dtype facts and question-relevant samples."""
+# --- v1.16.0 cost: per-frame context memo --------------------------------------
+# ``_build_data_context`` and ``_build_data_evidence`` derive the same frame
+# facts (numeric describe + insights), and both run on every QA turn — twice
+# per question, before the first LLM token. Insights alone cost ~270ms on a
+# 20-column frame. Memoize the frame-derived part and let both readers share it.
+_CONTEXT_CACHE_MAX = 16
+_context_cache: "OrderedDict[tuple[Any, ...], dict[str, Any]]" = OrderedDict()
+_context_lock = threading.Lock()
+
+
+def _frame_signature(dataset: Any, df: Any) -> tuple[Any, ...]:
+    """Cheap, content-identifying key for the memoized frame facts (0.7ms/100k rows).
+
+    Two complementary guards: a row-subset derivation (snapshot / dashboard
+    filter) changes the index labels, while a value-only change (fillna) keeps
+    them and is caught by ``Dataset.revision``. Neither alone is sufficient.
+    """
+    try:
+        index_hash = int(pd.util.hash_pandas_object(df.index, index=False).sum())
+    except Exception:  # noqa: BLE001 - a signature must never break the ask flow
+        index_hash = 0
+    return (
+        getattr(dataset, "id", None),
+        getattr(dataset, "revision", -1),
+        len(df),
+        tuple(str(column) for column in df.columns),
+        index_hash,
+        str(load_config().get("data_scope") or "all"),
+    )
+
+
+def _frame_facts(dataset: Any, df: Any) -> dict[str, Any]:
+    """Frame-derived facts shared by the prompt context and the evidence list."""
+    key = _frame_signature(dataset, df)
+    with _context_lock:
+        cached = _context_cache.get(key)
+        if cached is not None:
+            _context_cache.move_to_end(key)
+            return cached
+
     from backend.core.insights import generate_insights
 
+    facts: dict[str, Any] = {
+        "rows": len(df),
+        "cols": len(df.columns),
+        "columns_desc": ", ".join(f"{name}({dtype})" for name, dtype in df.dtypes.items()),
+        "schema_desc": ", ".join(f"{name} ({dtype})" for name, dtype in df.dtypes.items()),
+        "numeric": [],
+        "extra_lines": [],
+        "insights": [],
+    }
+    if not df.empty:
+        numeric = df.select_dtypes(include="number")
+        if not numeric.empty:
+            desc = numeric.describe().T
+            for column in desc.index:
+                row = desc.loc[column]
+                facts["numeric"].append(
+                    {
+                        "column": str(column),
+                        "detail": (
+                            f"{column}: count={int(row['count'])}, missing={int(df[column].isna().sum())}, "
+                            f"min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, "
+                            f"median={df[column].median():.2f}"
+                        ),
+                    }
+                )
+        for column in df.columns:
+            if column in numeric.columns:
+                continue
+            range_line = _datetime_range_line(df, str(column))
+            if range_line:
+                facts["extra_lines"].append(range_line)
+                continue
+            line = _categorical_line(df, str(column))
+            if line:
+                facts["extra_lines"].append(line)
+        facts["insights"] = generate_insights(df)
+
+    with _context_lock:
+        _context_cache[key] = facts
+        _context_cache.move_to_end(key)
+        while len(_context_cache) > _CONTEXT_CACHE_MAX:
+            _context_cache.popitem(last=False)
+    return facts
+
+
+def _clear_context_cache() -> None:
+    """Test hook: drop memoized frame facts."""
+    with _context_lock:
+        _context_cache.clear()
+
+
+def _build_data_context(dataset: Any, df: Any, question: str = "") -> str:
+    """Adaptive overview: richer per-dtype facts and question-relevant samples."""
     df, _ = prepare_for_llm(df, load_config())
-    lines = [f"Dataset overview: {len(df)} rows × {len(df.columns)} columns"]
-    lines.append("Columns: " + ", ".join(f"{name}({dtype})" for name, dtype in df.dtypes.items()))
-    if df.empty:
+    facts = _frame_facts(dataset, df)
+    lines = [f"Dataset overview: {facts['rows']} rows × {facts['cols']} columns"]
+    lines.append("Columns: " + facts["columns_desc"])
+    if facts["rows"] == 0:
         lines.append("No rows matched the selected context.")
         return "\n".join(lines)
-    numeric = df.select_dtypes(include="number")
-    if not numeric.empty:
-        desc = numeric.describe().T
-        for col in desc.index:
-            row = desc.loc[col]
-            lines.append(
-                f"{col}: count={int(row['count'])}, missing={int(df[col].isna().sum())}, "
-                f"min={row['min']}, max={row['max']}, mean={row['mean']:.2f}, median={df[col].median():.2f}"
-            )
-    for column in df.columns:
-        if column in numeric.columns:
-            continue
-        range_line = _datetime_range_line(df, str(column))
-        if range_line:
-            lines.append(range_line)
-            continue
-        line = _categorical_line(df, str(column))
-        if line:
-            lines.append(line)
+    lines.extend(item["detail"] for item in facts["numeric"])
+    lines.extend(facts["extra_lines"])
     sample = _relevant_sample_rows(df, question)
     lines.append("Sample rows (closest to the question):" if question else "Sample rows:")
     for _, row in sample.iterrows():
         lines.append("  " + ", ".join(f"{key}={_cap_cell(value)}" for key, value in row.items()))
-    insights = generate_insights(df)
-    if insights:
-        lines.append("Insights: " + "; ".join(item["text"] for item in insights))
+    if facts["insights"]:
+        lines.append("Insights: " + "; ".join(item["text"] for item in facts["insights"]))
     return "\n".join(lines)
 
 
 def _build_data_evidence(dataset: Any, df: Any, snapshot_id: str | None) -> list[dict[str, Any]]:
     """Build deterministic references shown with an answer."""
-    from backend.core.insights import generate_insights
-
     df, _ = prepare_for_llm(df, load_config())
+    facts = _frame_facts(dataset, df)
     source: dict[str, str] = {"datasetId": dataset.id}
     if snapshot_id:
         source["snapshotId"] = snapshot_id
     evidence: list[dict[str, Any]] = [
-        {"id": "schema", "kind": "schema", "detail": ", ".join(f"{name} ({dtype})" for name, dtype in df.dtypes.items()), "source": source},
-        {"id": "overview", "kind": "overview", "detail": f"{len(df)} rows × {len(df.columns)} columns", "source": source},
+        {"id": "schema", "kind": "schema", "detail": facts["schema_desc"], "source": source},
+        {"id": "overview", "kind": "overview", "detail": f"{facts['rows']} rows × {facts['cols']} columns", "source": source},
     ]
-    if df.empty:
+    if facts["rows"] == 0:
         return evidence
-    numeric = df.select_dtypes(include="number")
-    if not numeric.empty:
-        desc = numeric.describe().T
-        for col in desc.index:
-            row = desc.loc[col]
-            evidence.append(
-                {
-                    "id": f"statistics:{col}",
-                    "kind": "statistics",
-                    "detail": (
-                        f"{col}: count={int(row['count'])}, missing={int(df[col].isna().sum())}, "
-                        f"min={row['min']}, max={row['max']}, "
-                        f"mean={row['mean']:.2f}, median={df[col].median():.2f}"
-                    ),
-                    "source": {**source, "field": str(col)},
-                }
-            )
+    for item in facts["numeric"]:
+        evidence.append(
+            {
+                "id": f"statistics:{item['column']}",
+                "kind": "statistics",
+                "detail": item["detail"],
+                "source": {**source, "field": item["column"]},
+            }
+        )
     for index, row in df.head(3).iterrows():
         values = ", ".join(f"{key}={value}" for key, value in row.items())
         evidence.append({"id": f"sample:{index}", "kind": "sample", "detail": f"row {index}: {values}", "source": {**source, "row": str(index)}})
-    for insight_index, insight in enumerate(generate_insights(df)[:3]):
+    for insight_index, insight in enumerate(facts["insights"][:3]):
         evidence.append({"id": f"insight:{insight_index}", "kind": "insight", "detail": str(insight["text"]), "source": source})
     return evidence[:12]
 
