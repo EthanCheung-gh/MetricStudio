@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,9 @@ router = APIRouter(prefix="/api/v1/chart", tags=["chart"])
 
 # Chart templates persist to ~/.metricstudio/templates/{id}.json (spec §9.2)
 TEMPLATES_DIR = Path.home() / ".metricstudio" / "templates"
+
+# v1.16.0: raw-row point cap per trace (payload is O(rows)); env-overridable.
+DEFAULT_MAX_POINTS = 5000
 
 DEFAULT_COLORS = [
     "#3b82f6",
@@ -42,6 +46,54 @@ def _safe_sort(values):
         except (ValueError, TypeError):
             return (1, str(v))
     return sorted(values, key=sort_key)
+
+
+def _max_points() -> int:
+    """Raw-row point cap for one trace (v1.16.0).
+
+    A figure response is O(rows): 100k scatter points serialize to ~4.2 MB of
+    JSON, produced on the server and parsed by the SPA on every encoding change.
+    Sampling is deterministic (even stride, first and last row always kept) so
+    a preview is byte-stable across identical requests.
+
+    0 or a negative value disables sampling; ``METRICSTUDIO_CHART_MAX_POINTS``
+    overrides the 5000-point default.
+    """
+    raw = os.environ.get("METRICSTUDIO_CHART_MAX_POINTS", "").strip()
+    if not raw:
+        return DEFAULT_MAX_POINTS
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_MAX_POINTS
+
+
+def _maybe_sample(df: pd.DataFrame, layout: dict) -> pd.DataFrame:
+    """Downsample an eligible raw-row frame, recording the fact in layout.meta.
+
+    Only raw-row traces qualify. Aggregated traces (groupby/color splits,
+    histograms, box/violin, pie, heatmaps) must see every row or their values —
+    counts, shares, quartiles — would change, which is a correctness bug, not a
+    rendering trade-off.
+    """
+    total = len(df)
+    limit = _max_points()
+    if limit <= 0 or total <= limit:
+        return df
+    if limit == 1:
+        positions = [total - 1]
+    else:
+        # Spread limit points over the whole frame and always keep the last row,
+        # so the rendered envelope still ends where the real data ends.
+        step = (total - 1) / float(limit - 1)
+        positions = sorted({int(round(index * step)) for index in range(limit)})
+        positions[-1] = total - 1
+    layout["meta"] = {"sampled": {"total": total, "shown": len(positions), "max": limit}}
+    return df.iloc[positions]
+
+
+# Relational raw-row types that reach the multi-Y section below.
+_SAMPLABLE_RELATIONAL = frozenset({"scatter", "line", "area", "step", "dot"})
 
 
 def _to_records(df):
@@ -289,6 +341,7 @@ def _aggregate(df, encoding):
         dims = [d for d in (encoding.dimensions or []) if d in df.columns]
         if len(dims) < 2:
             return {"data": [], "layout": layout}
+        df = _maybe_sample(df, layout)
         trace = {
             "type": "splom",
             "dimensions": [
@@ -362,6 +415,7 @@ def _aggregate(df, encoding):
         dims = [d for d in (encoding.dimensions or []) if d in df.columns]
         if len(dims) < 2:
             return {"data": [], "layout": layout}
+        df = _maybe_sample(df, layout)
         trace = {
             "type": "parcoords",
             "dimensions": [
@@ -386,6 +440,7 @@ def _aggregate(df, encoding):
         dims = [d for d in (encoding.dimensions or []) if d in df.columns]
         if len(dims) < 2:
             return {"data": [], "layout": layout}
+        df = _maybe_sample(df, layout)
         trace = {
             "type": "parcats",
             "dimensions": [{"label": d, "values": df[d].astype(str).tolist()} for d in dims],
@@ -670,6 +725,17 @@ def _aggregate(df, encoding):
     stack_mode = bool(opts and opts.barmode == "stack")
     if stack_mode and chart_type in ("bar", "barh"):
         layout["barmode"] = "stack"
+
+    # v1.16.0: cap the raw-row path. Only when EVERY series is raw (no
+    # aggregate) and there is no color split — both of those paths group rows,
+    # and sampling them would silently change the plotted totals.
+    if (
+        chart_type in _SAMPLABLE_RELATIONAL
+        and not color
+        and y_fields
+        and all(not yf.aggregate for yf in y_fields)
+    ):
+        df = _maybe_sample(df, layout)
 
     data = []
     trace_norms = []  # parallel to data: normalize mode of the y-field that produced each trace
