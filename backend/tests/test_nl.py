@@ -141,10 +141,49 @@ def test_nl_transform_invalid_output(client, monkeypatch):
     dsid = resp.json()[0]["id"]
 
     # A parseable chain with an unknown operator is a real LLM-output failure
-    # and still 422s.
-    monkeypatch.setattr(nl_module, "chat", lambda messages: '[{"type":"explode","params":{}}]')
+    # and still 422s — but only after the single repair pass (v1.16.0).
+    calls = {"n": 0}
+
+    def always_explode(messages, **kw):
+        calls["n"] += 1
+        return '[{"type":"explode","params":{}}]'
+
+    monkeypatch.setattr(nl_module, "chat", always_explode)
     resp = client.post("/api/v1/nl/transform", json={"dataset_id": dsid, "query": "anything"})
     assert resp.status_code == 422
+    assert calls["n"] == 2
+
+
+def test_nl_transform_repairs_invalid_output_once(client, monkeypatch):
+    import backend.api.nl as nl_module
+
+    csv = "a\n1\n2\n"
+    resp = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")})
+    dsid = resp.json()[0]["id"]
+
+    replies = iter(
+        [
+            '[{"type":"explode","params":{}}]',
+            '[{"type":"sort","params":{"column":"a","ascending":false}}]',
+        ]
+    )
+    seen: list[list[dict]] = []
+
+    def first_bad_then_good(messages, **kw):
+        seen.append(list(messages))
+        return next(replies)
+
+    monkeypatch.setattr(nl_module, "chat", first_bad_then_good)
+    resp = client.post("/api/v1/nl/transform", json={"dataset_id": dsid, "query": "sort desc"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["operations"] == [{"type": "sort", "params": {"column": "a", "ascending": False}}]
+    assert body["repaired"] is True
+    # The repair turn shows the model its own (capped) bad reply plus the error.
+    repair_messages = seen[-1]
+    assert repair_messages[-2]["role"] == "assistant" and "explode" in repair_messages[-2]["content"]
+    assert "previous reply was invalid" in repair_messages[-1]["content"]
+    assert len(repair_messages) == 3
 
 
 def test_fact_to_dataset_roundtrip(client):
@@ -596,10 +635,43 @@ def test_transform_stream_invalid_ops_still_error(client, monkeypatch):
         nl_module, "chat_stream",
         lambda messages, **kw: iter(['[{"type":"explode","params":{}}]']),
     )
+    # v1.16.0: one repair pass runs; when it is also invalid the original
+    # output error is what the user sees.
+    calls = {"n": 0}
+
+    def still_wrong(messages, **kw):
+        calls["n"] += 1
+        return '[{"type":"explode","params":{}}]'
+
+    monkeypatch.setattr(nl_module, "chat", still_wrong)
     with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "x"}) as response:
         body = "".join(chunk for chunk in response.iter_text())
     frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
     assert frames[-1]["type"] == "error" and "LLM output invalid" in frames[-1]["message"]
+    assert calls["n"] == 1
+
+
+def test_transform_stream_repairs_invalid_ops_once(client, monkeypatch):
+    csv = "a\n1\n2\n"
+    import backend.api.nl as nl_module
+
+    dataset_id = client.post("/api/v1/data/import", files={"file": ("t.csv", csv.encode(), "text/csv")}).json()[0]["id"]
+    monkeypatch.setattr(
+        nl_module, "chat_stream",
+        lambda messages, **kw: iter(['[{"type":"explode","params":{}}]']),
+    )
+    monkeypatch.setattr(
+        nl_module, "chat",
+        lambda messages, **kw: '[{"type":"sort","params":{"column":"a","ascending":true}}]',
+    )
+    with client.stream("POST", "/api/v1/nl/transform/stream", json={"dataset_id": dataset_id, "query": "x"}) as response:
+        body = "".join(chunk for chunk in response.iter_text())
+    frames = [json.loads(line[len("data: "):]) for line in body.splitlines() if line.startswith("data: ")]
+    # The invalid op never lit up: no op frame is emitted before the repair.
+    assert all(frame["type"] != "op" or frame["op"]["type"] == "sort" for frame in frames)
+    assert frames[-1]["type"] == "done"
+    assert frames[-1]["operations"] == [{"type": "sort", "params": {"column": "a", "ascending": True}}]
+    assert frames[-1]["repaired"] is True
 
 
 def test_transform_stream_llm_failure_yields_error(client, monkeypatch):

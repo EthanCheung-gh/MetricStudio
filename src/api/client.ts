@@ -228,6 +228,8 @@ export interface NLTransformStreamEvent {
   op?: { type: string; params: Record<string, unknown> }
   operations?: { type: string; params: Record<string, unknown> }[]
   message?: string
+  /** v1.16.0: the chain came from the one error-feedback repair pass. */
+  repaired?: boolean
 }
 
 /** v1.14.0: agent-generated chart configuration. */

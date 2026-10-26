@@ -191,6 +191,15 @@ def _parse_chain(text: str) -> list[dict[str, Any]]:
     return parsed
 
 
+def _valid_op(op: Any) -> bool:
+    """Per-op check used at stream-emit time (and by ``_validate_ops``)."""
+    return (
+        isinstance(op, dict)
+        and op.get("type") in VALID_OP_TYPES
+        and isinstance(op.get("params"), dict)
+    )
+
+
 def _validate_ops(ops: list[dict[str, Any]]) -> None:
     # An empty chain is valid: the model judged the request as non-cleaning
     # (the prompt instructs it to answer [] for that case).
@@ -205,22 +214,91 @@ def _validate_ops(ops: list[dict[str, Any]]) -> None:
             raise ValueError(f"Operation {op_type!r} must have a params object")
 
 
+_REPAIR_RAW_CAP = 500
+
+
+class _InvalidChain(ValueError):
+    """The LLM produced a chain we cannot use, even after one repair pass."""
+
+
+def _repair_messages(prompt_messages: list[dict[str, str]], raw: str, error: str) -> list[dict[str, str]]:
+    """One error-feedback turn: show the model its own bad reply, ask again.
+
+    The previous reply is capped (v1.16.0) so a runaway/injected output can't
+    inflate the repair prompt.
+    """
+    return [
+        *prompt_messages,
+        {"role": "assistant", "content": raw[:_REPAIR_RAW_CAP]},
+        {
+            "role": "user",
+            "content": (
+                f"Your previous reply was invalid: {error}\n"
+                "Reply with ONLY a JSON array of operations using the operators listed above — "
+                "no prose, no markdown fences. Use [] if the request is not a data "
+                "cleaning/transformation task."
+            ),
+        },
+    ]
+
+
+def _repair_chain(
+    prompt_messages: list[dict[str, str]],
+    raw: str,
+    error: str,
+) -> list[dict[str, Any]]:
+    """Ask the model to fix its own invalid chain. Raises ``_InvalidChain``."""
+    repaired_raw = chat(_repair_messages(prompt_messages, raw, error))
+    try:
+        ops = _parse_chain(repaired_raw)
+        _validate_ops(ops)
+    except ValueError as exc:
+        raise _InvalidChain(error) from exc
+    return ops
+
+
+def _chain_with_repair(
+    prompt_messages: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], str, bool]:
+    """First attempt plus at most one error-feedback repair (v1.16.0).
+
+    Before this, any unusable reply was a 422 — the user had to retype the same
+    request and pay for a whole new turn. One repair turn fixes the common case
+    (prose instead of JSON, wrong operator name) at the cost of a single extra
+    call. Transport failures from the repair call fall back to the original
+    output error instead of turning into a 502.
+    """
+    raw = chat(prompt_messages)
+    try:
+        ops = _parse_chain(raw)
+        _validate_ops(ops)
+        return ops, raw, False
+    except ValueError as exc:
+        error = str(exc)
+    try:
+        ops = _repair_chain(prompt_messages, raw, error)
+    except _InvalidChain:
+        raise _InvalidChain(error) from None
+    except Exception as exc:  # noqa: BLE001 - repair is best-effort
+        get_logger("nl").event("nl_repair_failed", span="nl", error=str(exc), reason="chat_failed")
+        raise _InvalidChain(error) from None
+    get_logger("nl").event("nl_repair", span="nl", repaired=True)
+    return ops, raw, True
+
+
 @router.post("/transform")
 def nl_transform(request: NLTransformRequest):
     dataset = session.get(request.dataset_id)
     prompt = _build_prompt(dataset, request.query)
+    messages = [{"role": "user", "content": prompt}]
     try:
-        raw = chat([{"role": "user", "content": prompt}])
+        ops, raw, repaired = _chain_with_repair(messages)
+    except _InvalidChain as exc:
+        raise HTTPException(status_code=422, detail=f"LLM output invalid: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"LLM unavailable: {exc}") from exc
 
-    try:
-        ops = _parse_chain(raw)
-        _validate_ops(ops)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"LLM output invalid: {exc}") from exc
-
-    return {"operations": ops, "raw": raw}
+    return {"operations": ops, "raw": raw, "repaired": repaired}
 
 
 class _OpExtractor:
@@ -283,7 +361,11 @@ class _OpExtractor:
                         if self._depth == 0:
                             try:
                                 op = json.loads(buf[self._obj_start : i + 1])
-                                if isinstance(op, dict):
+                                # v1.16.0: only light up ops that would survive
+                                # validation — otherwise the process card shows a
+                                # nonsense step, and a later repair can't cleanly
+                                # retract it.
+                                if _valid_op(op):
                                     self.ops.append(op)
                                     out.append(op)
                             except json.JSONDecodeError:
@@ -324,7 +406,25 @@ def nl_transform_stream(request: NLTransformRequest):
             ops = _parse_chain("".join(chunks))
             _validate_ops(ops)
         except ValueError as exc:
-            yield _sse({"type": "error", "message": f"LLM output invalid: {exc}"})
+            # v1.16.0: one repair pass, but only when nothing was lit up yet —
+            # re-emitting a different chain after partial ops would double the
+            # UI's operation list and contradict what the user just watched.
+            if extractor.ops:
+                yield _sse({"type": "error", "message": f"LLM output invalid: {exc}"})
+                return
+            try:
+                ops = _repair_chain(
+                    [{"role": "user", "content": prompt}], "".join(chunks), str(exc)
+                )
+            except _InvalidChain:
+                yield _sse({"type": "error", "message": f"LLM output invalid: {exc}"})
+                return
+            except Exception as repair_exc:  # noqa: BLE001 - best-effort repair
+                yield _sse({"type": "error", "message": f"LLM unavailable: {repair_exc}"})
+                return
+            for index, op in enumerate(ops):
+                yield _sse({"type": "op", "index": index, "op": op})
+            yield _sse({"type": "done", "operations": ops, "repaired": True})
             return
         yield _sse({"type": "done", "operations": ops})
 
