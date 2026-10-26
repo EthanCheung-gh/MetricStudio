@@ -238,6 +238,7 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
 
     def fake_chat(messages, **kw):
         captured["system"] = messages[0]["content"]
+        captured["user"] = messages[1]["content"]
         return "The max value is 30 (row c)."
 
     monkeypatch.setattr(qa_agent_module, "chat", fake_chat)
@@ -245,11 +246,13 @@ def test_ask_endpoint_returns_answer(client, monkeypatch):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["answer"] == "The max value is 30 (row c)."
-    # The system prompt carries the adaptive data context.
-    assert "value" in captured["system"]
-    assert "Dataset overview: 3 rows × 2 columns" in captured["system"]
-    assert "count=3" in captured["system"] and "missing=0" in captured["system"]
-    assert "name=a" in captured["system"]
+    # v1.16.0: the adaptive data context rides in the user message so the
+    # system prompt stays a stable, cacheable prefix.
+    assert "Dataset overview" not in captured["system"]
+    assert "value" in captured["user"]
+    assert "Dataset overview: 3 rows × 2 columns" in captured["user"]
+    assert "count=3" in captured["user"] and "missing=0" in captured["user"]
+    assert "name=a" in captured["user"]
     assert body["evidence"]
     assert any(item["kind"] == "statistics" for item in body["evidence"])
     overview = next(item for item in body["evidence"] if item["id"] == "overview")
