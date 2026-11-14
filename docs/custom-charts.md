@@ -35,8 +35,8 @@
 
 需要特别说明的边界：
 
-- **每个格子内，除 `splitBy` 外，一条 trace 模板生成一条 trace**。`splitBy` 会按颜色值展开；`color`、`size`、`z`、`error` 不会自动复制 trace。只有 `facet` / `facetBy` 会拆子图，`source` / `target` 仍不被消费。
-- `facet` 通道会产生子图网格；`source` / `target` 可以声明，但当前自定义渲染器不消费它们，也不产生数据槽（见第 4、7 节）。
+- **每个格子内，除 `splitBy` 外，一条 trace 模板生成一条 trace**。`splitBy` 会按颜色值展开；`color`、`size`、`z`、`error` 不会自动复制 trace。只有 `facet` / `facetBy` 会拆子图；`source` / `target` 现在由 `sankey` 消费。
+- `facet` 通道会产生子图网格；`source` / `target` 作为 sankey 端点通道使用（见第 4、7 节）。
 - 清单不执行 Plotly 表达式；trace 里只允许单个 `$` 槽位字符串或字面量。需要「一行画两段」时用 `segments`（见第 7 节）。
 
 ## 2. 安装、导入与重载
@@ -132,8 +132,8 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 | `z` | `$z` | 第三数值列；可作为数据槽或 `$z.values` 数组样式槽 |
 | `error` | `$error` | 误差列；可作为数据槽或 `$error.values` 数组样式槽 |
 | `facet` | — | 绑定时按取值拆成子图网格；不产生 `$facet` 数据槽 |
-| `source` | — | 有向关系端点声明；自定义渲染器不消费，不产生槽位 |
-| `target` | — | 同 `source` |
+| `source` | `$source` | sankey 的来源端点列；只对 `sankey` trace 有意义 |
+| `target` | `$target` | sankey 的目标端点列；只对 `sankey` trace 有意义 |
 | `yFields` | `$y0`…`$y4` | Y 字段声明，只包含 `mode` |
 
 除 `yFields` 外，通道对象的结构是：
@@ -153,7 +153,7 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 - 声明了 `required: true`（含默认）的通道，如果用户没绑字段，整张图退化为 `{"data": [], "layout": ...}`；可选通道没绑定时只是对应槽位不可用。
 - 绑定的字段类型不在 `types` 里时，等同于该通道未绑定：`required` → 空图；可选 → 槽位不可用。
 - `channels` 至少要声明一个通道，或声明 `yFields.mode` 且不等于 `none`；否则报 `channels: declare at least one channel or a yFields mode other than "none"`。
-- `facet` 现在会产生子图网格（见第 7 节）。`source` / `target` 仍只参与声明、`required` 与类型检查，自定义渲染器不消费；需要关系图时 v1 做不到。
+- `facet` 现在会产生子图网格（见第 7 节）。`source` / `target` 现在会作为 `$source` / `$target` 数据槽供 `sankey` 使用；普通 trace 不能写 `source` / `target` 键。
 - `color` 默认不会自动分组。`$color` 取的是颜色列的值，`$color.label` 取的是颜色列名。声明 `"splitBy": "$color"` 后，渲染器才会按颜色值拆成多条 trace（见第 7 节）；`facetBy: "$color"` 则按颜色值拆子图。
 
 ### yFields
@@ -187,21 +187,24 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 | `$size` | `size` 通道的整列值 | 声明并绑定 `size` |
 | `$z` | `z` 通道的整列值 | 声明并绑定 `z` |
 | `$error` | `error` 通道的整列值 | 声明并绑定 `error` |
+| `$source` | `source` 通道的整列值（sankey 端点） | 声明并绑定 `source` |
+| `$target` | `target` 通道的整列值（sankey 端点） | 声明并绑定 `target` |
 | `$count` | **每行一个 `1` 的常量列**，用于给 bar 等提供基线 | 始终可用 |
 | `$index` | 变换之后的行号 `0..n-1` | 始终可用 |
-| `$<as>` | `group_agg` / `cumulate` 的输出列 | 对应算子执行之后 |
+| `$<as>` | `group_agg` / `reduce` / `cumulate` 的输出列 | 对应算子执行之后 |
 
 关于 `$count` 和 `$index`：
 
-- `$count` **不是行数统计**。它返回 `[1] * 行数`，适合做常量基线（例如配合 `width` 的 bar）。要统计行数请用 `group_agg` 的 `agg: "count"` 并给出 `as` 别名。
-- `$index` 是**变换后**的行号，不是原始数据的行号；`dropna` / `sort` / `limit` / `group_agg` 之后会重新从 0 开始。
-- 这两个槽位在校验器中始终放行；即使 `group_agg` 清空了其他槽位，它们仍然可以用。它们可以用于 trace 数据字段，也可通过 `$count.values` / `$index.values` 进入数组样式路径；不能写进 `transforms` 的 `slots` / `by` / `field`（算子只能引用通道槽位和算子输出）。
+- `$count` **不是行数统计**。它返回 `[1] * 行数`，适合做常量基线（例如配合 `width` 的 bar）。要统计行数请用 `group_agg` 或 `reduce` 的 `agg: "count"` 并给出 `as` 别名。
+- `$index` 是**变换后**的行号，不是原始数据的行号；`dropna` / `sort` / `limit` / `group_agg` / `reduce` 之后会重新从 0 开始。
+- 这两个槽位在校验器中始终放行；即使 `group_agg` / `reduce` 清空了其他槽位，它们仍然可以用。它们可以用于 trace 数据字段，也可通过 `$count.values` / `$index.values` 进入数组样式路径；不能写进 `transforms` 的 `slots` / `by` / `field`（算子只能引用通道槽位和算子输出）。
 
 `$<as>` 规则：
 
 - 别名匹配 `^[a-z][a-z0-9_]{0,23}$`。
 - 不能与已有槽位同名，也不能使用保留名（`x`、`y0`…`y4`、`color`、`size`、`z`、`error`、`facet`、`source`、`target`、`count`、`index`）。
-- `group_agg` 之后，校验期可用的槽位只剩 `groupBy` 槽位与 `as` 输出；其他原始槽位（以及 `$yN`）都不能再引用。`$count` / `$index` 例外，仍然可用。
+- `group_agg` 之后，校验期可用的槽位是 `groupBy` 中的所有分组槽位 + `as` 输出；其他原始槽位（以及 `$yN`）都不能再引用。`$count` / `$index` 例外，仍然可用。
+- `reduce` 之后，校验期只保留 `as` 输出（以及 `$count` / `$index`）。
 - `cumulate` 之后，原有槽位保留，并新增 `as`。
 
 ### 数组样式槽 `$<slot>.values`
@@ -218,7 +221,7 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 | `error_y.array` | 是 | 同上 |
 | `error_y.arrayminus` | 是 | 同上 |
 
-`<slot>` 可以是任何可解析的数据槽：`x`、`y0`…`y4`、`color`、`size`、`z`、`error`、`count`、`index`，或 `group_agg` / `cumulate` 的 `as` 输出。`$count.values` 是每行 `1`，`$index.values` 是变换后的 `0..n-1`。
+`<slot>` 可以是任何可解析的数据槽：`x`、`y0`…`y4`、`color`、`size`、`z`、`error`、`source`、`target`、`count`、`index`，或 `group_agg` / `reduce` / `cumulate` 的 `as` 输出。`$count.values` 是每行 `1`，`$index.values` 是变换后的 `0..n-1`。
 
 规则：
 
@@ -307,19 +310,32 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `groupBy` | string | 是 | 单个分组槽位（裸名） |
+| `groupBy` | string \| string[] | 是 | 单个分组槽位（裸名），或 1–2 个槽位的数组；数组内不能重复，3 个及以上会被拒绝 |
 | `field` | string | 是 | 被聚合的槽位（裸名）；`sum` / `mean` / `min` / `max` 需要数值列，`count` 只统计非空值 |
 | `agg` | string | 是 | `sum` / `mean` / `count` / `min` / `max` |
 | `as` | string | 是 | 输出列名；生成 `$<as>` |
 
 语义：
 
-- 按 `groupBy` 的唯一值聚合，输出一行一组；列只有分组列和 `as` 输出列。
+- 按 `groupBy` 的唯一值聚合，输出一行一组。`groupBy` 是单个槽位时输出该列 + `as`；是数组时**每个分组列都保留**，再加 `as`（多键分组，sankey 的聚合链接就靠它）。
 - `count` 统计 `field` 的**非空值**数量（与 pandas `groupby.count()` 一致）。
-- 聚合后校验期槽位收缩为 `groupBy` 槽位 + `as` 输出；之后的 trace 或其他算子只能引用这两个（`$count` / `$index` 仍可用）。
+- 聚合后校验期可用的槽位是 `groupBy` 的所有分组槽位 + `as` 输出；之后的 trace 或其他算子只能引用这些（`$count` / `$index` 仍可用）。
 - `as` 不能与当前已有槽位同名，也不能使用保留名。
+- `groupBy` 数组有重复槽位时：`transforms[0].groupBy: duplicate slot 'x'`；数组长度不是 1–2 时：`transforms[0].groupBy: accepts a slot or an array of 1-2 slots`。
 - 声明了 `facet` 通道或 `facetBy`（非 null）时，`group_agg` 会在导入校验阶段被拒绝：`transforms[0]: group_agg cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)`。
-- **没有 `metrics[]` 数组**：一次 `group_agg` 只做「一个分组键 + 一个字段 + 一个聚合 + 一个输出名」。需要多个指标就写多条算子，但注意第二条只能看到第一条收缩后的槽位（因此通常先拆成多个清单或用 `cumulate` 承接）。
+- **没有 `metrics[]` 数组**：一次 `group_agg` 只做「一个分组键（或 1–2 个键）+ 一个字段 + 一个聚合 + 一个输出名」。需要多个指标就写多条算子，但注意第二条只能看到第一条收缩后的槽位。
+
+### reduce
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `field` | string | 是 | 被聚合的槽位（裸名）；`sum` / `mean` / `min` / `max` 需要数值列，`count` 可对任意列 |
+| `agg` | string | 是 | `sum` / `mean` / `count` / `min` / `max` |
+| `as` | string | 是 | 输出列名；生成 `$<as>` |
+
+语义：把**整张表**折叠成一行，只保留 `as` 输出。之后只有 `$<as>`、`$index`、`$count` 可解析；`$index` 是 `[0]`，`$count` 是 `[1]`。`reduce` 是行语义变化算子，和 `group_agg` / `cumulate` / `limit` 一样禁用抽样。缺少任一字段时导入报：`transforms[0]: 'reduce' requires 'field', 'agg' and 'as'`。
+
+数值要求：`sum` / `mean` / `min` / `max` 作用在文本列等非数值列时，渲染阶段抛 `transforms[0]: aggregate 'sum' needs a numeric column`（`agg` 随实际值变化）；`count` 不受此限制。声明了 `facet` 通道或 `facetBy`（非 null）时，`reduce` 在导入阶段直接报：`transforms[0]: reduce cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)`。
 
 ### cumulate
 
@@ -337,7 +353,8 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 
 ### 抽样规则
 
-- 只有 **`group_agg` / `cumulate` / `limit`** 会让清单退出抽样；`dropna` / `sort` 仍然可抽样。
+- 只有 **`group_agg` / `reduce` / `cumulate` / `limit`** 会让清单退出抽样；`dropna` / `sort` 仍然可抽样。
+- 任何 `indicator` trace 都不参与抽样（即使没有 transform）。
 - 可抽样时沿用应用的 5000 点上限（`METRICSTUDIO_CHART_MAX_POINTS` 可调整，`0` 或负数关闭），并在 `layout.meta.sampled` 记录 `total` / `shown` / `max`。
 - 算子按整张表执行一次；分面在算子之后才拆格，不会按 facet / color 分组重跑 transforms。
 
@@ -353,25 +370,30 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 | `violin` | `y`（`x` 可选） | 小提琴 |
 | `waterfall` | `x`、`y` | 瀑布图 |
 | `funnel` | `x`、`y` | 漏斗 |
-| `indicator` | 共享数据键（实际只能用 `x/y/z/labels/values`） | KPI |
+| `indicator` | `value` | KPI / 仪表盘；不输出 `x` / `y` |
 | `histogram` | `x` | 直方图 |
+| `sankey` | `source`、`target`、`values` | 桑基流向图 |
 
 校验器**不强制**任何数据字段：一条只有 `{"type": "bar"}` 的 trace 也能通过校验（只是 Plotly 画不出东西）。上表是常用搭配，不是必填规则。
 
-`splitBy` 只支持 `scatter`、`bar`、`box`、`violin`、`histogram`、`funnel`；`waterfall` 和 `indicator` 不支持。
+`splitBy` 只支持 `scatter`、`bar`、`box`、`violin`、`histogram`、`funnel`；`waterfall`、`indicator`、`sankey` 不支持。
 
 ### trace 字段
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `type` | string | 上表八种之一，必填 |
+| `type` | string | 上表九种之一，必填 |
 | `x` / `y` / `z` / `labels` / `values` | 槽位字符串或 JSON 字面量 | 数据；`$` 开头按槽位解析 |
+| `value` | 槽位或字面量 | 仅 `indicator`；解析后必须恰好一行 |
+| `source` / `target` | 槽位或字面量 | 仅 `sankey`；与 `values` 等长 |
 | `mode` | string | `scatter` 的 `lines` / `markers` / `lines+markers` 等 |
 | `name` / `text` | 标签槽、`$opt` 或字符串 | 图例名 / 文本 |
 | `orientation` | `"v"` / `"h"` | bar / waterfall / funnel |
 | `segments` | object | 仅 `scatter`；见下文 |
 | `splitBy` | string | 仅 `"$color"`；按颜色值展开 trace，见下文 |
 | `error_x` / `error_y` | object | 误差条；嵌套键见样式白名单 |
+| `title` / `number` / `gauge` / `delta` | object | 仅 `indicator`；见 indicator 小节 |
+| `node` / `link` / `arrangement` | object / string | 仅 `sankey`；见 sankey 小节 |
 | 其余样式键 | 白名单字面量或 `$opt` | 见下 |
 
 ### 样式键白名单
@@ -381,10 +403,11 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 ```
 mode, name, text, textposition, orientation, opacity, fill, line, marker,
 width, offsetgroup, showlegend, hovertemplate, hole, boxpoints, cumulative,
-histnorm, error_x, error_y
+histnorm, error_x, error_y, title, number, gauge, delta, node, link,
+arrangement
 ```
 
-嵌套对象只允许以下五种，并且各自键也有限制：
+嵌套对象：
 
 ```
 line:        color, width, dash, shape, smoothing, simplify
@@ -394,6 +417,8 @@ marker.line: 与 line 相同的键
 cumulative:  enabled, direction, currentbin, values
 error_x:     type, array, arrayminus, visible, color, thickness, width
 error_y:     type, array, arrayminus, visible, color, thickness, width
+node:        pad, thickness, line, color
+link:        color, line
 ```
 
 数组样式槽 `$<slot>.values` 只允许出现在这些精确路径（数值化行为见第 5 节）：
@@ -410,11 +435,11 @@ error_y:     type, array, arrayminus, visible, color, thickness, width
 
 `line.color`、`line.width`、`marker.symbol`、顶层 `opacity` 等路径**不接受** `$slot.values`；写错会得到第 5 节引用的 `is only allowed at ...` 错误。
 
-- 样式值可以是标量、列表、`$opt.<key>` 或 `$<slot>.values`（仅数组路径）；`line` / `marker` / `cumulative` / `error_x` / `error_y` 必须是对象。
+- 样式值可以是标量、列表、`$opt.<key>` 或 `$<slot>.values`（仅数组路径）；`line` / `marker` / `cumulative` / `error_x` / `error_y` / `node` / `link` / `title` / `number` / `gauge` / `delta` 必须是对象。
 - `name` / `text` 还允许标签槽（`$x.label`、`$y0.label`…、`$color.label`）。
 - 样式位置不接受普通数据槽：`"marker": {"color": "$color"}` 会报 `data slots like '$color' are only allowed on x, y, z, labels, values...`。要按数据着色/定大小/画误差，请使用 `$<slot>.values` 并放在第 5 节列出的数组样式路径（如 `marker.color`）。
 - `hovertemplate` 只接受字面量或整个 `$opt.<key>`；可以写 Plotly 的 `%{x}` / `%{y}`。
-- 白名单是**全局**的，不按 trace type 细分。例如 `hole` 在允许列表里，但 `pie` 不在 trace 类型列表里；`boxpoints` 也可以写在非 box trace 上，Plotly 会自行忽略。
+- 白名单是**全局**的，不按 trace type 细分；但 indicator 专用键（`title` / `number` / `gauge` / `delta`）和 sankey 专用键（`node` / `link` / `arrangement`）会在其他 trace 类型上单独拒绝。例如 `hole` 在允许列表里，但 `pie` 不在 trace 类型列表里；`boxpoints` 也可以写在非 box trace 上，Plotly 会自行忽略。
 
 ### segments
 
@@ -545,17 +570,51 @@ error_y:     type, array, arrayminus, visible, color, thickness, width
 - `splitBy` 可以出现在普通 `facet` 通道里（每格再按颜色分系列）；`showlegend` 默认只在第一格为 `true`，模板显式设置 `showlegend` 时以模板为准。未显式设置 `showlegend` 的普通 trace 也遵循“只在第一格显示图例”。
 - `splitBy` 不能与 `facetBy: "$color"` 同时使用（见错误表）。
 - `facet` 不产生 `$facet` 数据槽；`facet` / `facetBy` / `annotations` 都不会作为 trace 字段出现。
-- `group_agg` 与分面不能组合：导入时直接报 `transforms[0]: group_agg cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)`，因为聚合会丢掉分面列。运行时的空图只适用于真正未绑定的 facet 通道。
+- `group_agg` 与分面不能组合：导入时直接报 `transforms[0]: group_agg cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)`，因为聚合会丢掉分面列。`reduce` 同理：`transforms[0]: reduce cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)`。运行时的空图只适用于真正未绑定的 facet 通道。
 - 声明了 `facet` 通道但用户没有绑定可用列时，整张图退化为空 `{"data": [], "layout": ...}`；`facetBy` 的 `color` 未绑定时同样为空。
 - `dropna` / `limit` / 抽样会先改变整张表：如果某个 facet 值因此失去全部行，它就不会出现在 `pd.unique` 里，网格会静默少一格（不是只缩小该格）。`limit` 和 `dropna` 在分面之前执行，抽样也在网格之前。
 - `cumulate` 在分面之前对整张表执行，因此每格的累计值都包含其他格的行；v1 没有“按格累计”的表达方式（`group_agg` + facet 被禁止）。
 - 抽样发生在**整张表**进入网格之前；超过上限时先抽样再分格，因此每格的行数会随 `METRICSTUDIO_CHART_MAX_POINTS` 一起缩小。
 - 自定义图表按首次出现顺序排列格子；内置 facet 构建器使用排序后的 `groupby` 顺序。两者切换时，格子顺序可能不同。
 
+### indicator
+
+`type: "indicator"` 用来画单值 KPI / 仪表盘：
+
+- 数据键 `value`：可写数据槽或字面量；槽位解析后必须**恰好一行**，通常先用 `reduce` 折叠成一行。`indicator` 不输出 `x` / `y`，也不参与抽样。
+- indicator 上不能写 `values` / `labels` / `z`：`traces[0].values: not allowed on the 'indicator' trace type`（`labels` / `z` 同理）。
+- `mode` 是普通样式键，例如 `"gauge+number"`。
+- 只允许下列 indicator 专用样式对象（字面量和 `$opt.<key>`；不接受数据槽/标签槽）：
+  - `title`: `{text, font}`；`font` 键为 `family`、`size`、`color`。
+  - `number`: `{valueformat, suffix, prefix, font}`。
+  - `delta`: `{reference, relative, valueformat, increasing, decreasing, position}`；`increasing` / `decreasing` 是 `{color, symbol}`。
+  - `gauge`: `{axis, bar, bgcolor, steps, shape, thickness}`；`axis` 为 `{range, tickvals, ticktext, tickformat, visible}`，`bar` 为 `{color, thickness}`。
+- 标量叶子（`title.text`、`number.valueformat` / `suffix` / `prefix`、`delta.reference` / `relative` / `valueformat` / `position`、`gauge.bgcolor` / `shape` / `thickness`、`bar.color` / `thickness`、`font.*`、`tickformat`、`visible`）拒绝列表：`traces[0].number.valueformat: must be a scalar`。只有 `axis.range`、`tickvals`、`ticktext`、`steps[].range` 接受列表（前两者/后者分别是数值/文本列表或恰好两个值的 range）；`steps[].color` 也允许列表。
+- `gauge.axis.range` 与 `gauge.steps[].range` 必须是**恰好两个值**的数组；`steps` 是字面量数组，最多 10 项，每项 `{range: [lo, hi], color}`，`range` 必填。
+- `$opt.<key>` 在 indicator 样式里任意位置都可用，包括 `axis.range` 和 `steps[].range` 的两个元素。
+- `title` / `number` / `gauge` / `delta` / `value` 只允许出现在 `indicator` trace；放到其他 trace 类型会报：
+  - `traces[0].title: only allowed on the 'indicator' trace type`（`number` / `gauge` / `delta` 同理）
+  - `traces[0].value: only allowed on the 'indicator' trace type`
+- 值不是恰好一行时渲染直接报错：`traces[0].value: needs exactly one row after transforms (got 5); add a 'reduce' transform`（数字随实际行数变化）；0 行时报 `traces[0].value: no rows after transforms`。
+- `steps` 超过 10 项：`traces[0].gauge.steps: at most 10 steps are allowed`；range 不是两个值：`traces[0].gauge.axis.range: must contain exactly two values`。
+
+### sankey
+
+`type: "sankey"` 画来源 → 目标的流向图：
+
+- 必填数据键 `source`、`target`、`values`，都可以是数据槽或字面量数组，且三者**长度必须相等**。字面量长度不相等会在导入校验报 `traces[0]: sankey needs source, target and values of equal length`；槽位在渲染时才发现不等长，也报同一条消息（作为 400 的 `ValueError`，不是空图）。
+- `source` / `target` 是 trace 键，只能在 `sankey` 上出现；它们由清单的 `source` / `target` 通道喂入，其他 trace 类型写这两个键会报 `traces[0].source: only allowed on the 'sankey' trace type`（`target` 同理）。
+- `node` / `link` / `arrangement` 同样是 sankey-only；放到其他 trace 类型会报 `traces[0].node: only allowed on the 'sankey' trace type`（`link` / `arrangement` 同理）。
+- 节点标签的推导顺序：先按行序列出所有 source，再按行序补上尚未出现过的 target；重复标签只出现一次。
+- 渲染输出 `node.label`、`link.source` / `link.target`（节点索引）和 `link.value`（`values` 的数值化结果）。**重复 `(source, target)` 行不会被渲染器聚合**；要合并重复链接，先用多键 `group_agg`，例如 `groupBy: ["source", "target"]`（见 `flow-sankey` 示例）。
+- `values` 会被 `pd.to_numeric(errors="coerce")` 数值化：非数值项变成 `null`，全列都不是数值时渲染报 `traces[0].values: sankey link values must be numeric`。
+- 样式：`node {pad, thickness, line, color}`、`link {color, line}`、`arrangement`、`orientation`；`node.line` / `link.line` 使用与 `line` 相同的嵌套键。`node.color` / `link.color` 只接受字面量或 `$opt` 标量；`link.color` 不接受 `$color.values` 数组槽。
+- `splitBy` 不支持 `sankey`；未绑定所需的 `source` / `target` 通道时返回空配置态。
+
 ### 已知限制（v1 实现）
 
 - `waterfall` 允许，但白名单里没有 `measure` 字段，因此清单无法逐项声明 `relative` / `total` / `absolute`；只能使用 Plotly 的默认行为。
-- `indicator` 允许，但没有 `value` 数据键，也没有 `number` / `gauge` / `delta` 样式键；它只能拿到共享的 `x/y/z/labels/values` 与全局样式键，无法配置真正的仪表盘刻度。
+- `sankey` 的 `link.color` 不接受 `$color.values`（只接受字面量或 `$opt`）；重复链接不会自动聚合，需要多键 `group_agg`。
 - `funnel` 没有 `measure` / `textinfo` 等专用键；`hole` 没有对应的 `pie` trace 类型。
 - 这些是当前校验常量决定的边界，不要按 Plotly 文档直接粘贴清单里不存在的键。
 
@@ -604,7 +663,7 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 
 ## 10. 完整示例
 
-下面七份清单就是仓库 `examples/charts/` 里的真实文件（`dumbbell.json`、`lollipop.json`、`bullet.json`、`series-line.json`、`bubble.json`、`facet-grid.json`、`colors-grid.json`）。七份都通过 `validate_payload`，并在测试中实际渲染。文档里的 JSON 代码块必须与这些文件保持逐字节一致；测试会逐个校验每个示例文件都已嵌入本文（当前比较的是解析后的 JSON，不是原始字节）。改动示例时请同步文件内容。
+下面九份清单就是仓库 `examples/charts/` 里的真实文件（`dumbbell.json`、`lollipop.json`、`bullet.json`、`series-line.json`、`bubble.json`、`facet-grid.json`、`colors-grid.json`、`kpi-gauge.json`、`flow-sankey.json`）。九份都通过 `validate_payload`，并在测试中实际渲染。文档里的 JSON 代码块必须与这些文件保持逐字节一致；测试会逐个校验每个示例文件都已嵌入本文（当前比较的是解析后的 JSON，不是原始字节）。改动示例时请同步文件内容。
 
 ### 10.1 哑铃图（dumbbell）
 
@@ -1218,6 +1277,201 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 }
 ```
 
+### 10.8 KPI 仪表盘（kpi-gauge）
+
+- `reduce` 把 `y0` 求和折叠成一行 `$total`；
+- `indicator` 用 `value: "$total"`，`gauge.axis.range` 与 `gauge.steps[].range` 都支持 `$opt` 对；
+- 三个 options 控制最小值、最大值和仪表颜色，`indicator` 不参与抽样。
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "kpi-gauge",
+  "label": {
+    "zh": "KPI 仪表盘",
+    "en": "KPI gauge"
+  },
+  "description": {
+    "zh": "把一列汇总成一个仪表盘数值",
+    "en": "Reduce one column to a single gauge value"
+  },
+  "channels": {
+    "yFields": {
+      "mode": "one"
+    }
+  },
+  "transforms": [
+    {
+      "op": "reduce",
+      "field": "y0",
+      "agg": "sum",
+      "as": "total"
+    }
+  ],
+  "traces": [
+    {
+      "type": "indicator",
+      "mode": "gauge+number",
+      "value": "$total",
+      "gauge": {
+        "axis": {
+          "range": [
+            "$opt.min",
+            "$opt.max"
+          ]
+        },
+        "bar": {
+          "color": "$opt.color"
+        },
+        "steps": [
+          {
+            "range": [
+              0,
+              40
+            ],
+            "color": "#fee2e2"
+          },
+          {
+            "range": [
+              40,
+              70
+            ],
+            "color": "#fef3c7"
+          },
+          {
+            "range": [
+              70,
+              100
+            ],
+            "color": "#dcfce7"
+          }
+        ]
+      }
+    }
+  ],
+  "options": [
+    {
+      "key": "min",
+      "type": "number",
+      "default": 0,
+      "label": {
+        "zh": "最小值",
+        "en": "Minimum"
+      }
+    },
+    {
+      "key": "max",
+      "type": "number",
+      "default": 100,
+      "label": {
+        "zh": "最大值",
+        "en": "Maximum"
+      }
+    },
+    {
+      "key": "color",
+      "type": "text",
+      "default": "#2563eb",
+      "label": {
+        "zh": "仪表颜色",
+        "en": "Gauge color"
+      }
+    }
+  ],
+  "keywords": [
+    "kpi 仪表盘",
+    "kpi gauge"
+  ]
+}
+```
+
+### 10.9 流向图（flow-sankey）
+
+- `source` / `target` 通道喂给 `sankey` 的 `source` / `target` 键，`values` 来自 `$total`；
+- 多键 `group_agg` 用 `groupBy: ["source", "target"]` 合并重复链接；
+- 节点标签按 source 行序 + 未见过的 target 推导，`link.source` / `link.target` 是节点索引。
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "flow-sankey",
+  "label": {
+    "zh": "流向图",
+    "en": "Flow Sankey"
+  },
+  "description": {
+    "zh": "把来源到目标的流量画成桑基图",
+    "en": "Draw source-to-target flows as a Sankey"
+  },
+  "channels": {
+    "source": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "target": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    }
+  },
+  "transforms": [
+    {
+      "op": "group_agg",
+      "groupBy": [
+        "source",
+        "target"
+      ],
+      "field": "y0",
+      "agg": "sum",
+      "as": "total"
+    }
+  ],
+  "traces": [
+    {
+      "type": "sankey",
+      "source": "$source",
+      "target": "$target",
+      "values": "$total",
+      "arrangement": "snap",
+      "node": {
+        "pad": 16,
+        "thickness": 16,
+        "color": "#3b82f6",
+        "line": {
+          "color": "#ffffff",
+          "width": 1
+        }
+      },
+      "link": {
+        "color": "#cbd5e1",
+        "line": {
+          "color": "#e2e8f0",
+          "width": 0
+        }
+      }
+    }
+  ],
+  "layout": {
+    "margin": {
+      "l": 20,
+      "r": 20,
+      "t": 20,
+      "b": 20
+    }
+  },
+  "keywords": [
+    "流向图",
+    "sankey flow"
+  ]
+}
+```
+
 ## 11. 失败与排查
 
 ### 清单无效
@@ -1238,7 +1492,7 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 - `splitBy` 的 `color` 通道没有绑定（即使声明为可选也会让整张图变空）；如果 `color` 已被 `group_agg` 清掉，则属于清单校验错误，不会进入渲染；
 - `cumulate` 的 `field` 不是数值列。
 
-结果是空图（layout 仍在），不是「图表渲染出错」横幅。补齐编码即可。`group_agg` + facet 不在此列：它是上面的导入校验错误，不会走到渲染。
+结果是空图（layout 仍在），不是「图表渲染出错」横幅。补齐编码即可。`group_agg` + facet 不在此列：它是上面的导入校验错误，不会走到渲染。`indicator` 的 `value` 行数不对、`sankey` 的 `source` / `target` / `values` 长度不一致，会抛 `ValueError` 并以 400 显示可操作错误，也不是空图。
 
 ### 未知 id
 
@@ -1264,15 +1518,22 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `transforms[0].by: unknown slot 'nope' (available: x, y0)` | 引用了未声明/已被清掉的槽位 | 先检查 `channels` 和前面的 `group_agg` |
 | `transforms[0].count: must be an integer between 1 and 5000` | `limit.count` 越界或不是整数 | 写 1–5000 的整数 |
 | `transforms[0].as: 'x' shadows an existing slot` | 输出别名与现有槽位重名 | 换一个别名，如 `total` / `running` |
+| `transforms[0].agg: must be one of sum, mean, count, min, max` | `reduce` / `group_agg` 的聚合名不合法 | 使用 `sum` / `mean` / `count` / `min` / `max` |
+| `transforms[0]: 'reduce' requires 'field', 'agg' and 'as'` | `reduce` 缺少字段 | 三个字段都写 |
+| `transforms[0].groupBy: accepts a slot or an array of 1-2 slots` | `group_agg.groupBy` 不是槽位或 1–2 项数组 | 写单槽位或 1–2 项数组 |
+| `transforms[0].groupBy: duplicate slot 'x'` | `groupBy` 数组里有重复槽位 | 去掉重复项 |
 | `transforms[0]: group_agg cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)` | 分面与 `group_agg` 同时使用；聚合会丢掉分面列 | 去掉 `group_agg`，或不要分面；v1 没有“按格聚合” |
-| `traces[0].x: data slot '$x' requires an 'x' channel` | `group_agg` 之后原始槽位被清掉；即使 `channels` 里声明了 `x`，这条消息仍会说你没有 `x` 通道，具有误导性 | `group_agg` 后只引用 `groupBy` / `as`（以及 `$count` / `$index`），或把需要的列设为 `groupBy` |
+| `transforms[0]: reduce cannot be combined with a facet ('facet'/'facetBy' drop the faceted column)` | 分面与 `reduce` 同时使用 | 去掉 `reduce`，或不要分面 |
+| `transforms[0]: aggregate 'sum' needs a numeric column` | `reduce` 的 `sum` / `mean` / `min` / `max` 用在了非数值列（`count` 不受限） | 换成数值列，或改用 `count` |
+| `traces[0].y: data slot '$y0' is not available after the preceding 'reduce' transform (only its 'as' output, $index and $count remain)` | `reduce` 之后引用了被清掉的原始槽位 | 只引用 `$<as>`、`$index`、`$count` |
+| `traces[0].x: data slot '$x' requires an 'x' channel` | `group_agg` 之后原始槽位被清掉；即使 `channels` 里声明了 `x`，这条消息仍会说你没有 `x` 通道（`reduce` 不会这样，它报专门的 `not available after the preceding 'reduce'`） | `group_agg` 后只引用 `groupBy` / `as`（以及 `$count` / `$index`），或把需要的列设为 `groupBy` |
 | `traces[0].splitBy: the 'color' slot is not available after the preceding transforms (group_agg drops ungrouped columns)` | `group_agg` 清掉了 `color` 列，`splitBy` 无法拆分 | 让 `group_agg` 以 `color` 为 `groupBy`，或在聚合前完成拆分设计 |
 | `manifest: 'facetBy' is only '$color'` | `facetBy` 写了其他值或不是字符串 | 顶层只写 `"facetBy": "$color"`（camelCase；`facet_by` 会报未知顶层键） |
 | `manifest: 'facetBy' requires a 'color' channel` | 用了 `facetBy` 但没有声明 `color` 通道 | 在 `channels` 里声明 `color`，或改用 `facet` 通道 |
 | `manifest: 'facetBy' and a 'facet' channel are mutually exclusive` | 同时用了 `facetBy` 和 `facet` 通道 | 二选一 |
 | `traces[0].splitBy: not allowed when the manifest facets by '$color'` | `facetBy: "$color"` 与 `splitBy` 同时出现 | 去掉 `splitBy`，或用普通 `facet` 通道代替 `facetBy` |
-| `traces[0].type: unsupported trace type 'mesh3d' (allowed: scatter, bar, box, violin, waterfall, funnel, indicator, histogram)` | trace 类型不在白名单 | 只用 8 种允许类型 |
-| `traces[0].bogus: unsupported key; allowed style keys: ...; allowed data keys: x, y, z, labels, values; 'segments'; 'splitBy'` | trace 顶层键拼错 | 对照第 7 节字段与样式白名单 |
+| `traces[0].type: unsupported trace type 'mesh3d' (allowed: scatter, bar, box, violin, waterfall, funnel, indicator, histogram, sankey)` | trace 类型不在白名单 | 只用 9 种允许类型 |
+| `traces[0].bogus: unsupported key; allowed style keys: ...; allowed data keys: x, y, z, labels, values; 'source'/'target' (sankey); 'value' (indicator); 'segments'; 'splitBy'` | trace 顶层键拼错 | 对照第 7 节字段与样式白名单 |
 | `traces[0].line.bogus: unsupported style key for line` | 嵌套样式键不在 `line` 白名单 | 只用 `color` / `width` / `dash` / `shape` / `smoothing` / `simplify` |
 | `traces[0]: 'segments' and 'x' are mutually exclusive` | `segments` 和 `x` / `y` 同时写了 | 二选一；线段只写 `segments` |
 | `traces[0].segments: only allowed on type 'scatter'` | 把 `segments` 写在 bar/box 等 trace 上 | 改成 `scatter` |
@@ -1285,6 +1546,26 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `traces[0].line.color: '$x.values' is only allowed at marker.color, marker.size, marker.opacity, error_x.array, error_x.arrayminus, error_y.array, error_y.arrayminus` | 在非数组样式路径用了 `$slot.values` | 只用第 5 节列出的 7 个路径 |
 | `traces[0].error_y.bogus: unsupported style key for error_y` | `error_y` / `error_x` 里有未知键 | 只用 `type` / `array` / `arrayminus` / `visible` / `color` / `thickness` / `width` |
 | `traces[0].error_y: must be an object` | `error_y` / `error_x` 不是对象 | 写嵌套对象，不要写成字符串或数组 |
+| `traces[0].title: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
+| `traces[0].number: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
+| `traces[0].gauge: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
+| `traces[0].delta: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
+| `traces[0].value: only allowed on the 'indicator' trace type` | 把指标数据键 `value` 放到其他 trace 类型 | 只写在 `indicator` trace 上 |
+| `traces[0].values: not allowed on the 'indicator' trace type` | indicator 上写了 `values` | indicator 只用 `value` |
+| `traces[0].labels: not allowed on the 'indicator' trace type` | indicator 上写了 `labels` | indicator 只用 `value` |
+| `traces[0].z: not allowed on the 'indicator' trace type` | indicator 上写了 `z` | indicator 只用 `value` |
+| `traces[0].value: no rows after transforms` | 0 行数据进入 indicator | 先修正筛选/变换，或提供一行数据 |
+| `traces[0].number.valueformat: must be a scalar` | indicator 标量叶子写了列表 | 标量叶子只写标量或 `$opt`；列表只用于 range/tickvals/ticktext 等 |
+| `traces[0].node: only allowed on the 'sankey' trace type` | 把 sankey 的 `node` 放到其他 trace | 只写在 `sankey` trace 上 |
+| `traces[0].link: only allowed on the 'sankey' trace type` | 把 sankey 的 `link` 放到其他 trace | 只写在 `sankey` trace 上 |
+| `traces[0].arrangement: only allowed on the 'sankey' trace type` | 把 sankey 的 `arrangement` 放到其他 trace | 只写在 `sankey` trace 上 |
+| `traces[0].value: needs exactly one row after transforms (got 5); add a 'reduce' transform` | indicator 的 `value` 不是恰好一行 | 先用 `reduce` 折叠成一行 |
+| `traces[0].gauge.steps: at most 10 steps are allowed` | gauge steps 超过 10 项 | 最多写 10 项 |
+| `traces[0].gauge.axis.range: must contain exactly two values` | gauge range 不是两个值 | 写 `[lo, hi]` |
+| `traces[0]: sankey needs source, target and values of equal length` | sankey 三个数据键缺失或长度不等 | 补齐并保证等长 |
+| `traces[0].values: sankey link values must be numeric` | sankey 的 `values` 全列都无法转成数值 | 提供数值列；非数值项会先变成 `null` |
+| `traces[0].source: only allowed on the 'sankey' trace type` | 把 sankey 的 `source` 键放到其他 trace（`target` 同理） | 只写在 `sankey` trace 上 |
+| `traces[0].target: only allowed on the 'sankey' trace type` | 把 sankey 的 `target` 键放到其他 trace | 只写在 `sankey` trace 上 |
 | `traces[0].y: data slot '$y2' is not supplied by yFields.mode 'range' (only y0 and y1)` | 引用了当前 mode 不提供的 Y 槽位 | 改 mode 为 `multi`，或把槽位降到 `$y0` / `$y1` |
 | `layout.template: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | layout 顶层键不在白名单 | 只用 9 个顶层键；想调轴样式写进 `xaxis` / `yaxis` |
 | `layout.grid: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | 试图在清单里声明/覆盖 `grid` | 删除 `grid`；分面网格由渲染器根据 `facet` / `facetBy` 写入 |
@@ -1323,4 +1604,4 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 - 清单必须是严格 JSON 对象（不能是数组）；后端读取时会去掉 UTF-8 BOM。
 - 保存/导出得到的是后端规范化后的 JSON（camelCase、`ensure_ascii=False`、2 空格缩进），因此导出文件与手工写的排版可能不同，但内容语义一致，可直接再次导入。
 - 清单是纯数据，可以跨机器复制；id、文件名、关键词冲突规则在所有机器上一致。
-- 文件上限、id 正则、通道/算子/trace/样式/layout 白名单都以内置常量为准（`backend/core/custom_charts.py` 的 `MAX_*`、`MAX_FACET_CELLS`、`CHANNEL_KEYS`、`TRANSFORM_KEYS`、`TRACE_TYPES`、`STYLE_KEYS`、`LAYOUT_KEYS`、`TOP_LEVEL_KEYS`、`SPLIT_TRACE_TYPES`、`_ARRAY_SLOT_PATHS`、`_NESTED_STYLE_KEYS`、`_FACET_AXIS_STRIP_KEYS`）。
+- 文件上限、id 正则、通道/算子/trace/样式/layout 白名单都以内置常量为准（`backend/core/custom_charts.py` 的 `MAX_*`、`MAX_FACET_CELLS`、`CHANNEL_KEYS`、`TRANSFORM_KEYS`、`TRACE_TYPES`、`STYLE_KEYS`、`LAYOUT_KEYS`、`TOP_LEVEL_KEYS`、`SPLIT_TRACE_TYPES`、`INDICATOR_STYLE_KEYS`、`INDICATOR_DATA_KEYS`、`SANKEY_DATA_KEYS`、`_ARRAY_SLOT_PATHS`、`_NESTED_STYLE_KEYS`、`_FACET_AXIS_STRIP_KEYS`）。

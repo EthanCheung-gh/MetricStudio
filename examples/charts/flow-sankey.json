@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "flow-sankey",
+  "label": {
+    "zh": "流向图",
+    "en": "Flow Sankey"
+  },
+  "description": {
+    "zh": "把来源到目标的流量画成桑基图",
+    "en": "Draw source-to-target flows as a Sankey"
+  },
+  "channels": {
+    "source": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "target": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    }
+  },
+  "transforms": [
+    {
+      "op": "group_agg",
+      "groupBy": [
+        "source",
+        "target"
+      ],
+      "field": "y0",
+      "agg": "sum",
+      "as": "total"
+    }
+  ],
+  "traces": [
+    {
+      "type": "sankey",
+      "source": "$source",
+      "target": "$target",
+      "values": "$total",
+      "arrangement": "snap",
+      "node": {
+        "pad": 16,
+        "thickness": 16,
+        "color": "#3b82f6",
+        "line": {
+          "color": "#ffffff",
+          "width": 1
+        }
+      },
+      "link": {
+        "color": "#cbd5e1",
+        "line": {
+          "color": "#e2e8f0",
+          "width": 0
+        }
+      }
+    }
+  ],
+  "layout": {
+    "margin": {
+      "l": 20,
+      "r": 20,
+      "t": 20,
+      "b": 20
+    }
+  },
+  "keywords": [
+    "流向图",
+    "sankey flow"
+  ]
+}

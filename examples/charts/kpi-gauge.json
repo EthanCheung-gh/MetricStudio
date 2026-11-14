@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "id": "kpi-gauge",
+  "label": {
+    "zh": "KPI 仪表盘",
+    "en": "KPI gauge"
+  },
+  "description": {
+    "zh": "把一列汇总成一个仪表盘数值",
+    "en": "Reduce one column to a single gauge value"
+  },
+  "channels": {
+    "yFields": {
+      "mode": "one"
+    }
+  },
+  "transforms": [
+    {
+      "op": "reduce",
+      "field": "y0",
+      "agg": "sum",
+      "as": "total"
+    }
+  ],
+  "traces": [
+    {
+      "type": "indicator",
+      "mode": "gauge+number",
+      "value": "$total",
+      "gauge": {
+        "axis": {
+          "range": [
+            "$opt.min",
+            "$opt.max"
+          ]
+        },
+        "bar": {
+          "color": "$opt.color"
+        },
+        "steps": [
+          {
+            "range": [
+              0,
+              40
+            ],
+            "color": "#fee2e2"
+          },
+          {
+            "range": [
+              40,
+              70
+            ],
+            "color": "#fef3c7"
+          },
+          {
+            "range": [
+              70,
+              100
+            ],
+            "color": "#dcfce7"
+          }
+        ]
+      }
+    }
+  ],
+  "options": [
+    {
+      "key": "min",
+      "type": "number",
+      "default": 0,
+      "label": {
+        "zh": "最小值",
+        "en": "Minimum"
+      }
+    },
+    {
+      "key": "max",
+      "type": "number",
+      "default": 100,
+      "label": {
+        "zh": "最大值",
+        "en": "Maximum"
+      }
+    },
+    {
+      "key": "color",
+      "type": "text",
+      "default": "#2563eb",
+      "label": {
+        "zh": "仪表颜色",
+        "en": "Gauge color"
+      }
+    }
+  ],
+  "keywords": [
+    "kpi 仪表盘",
+    "kpi gauge"
+  ]
+}

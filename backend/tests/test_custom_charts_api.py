@@ -596,6 +596,176 @@ def test_split_by_with_facet_by_color_is_rejected(client, charts_dir):
 
 
 # ---------------------------------------------------------------------------
+# 4d. Data shaping (reduce / multi-key group_agg) + indicator and sankey traces
+# ---------------------------------------------------------------------------
+
+KPI_CSV = """value
+10
+20
+30
+"""
+
+DUPLICATE_FLOW_CSV = """src,dst,amount
+A,X,10
+A,X,5
+B,Y,20
+A,Y,7
+C,X,3
+"""
+
+
+def test_kpi_gauge_uses_options_for_range_and_colour(client):
+    dataset_id = import_csv(client, KPI_CSV, "kpi.csv")
+    save(client, "kpi-gauge")
+
+    resp = preview(
+        client,
+        dataset_id,
+        {
+            "chartType": "kpi-gauge",
+            "yFields": [{"field": "value", "type": "quantitative"}],
+            "options": {"min": 0, "max": 200, "color": "#112233"},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert len(data) == 1
+    trace = data[0]
+    assert trace["type"] == "indicator"
+    # reduce collapses three rows to the aggregate scalar, never a list.
+    assert not isinstance(trace["value"], list)
+    assert trace["value"] == 60
+    assert trace["gauge"]["axis"]["range"] == [0, 200]
+    assert trace["gauge"]["bar"]["color"] == "#112233"
+    assert "gauge" in trace["mode"] and "number" in trace["mode"]
+
+
+def test_kpi_gauge_uses_manifest_defaults_without_options(client):
+    dataset_id = import_csv(client, KPI_CSV, "kpi.csv")
+    save(client, "kpi-gauge")
+
+    resp = preview(
+        client,
+        dataset_id,
+        {
+            "chartType": "kpi-gauge",
+            "yFields": [{"field": "value", "type": "quantitative"}],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    trace = resp.json()["data"][0]
+    # examples/charts/kpi-gauge.json declares min=0, max=100, color=#2563eb.
+    assert trace["value"] == 60
+    assert trace["gauge"]["axis"]["range"] == [0, 100]
+    assert trace["gauge"]["bar"]["color"] == "#2563eb"
+
+
+def test_flow_sankey_aggregates_links_and_labels_nodes(client):
+    dataset_id = import_csv(client, DUPLICATE_FLOW_CSV, "flow.csv")
+    save(client, "flow-sankey")
+
+    resp = preview(
+        client,
+        dataset_id,
+        {
+            "chartType": "flow-sankey",
+            "source": {"field": "src", "type": "nominal"},
+            "target": {"field": "dst", "type": "nominal"},
+            "yFields": [{"field": "amount", "type": "quantitative"}],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    trace = resp.json()["data"][0]
+    assert trace["type"] == "sankey"
+    # Node labels: every source first appearance, then unseen targets.
+    assert trace["node"]["label"] == ["A", "B", "C", "X", "Y"]
+    assert trace["link"]["source"] == [0, 1, 0, 2]
+    assert trace["link"]["target"] == [3, 4, 4, 3]
+    # (A,X) rows 10 + 5 were folded into one link: multi-key group_agg ran.
+    assert trace["link"]["value"] == [15, 20, 7, 3]
+    pairs = {
+        (trace["node"]["label"][source], trace["node"]["label"][target]): value
+        for source, target, value in zip(
+            trace["link"]["source"],
+            trace["link"]["target"],
+            trace["link"]["value"],
+        )
+    }
+    assert pairs == {
+        ("A", "X"): 15,
+        ("B", "Y"): 20,
+        ("A", "Y"): 7,
+        ("C", "X"): 3,
+    }
+
+
+def test_indicator_value_with_several_rows_is_400(client):
+    payload = manifest_payload("kpi-gauge")
+    payload["id"] = "kpiarity"
+    payload["label"] = {"zh": "KPI 异常", "en": "KPI arity"}
+    payload["keywords"] = []
+    payload["transforms"] = []  # no reduce: $y0 keeps one value per row
+    payload["traces"][0]["value"] = "$y0"
+    created = client.post("/api/v1/chart/custom", json=payload)
+    assert created.status_code == 200, created.text
+
+    dataset_id = import_csv(client, "value\n1\n2\n3\n4\n5\n", "kpi.csv")
+    resp = preview(
+        client,
+        dataset_id,
+        {
+            "chartType": "kpiarity",
+            "yFields": [{"field": "value", "type": "quantitative"}],
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    detail = resp.json()["detail"]
+    assert isinstance(detail, str)
+    assert "needs exactly one row" in detail
+    assert "reduce" in detail
+
+
+def test_sankey_length_mismatch_is_400(client):
+    payload = manifest_payload("flow-sankey")
+    payload["id"] = "sankeymismatch"
+    payload["label"] = {"zh": "错长桑基", "en": "Sankey mismatch"}
+    payload["keywords"] = []
+    # A 2-entry literal source against a multi-key group_agg frame: the
+    # manifest validates, the renderer finds the length mismatch.
+    payload["traces"][0]["source"] = ["A", "B"]
+    created = client.post("/api/v1/chart/custom", json=payload)
+    assert created.status_code == 200, created.text
+
+    dataset_id = import_csv(client, DUPLICATE_FLOW_CSV, "flow.csv")
+    resp = preview(
+        client,
+        dataset_id,
+        {
+            "chartType": "sankeymismatch",
+            "source": {"field": "src", "type": "nominal"},
+            "target": {"field": "dst", "type": "nominal"},
+            "yFields": [{"field": "amount", "type": "quantitative"}],
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert (
+        "sankey needs source, target and values of equal length"
+        in resp.json()["detail"]
+    )
+
+
+def test_indicator_style_key_on_a_bar_is_400(client):
+    payload = x_only_manifest("barstyle")
+    payload["traces"][0]["gauge"] = {"axis": {"range": [0, 10]}}
+
+    resp = client.post("/api/v1/chart/custom", json=payload)
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert isinstance(detail, str)
+    assert "only allowed on the 'indicator' trace type" in detail
+
+
+# ---------------------------------------------------------------------------
 # 5. Unknown custom id -> 422 from the ChartEncoding validator
 # ---------------------------------------------------------------------------
 

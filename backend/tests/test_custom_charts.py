@@ -159,6 +159,8 @@ def encoding(
     z=None,
     error=None,
     facet=None,
+    source=None,
+    target=None,
     options=None,
     chart_type="custom",
 ):
@@ -170,6 +172,8 @@ def encoding(
         z=z,
         error=error,
         facet=facet,
+        source=source,
+        target=target,
         options=options,
         chart_type=chart_type,
     )
@@ -3662,6 +3666,897 @@ def test_facet_with_dropna_can_drop_cells():
 
 
 # ---------------------------------------------------------------------------
+# reduce / indicator / sankey
+# ---------------------------------------------------------------------------
+
+def test_reduce_collapses_frame_and_drops_other_slots():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="reduce-render",
+            channels={"yFields": {"mode": "one"}},
+            transforms=[
+                {"op": "reduce", "field": "y0", "agg": "sum", "as": "total"}
+            ],
+            traces=[{"type": "bar", "x": "$index", "y": "$total"}],
+        )
+    )
+    df = pd.DataFrame({"val": [1.0, 2.0, 3.0]})
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    assert len(figure["data"]) == 1
+    assert figure["data"][0]["x"] == [0]
+    assert figure["data"][0]["y"] == [6.0]
+
+    bad = minimal_manifest(
+        chart_id="reduce-drop",
+        transforms=[
+            {"op": "reduce", "field": "y0", "agg": "sum", "as": "total"},
+            {"op": "sort", "by": "y0"},
+        ],
+        traces=[{"type": "bar", "x": "$index", "y": "$total"}],
+    )
+    message = errors_of(bad)
+    assert "unknown slot 'y0'" in message
+
+
+def test_reduce_requires_field_agg_and_as():
+    bad = minimal_manifest(
+        chart_id="reduce-missing",
+        transforms=[{"op": "reduce", "field": "y0"}],
+    )
+    assert (
+        "transforms[0]: 'reduce' requires 'field', 'agg' and 'as'"
+        in errors_of(bad)
+    )
+
+
+def test_multi_key_group_agg_keeps_grouped_slots():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="group-two",
+            channels={
+                "source": {"required": True, "types": ["nominal"]},
+                "target": {"required": True, "types": ["nominal"]},
+                "yFields": {"mode": "one"},
+            },
+            transforms=[
+                {
+                    "op": "group_agg",
+                    "groupBy": ["source", "target"],
+                    "field": "y0",
+                    "agg": "sum",
+                    "as": "total",
+                }
+            ],
+            traces=[
+                {
+                    "type": "bar",
+                    "x": "$source",
+                    "y": "$total",
+                    "labels": "$target",
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame(
+        {
+            "src": ["A", "A", "B"],
+            "dst": ["X", "Y", "X"],
+            "val": [1.0, 2.0, 3.0],
+        }
+    )
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(
+            source=channel("src", "nominal"),
+            target=channel("dst", "nominal"),
+            y=[y_channel("val")],
+        ),
+        {},
+    )
+    trace = figure["data"][0]
+    assert trace["x"] == ["A", "A", "B"]
+    assert trace["y"] == [1.0, 2.0, 3.0]
+    assert trace["labels"] == ["X", "Y", "X"]
+
+
+def test_three_key_group_by_array_is_rejected():
+    bad = minimal_manifest(
+        chart_id="group-three",
+        channels={
+            "source": {"required": True, "types": ["nominal"]},
+            "target": {"required": True, "types": ["nominal"]},
+            "yFields": {"mode": "one"},
+        },
+        transforms=[
+            {
+                "op": "group_agg",
+                "groupBy": ["source", "target", "y0"],
+                "field": "y0",
+                "agg": "sum",
+                "as": "total",
+            }
+        ],
+        traces=[{"type": "bar", "y": "$total"}],
+    )
+    assert (
+        "transforms[0].groupBy: accepts a slot or an array of 1-2 slots"
+        in errors_of(bad)
+    )
+
+
+def test_indicator_renders_scalar_and_gauge_options():
+    manifest = cc.validate_payload(example("kpi-gauge"))
+    df = pd.DataFrame({"val": [10.0, 20.0, 30.0]})
+
+    default_figure = cc.render(
+        df,
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    trace = default_figure["data"][0]
+    assert trace["type"] == "indicator"
+    assert trace["mode"] == "gauge+number"
+    assert trace["value"] == 60.0
+    assert trace["gauge"]["axis"]["range"] == [0, 100]
+    assert trace["gauge"]["bar"]["color"] == "#2563eb"
+    assert trace["gauge"]["steps"] == [
+        {"range": [0, 40], "color": "#fee2e2"},
+        {"range": [40, 70], "color": "#fef3c7"},
+        {"range": [70, 100], "color": "#dcfce7"},
+    ]
+    assert "x" not in trace
+    assert "y" not in trace
+
+    overridden = cc.render(
+        df,
+        manifest,
+        encoding(
+            y=[y_channel("val")],
+            options={"min": -10, "max": 200, "color": "#ff0000"},
+        ),
+        {},
+    )
+    overridden_trace = overridden["data"][0]
+    assert overridden_trace["value"] == 60.0
+    assert overridden_trace["gauge"]["axis"]["range"] == [-10, 200]
+    assert overridden_trace["gauge"]["bar"]["color"] == "#ff0000"
+
+
+def test_indicator_option_pairs_work_inside_steps():
+    data = example("kpi-gauge")
+    data["traces"][0]["gauge"]["steps"] = [
+        {"range": ["$opt.min", "$opt.max"], "color": "$opt.color"}
+    ]
+    manifest = cc.validate_payload(data)
+    df = pd.DataFrame({"val": [10.0, 20.0]})
+
+    default_figure = cc.render(
+        df,
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    assert default_figure["data"][0]["gauge"]["steps"] == [
+        {"range": [0, 100], "color": "#2563eb"}
+    ]
+
+    overridden = cc.render(
+        df,
+        manifest,
+        encoding(
+            y=[y_channel("val")],
+            options={"min": -5, "max": 50, "color": "#ff0000"},
+        ),
+        {},
+    )
+    assert overridden["data"][0]["gauge"]["steps"] == [
+        {"range": [-5, 50], "color": "#ff0000"}
+    ]
+
+
+def test_indicator_extra_style_objects_render():
+    data = example("kpi-gauge")
+    data["traces"][0]["title"] = {
+        "text": "Total",
+        "font": {"size": 14, "color": "#111111"},
+    }
+    data["traces"][0]["number"] = {
+        "prefix": "$",
+        "suffix": " req",
+        "valueformat": ".1f",
+        "font": {"size": 18},
+    }
+    data["traces"][0]["delta"] = {
+        "reference": "$opt.min",
+        "increasing": {"color": "#16a34a"},
+        "decreasing": {"color": "#dc2626"},
+    }
+    manifest = cc.validate_payload(data)
+    figure = cc.render(
+        pd.DataFrame({"val": [4.0, 6.0]}),
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    trace = figure["data"][0]
+    assert trace["title"] == {
+        "text": "Total",
+        "font": {"size": 14, "color": "#111111"},
+    }
+    assert trace["number"] == {
+        "prefix": "$",
+        "suffix": " req",
+        "valueformat": ".1f",
+        "font": {"size": 18},
+    }
+    assert trace["delta"]["reference"] == 0
+    assert trace["delta"]["increasing"] == {"color": "#16a34a"}
+
+
+def test_indicator_value_needs_exactly_one_row():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="indicator-arity",
+            channels={"yFields": {"mode": "one"}},
+            traces=[
+                {"type": "indicator", "mode": "number", "value": "$y0"}
+            ],
+        )
+    )
+    df = pd.DataFrame({"val": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    with pytest.raises(ValueError) as exc:
+        cc.render(
+            df,
+            manifest,
+            encoding(y=[y_channel("val")]),
+            {},
+        )
+    assert (
+        "traces[0].value: needs exactly one row after transforms (got 5); "
+        "add a 'reduce' transform"
+        in str(exc.value)
+    )
+
+
+@pytest.mark.parametrize("trace_type", ["bar", "scatter"])
+@pytest.mark.parametrize("key", ["title", "number", "gauge", "delta"])
+def test_indicator_only_style_keys_are_rejected_elsewhere(trace_type, key):
+    value = {"text": "x"} if key == "title" else {}
+    data = minimal_manifest(
+        traces=[
+            {"type": trace_type, "x": "$x", "y": "$y0", key: value}
+        ],
+    )
+    assert (
+        f"traces[0].{key}: only allowed on the 'indicator' trace type"
+        in errors_of(data)
+    )
+
+
+def test_indicator_value_key_is_rejected_elsewhere():
+    data = minimal_manifest(
+        traces=[{"type": "bar", "x": "$x", "y": "$y0", "value": "$y0"}],
+    )
+    assert (
+        "traces[0].value: only allowed on the 'indicator' trace type"
+        in errors_of(data)
+    )
+
+
+def test_indicator_styles_reject_data_and_label_slots():
+    data = example("kpi-gauge")
+    data["traces"][0]["gauge"]["axis"]["range"] = ["$x", "$opt.max"]
+    message = errors_of(data)
+    assert "$x" in message
+    assert "only allowed on x, y, z, labels, values" in message
+
+    data = example("kpi-gauge")
+    data["traces"][0]["title"] = {"text": "$x.label"}
+    assert "only allowed in name or text" in errors_of(data)
+
+
+def test_indicator_steps_are_capped_at_ten():
+    data = example("kpi-gauge")
+    data["traces"][0]["gauge"]["steps"] = [
+        {"range": [i, i + 1], "color": "#fff"} for i in range(11)
+    ]
+    assert "at most 10 steps are allowed" in errors_of(data)
+
+
+def test_sankey_node_labels_and_links():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="sankey-raw",
+            channels={
+                "source": {"required": True, "types": ["nominal"]},
+                "target": {"required": True, "types": ["nominal"]},
+                "yFields": {"mode": "one"},
+            },
+            traces=[
+                {
+                    "type": "sankey",
+                    "source": "$source",
+                    "target": "$target",
+                    "values": "$y0",
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame(
+        {
+            "src": ["A", "B", "A"],
+            "dst": ["X", "X", "Y"],
+            "val": [1.0, 2.0, 3.0],
+        }
+    )
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(
+            source=channel("src", "nominal"),
+            target=channel("dst", "nominal"),
+            y=[y_channel("val")],
+        ),
+        {},
+    )
+    trace = figure["data"][0]
+    assert trace["type"] == "sankey"
+    assert trace["node"]["label"] == ["A", "B", "X", "Y"]
+    assert trace["link"]["source"] == [0, 1, 0]
+    assert trace["link"]["target"] == [2, 2, 3]
+    assert trace["link"]["value"] == [1.0, 2.0, 3.0]
+    assert "source" not in trace
+    assert "target" not in trace
+    assert "values" not in trace
+
+
+def test_sankey_does_not_aggregate_duplicate_links():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="sankey-dupes",
+            channels={
+                "source": {"required": True, "types": ["nominal"]},
+                "target": {"required": True, "types": ["nominal"]},
+                "yFields": {"mode": "one"},
+            },
+            traces=[
+                {
+                    "type": "sankey",
+                    "source": "$source",
+                    "target": "$target",
+                    "values": "$y0",
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame(
+        {
+            "src": ["A", "A"],
+            "dst": ["X", "X"],
+            "val": [1.0, 2.0],
+        }
+    )
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(
+            source=channel("src", "nominal"),
+            target=channel("dst", "nominal"),
+            y=[y_channel("val")],
+        ),
+        {},
+    )
+    trace = figure["data"][0]
+    assert trace["node"]["label"] == ["A", "X"]
+    assert trace["link"]["source"] == [0, 0]
+    assert trace["link"]["target"] == [1, 1]
+    assert trace["link"]["value"] == [1.0, 2.0]
+
+
+def test_sankey_equal_length_validation_message():
+    data = minimal_manifest(
+        chart_id="sankey-len",
+        channels={
+            "source": {"required": True, "types": ["nominal"]},
+            "target": {"required": True, "types": ["nominal"]},
+        },
+        traces=[
+            {
+                "type": "sankey",
+                "source": ["A"],
+                "target": ["X", "Y"],
+                "values": [1.0],
+            }
+        ],
+    )
+    assert (
+        "traces[0]: sankey needs source, target and values of equal length"
+        in errors_of(data)
+    )
+
+
+def test_sankey_equal_length_render_message():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="sankey-render-len",
+            channels={
+                "source": {"required": True, "types": ["nominal"]},
+                "target": {"required": True, "types": ["nominal"]},
+            },
+            traces=[
+                {
+                    "type": "sankey",
+                    "source": "$source",
+                    "target": "$target",
+                    "values": [1.0],
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame({"src": ["A", "B"], "dst": ["X", "Y"]})
+    with pytest.raises(ValueError) as exc:
+        cc.render(
+            df,
+            manifest,
+            encoding(
+                source=channel("src", "nominal"),
+                target=channel("dst", "nominal"),
+            ),
+            {},
+        )
+    assert (
+        "traces[0]: sankey needs source, target and values of equal length"
+        in str(exc.value)
+    )
+
+
+def test_source_and_target_keys_are_rejected_outside_sankey():
+    data = minimal_manifest(
+        traces=[
+            {
+                "type": "scatter",
+                "x": "$x",
+                "y": "$y0",
+                "source": "$x",
+                "target": "$x",
+            }
+        ],
+    )
+    message = errors_of(data)
+    assert (
+        "traces[0].source: only allowed on the 'sankey' trace type"
+        in message
+    )
+    assert (
+        "traces[0].target: only allowed on the 'sankey' trace type"
+        in message
+    )
+
+
+def test_sankey_unbound_source_and_target_is_empty():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="sankey-unbound",
+            channels={
+                "source": {"required": False, "types": ["nominal"]},
+                "target": {"required": False, "types": ["nominal"]},
+            },
+            traces=[
+                {
+                    "type": "sankey",
+                    "source": "$source",
+                    "target": "$target",
+                    "values": [1.0],
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame({"src": ["A"], "dst": ["X"]})
+    figure = cc.render(df, manifest, encoding(), {"template": "plotly_white"})
+    assert figure["data"] == []
+    assert figure["layout"]["template"] == "plotly_white"
+
+
+@pytest.mark.parametrize("key", ["node", "link", "arrangement"])
+def test_sankey_style_keys_rejected_outside_sankey(key):
+    value = "snap" if key == "arrangement" else {"pad": 1}
+    data = minimal_manifest(
+        traces=[{"type": "bar", "x": "$x", "y": "$y0", key: value}],
+    )
+    assert (
+        f"traces[0].{key}: only allowed on the 'sankey' trace type"
+        in errors_of(data)
+    )
+
+
+def test_sankey_style_keys_are_skipped_at_render_outside_sankey():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            traces=[{"type": "bar", "x": "$x", "y": "$y0"}],
+        )
+    )
+    manifest.traces[0]["node"] = {"pad": 1}
+    manifest.traces[0]["link"] = {"color": "#fff"}
+    manifest.traces[0]["arrangement"] = "snap"
+    figure = cc.render(
+        pd.DataFrame({"cat": ["A"], "val": [1.0]}),
+        manifest,
+        encoding(
+            x=channel("cat", "nominal"),
+            y=[y_channel("val")],
+        ),
+        {},
+    )
+    trace = figure["data"][0]
+    assert "node" not in trace
+    assert "link" not in trace
+    assert "arrangement" not in trace
+
+
+def test_reduce_unavailable_slot_messages_are_accurate():
+    data = minimal_manifest(
+        chart_id="reduce-slots",
+        channels={
+            "x": {"required": True, "types": ["nominal"]},
+            "yFields": {"mode": "one"},
+        },
+        transforms=[
+            {"op": "reduce", "field": "y0", "agg": "sum", "as": "total"}
+        ],
+        traces=[{"type": "bar", "x": "$x", "y": "$y0"}],
+    )
+    message = errors_of(data)
+    assert (
+        "traces[0].x: data slot '$x' is not available after the preceding "
+        "'reduce' transform (only its 'as' output, $index and $count remain)"
+        in message
+    )
+    assert (
+        "traces[0].y: data slot '$y0' is not available after the preceding "
+        "'reduce' transform (only its 'as' output, $index and $count remain)"
+        in message
+    )
+
+
+@pytest.mark.parametrize("source", ["facet-grid", "colors-grid"])
+def test_reduce_cannot_be_combined_with_a_facet(source):
+    data = example(source)
+    data["channels"]["yFields"] = {"mode": "one"}
+    data["transforms"] = [
+        {"op": "reduce", "field": "y0", "agg": "sum", "as": "total"}
+    ]
+    data["traces"] = [
+        {"type": "indicator", "mode": "number", "value": "$total"}
+    ]
+    assert (
+        "transforms[0]: reduce cannot be combined with a facet "
+        "('facet'/'facetBy' drop the faceted column)"
+        in errors_of(data)
+    )
+
+
+def test_indicator_render_enforces_nested_schema():
+    manifest = cc.validate_payload(example("kpi-gauge"))
+    raw = manifest.traces[0]
+    raw["title"] = {
+        "text": "Total",
+        "foo": 1,
+        "font": {"size": [12], "color": "#ffffff"},
+    }
+    raw["gauge"]["axis"]["domain"] = [0, 1]
+    raw["gauge"]["axis"]["range"] = [1, 2, 3]
+    raw["gauge"]["steps"] = [
+        {"range": [i, i + 1], "color": "#fff"} for i in range(11)
+    ]
+    raw["delta"] = {
+        "reference": [1, 2],
+        "increasing": {"color": "#16a34a"},
+    }
+    raw["number"] = {
+        "valueformat": ["a"],
+        "suffix": " req",
+    }
+    figure = cc.render(
+        pd.DataFrame({"val": [1.0, 2.0]}),
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    trace = figure["data"][0]
+    assert "foo" not in trace["title"]
+    assert trace["title"]["text"] == "Total"
+    assert trace["title"]["font"] == {"color": "#ffffff"}
+    assert "domain" not in trace["gauge"]["axis"]
+    assert "range" not in trace["gauge"]["axis"]
+    assert len(trace["gauge"]["steps"]) == 10
+    assert "reference" not in trace["delta"]
+    assert trace["delta"]["increasing"] == {"color": "#16a34a"}
+    assert "valueformat" not in trace["number"]
+    assert trace["number"]["suffix"] == " req"
+
+
+def test_indicator_value_on_empty_frame_has_specific_message():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="indicator-empty",
+            channels={"yFields": {"mode": "one"}},
+            traces=[
+                {"type": "indicator", "mode": "number", "value": "$y0"}
+            ],
+        )
+    )
+    df = pd.DataFrame({"val": pd.Series([], dtype=float)})
+    with pytest.raises(ValueError) as exc:
+        cc.render(
+            df,
+            manifest,
+            encoding(y=[y_channel("val")]),
+            {},
+        )
+    assert (
+        "traces[0].value: no rows after transforms"
+        in str(exc.value)
+    )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d["traces"][0].__setitem__(
+            "delta", {"reference": [1, 2]}
+        ),
+        lambda d: d["traces"][0].__setitem__(
+            "number", {"valueformat": ["a"]}
+        ),
+        lambda d: d["traces"][0].__setitem__(
+            "title", {"text": ["x"]}
+        ),
+        lambda d: d["traces"][0].__setitem__(
+            "gauge", {"shape": ["arc"]}
+        ),
+        lambda d: d["traces"][0].__setitem__(
+            "title", {"font": {"size": [12]}}
+        ),
+    ],
+)
+def test_indicator_scalar_leaves_reject_lists(mutate):
+    data = example("kpi-gauge")
+    mutate(data)
+    assert "must be a scalar" in errors_of(data)
+
+
+def test_indicator_step_color_may_stay_a_list():
+    data = example("kpi-gauge")
+    data["traces"][0]["gauge"]["steps"] = [
+        {"range": [0, 100], "color": ["#ffffff", "#000000"]}
+    ]
+    manifest = cc.validate_payload(data)
+    figure = cc.render(
+        pd.DataFrame({"val": [1.0, 2.0]}),
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    assert figure["data"][0]["gauge"]["steps"] == [
+        {"range": [0, 100], "color": ["#ffffff", "#000000"]}
+    ]
+
+
+@pytest.mark.parametrize("key", ["values", "labels", "z"])
+def test_indicator_rejects_other_data_keys(key):
+    data = minimal_manifest(
+        channels={"yFields": {"mode": "one"}},
+        traces=[
+            {
+                "type": "indicator",
+                "mode": "number",
+                "value": "$y0",
+                key: "$y0",
+            }
+        ],
+    )
+    assert (
+        f"traces[0].{key}: not allowed on the 'indicator' trace type"
+        in errors_of(data)
+    )
+
+
+def test_sankey_link_values_must_be_numeric():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="sankey-text-values",
+            channels={
+                "source": {"required": True, "types": ["nominal"]},
+                "target": {"required": True, "types": ["nominal"]},
+                "yFields": {"mode": "one"},
+            },
+            traces=[
+                {
+                    "type": "sankey",
+                    "source": "$source",
+                    "target": "$target",
+                    "values": "$y0",
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame(
+        {
+            "src": ["A"],
+            "dst": ["X"],
+            "val": ["twelve"],
+        }
+    )
+    with pytest.raises(ValueError) as exc:
+        cc.render(
+            df,
+            manifest,
+            encoding(
+                source=channel("src", "nominal"),
+                target=channel("dst", "nominal"),
+                y=[y_channel("val", "nominal")],
+            ),
+            {},
+        )
+    assert (
+        "traces[0].values: sankey link values must be numeric"
+        in str(exc.value)
+    )
+
+
+def test_sankey_link_values_preserve_nan_as_null():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="sankey-nan-values",
+            channels={
+                "source": {"required": True, "types": ["nominal"]},
+                "target": {"required": True, "types": ["nominal"]},
+                "yFields": {"mode": "one"},
+            },
+            traces=[
+                {
+                    "type": "sankey",
+                    "source": "$source",
+                    "target": "$target",
+                    "values": "$y0",
+                }
+            ],
+        )
+    )
+    df = pd.DataFrame(
+        {
+            "src": ["A", "A"],
+            "dst": ["X", "Y"],
+            "val": [1.0, np.nan],
+        }
+    )
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(
+            source=channel("src", "nominal"),
+            target=channel("dst", "nominal"),
+            y=[y_channel("val")],
+        ),
+        {},
+    )
+    assert figure["data"][0]["link"]["value"] == [1.0, None]
+
+
+def test_reduce_numeric_aggregates_reject_text_columns():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="reduce-text",
+            channels={"yFields": {"mode": "one"}},
+            transforms=[
+                {"op": "reduce", "field": "y0", "agg": "sum", "as": "total"}
+            ],
+            traces=[{"type": "bar", "y": "$total"}],
+        )
+    )
+    df = pd.DataFrame({"val": ["a", "b"]})
+    with pytest.raises(ValueError) as exc:
+        cc.render(
+            df,
+            manifest,
+            encoding(y=[y_channel("val", "nominal")]),
+            {},
+        )
+    assert (
+        "transforms[0]: aggregate 'sum' needs a numeric column"
+        in str(exc.value)
+    )
+
+
+def test_reduce_count_works_on_text_columns():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="reduce-count",
+            channels={"yFields": {"mode": "one"}},
+            transforms=[
+                {"op": "reduce", "field": "y0", "agg": "count", "as": "total"}
+            ],
+            traces=[{"type": "bar", "y": "$total"}],
+        )
+    )
+    df = pd.DataFrame({"val": ["a", "b"]})
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(y=[y_channel("val", "nominal")]),
+        {},
+    )
+    assert figure["data"][0]["y"] == [2]
+
+
+def test_kpi_gauge_example_renders():
+    manifest = cc.validate_payload(example("kpi-gauge"))
+    figure = cc.render(
+        pd.DataFrame({"val": [10.0, 20.0, 30.0]}),
+        manifest,
+        encoding(y=[y_channel("val")]),
+        {},
+    )
+    assert figure["data"]
+    assert figure["data"][0]["value"] == 60.0
+    assert cc.is_samplable(manifest) is False
+
+
+def test_indicator_trace_alone_is_not_samplable():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            chart_id="indicator-sampling",
+            channels={"yFields": {"mode": "one"}},
+            traces=[
+                {"type": "indicator", "mode": "number", "value": "$y0"}
+            ],
+        )
+    )
+    assert cc.is_samplable(manifest) is False
+
+
+def test_flow_sankey_example_aggregates_duplicate_pairs():
+    manifest = cc.validate_payload(example("flow-sankey"))
+    df = pd.DataFrame(
+        {
+            "src": ["A", "A", "B", "A"],
+            "dst": ["X", "X", "X", "Y"],
+            "val": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(
+            source=channel("src", "nominal"),
+            target=channel("dst", "nominal"),
+            y=[y_channel("val")],
+        ),
+        {},
+    )
+    assert figure["data"]
+    trace = figure["data"][0]
+    assert trace["arrangement"] == "snap"
+    assert trace["node"]["label"] == ["A", "B", "X", "Y"]
+    assert trace["node"]["pad"] == 16
+    assert trace["node"]["thickness"] == 16
+    assert trace["node"]["color"] == "#3b82f6"
+    assert trace["node"]["line"] == {"color": "#ffffff", "width": 1}
+    assert trace["link"]["source"] == [0, 1, 0]
+    assert trace["link"]["target"] == [2, 2, 3]
+    assert trace["link"]["value"] == [3.0, 3.0, 4.0]
+    assert trace["link"]["color"] == "#cbd5e1"
+    assert trace["link"]["line"] == {"color": "#e2e8f0", "width": 0}
+
+
+# ---------------------------------------------------------------------------
 # Examples, introspection and sampling
 # ---------------------------------------------------------------------------
 
@@ -3821,6 +4716,7 @@ def test_channel_requirements_without_yfields():
         ("limit", False),
         ("group_agg", False),
         ("cumulate", False),
+        ("reduce", False),
     ],
 )
 def test_is_samplable_per_transform(op, expected):

@@ -138,6 +138,40 @@ non-numeric columns whose coercion yields no finite numbers) produce all
 as-is. Array style slots follow the same post-transform row subset as data
 slots, so sampling eligibility (``is_samplable``) is unchanged.
 
+Data shaping
+------------
+``reduce`` collapses the whole frame to one row containing only its ``as``
+column. Afterwards only ``$<as>``, ``$index`` and ``$count`` resolve. It is
+treated as row-changing for sampling, like ``group_agg``/``cumulate``/``limit``.
+
+``group_agg.groupBy`` accepts one slot or an array of 1-2 slots. With an array,
+every grouped column survives in the rebuilt frame alongside ``as`` and remains
+resolvable (this is what makes aggregated Sankey links expressible).
+
+``indicator``
+-------------
+The indicator trace may use the indicator-only data key ``value``; it must
+resolve to exactly one row after transforms (normally via ``reduce``) and is
+emitted as a scalar. Indicator-only style objects are ``title``, ``number``,
+``delta`` and ``gauge``; they accept literals and ``$opt.<key>`` scalars only
+(no data/label slots). ``gauge.axis.range`` and ``gauge.steps[].range`` support
+``$opt`` pairs. Indicator traces never emit ``x``/``y`` and never participate in
+sampling. A value with the wrong arity raises ``ValueError`` so the API can show
+the actionable message instead of a silent empty figure.
+
+``sankey``
+----------
+The Sankey trace requires ``source``, ``target`` and ``values`` (data slots or
+literal arrays) of equal length. Node labels are the union of source and target
+values in first-appearance order (all sources first, then unseen targets). The
+renderer emits ``link.source``/``link.target`` as node indices and
+``link.value`` as the resolved values. Duplicate ``(source, target)`` rows are
+**not** aggregated — use multi-key ``group_agg`` for that. Style objects are
+``node`` (``pad``, ``thickness``, ``line``, ``color``) and ``link``
+(``color``, ``line``). ``link.color`` accepts literals and ``$opt`` scalars;
+``$color.values`` inside ``link.color`` is not supported. A length mismatch
+raises ``ValueError`` with the actionable message.
+
 Security
 --------
 The module never imports user code, never calls ``eval``/``exec`` and never
@@ -187,14 +221,23 @@ CHANNEL_TYPES: tuple[str, ...] = ("quantitative", "nominal", "temporal")
 Y_FIELD_MODES: tuple[str, ...] = ("none", "one", "range", "multi")
 TRACE_TYPES: tuple[str, ...] = (
     "scatter", "bar", "box", "violin", "waterfall", "funnel", "indicator",
-    "histogram",
+    "histogram", "sankey",
 )
 STYLE_KEYS: tuple[str, ...] = (
     "mode", "name", "text", "textposition", "orientation", "opacity", "fill",
     "line", "marker", "width", "offsetgroup", "showlegend", "hovertemplate",
     "hole", "boxpoints", "cumulative", "histnorm", "error_x", "error_y",
+    "title", "number", "gauge", "delta", "node", "link", "arrangement",
 )
 DATA_KEYS: tuple[str, ...] = ("x", "y", "z", "labels", "values")
+INDICATOR_STYLE_KEYS: frozenset[str] = frozenset({
+    "title", "number", "gauge", "delta",
+})
+INDICATOR_DATA_KEYS: frozenset[str] = frozenset({"value"})
+SANKEY_DATA_KEYS: frozenset[str] = frozenset({"source", "target"})
+SANKEY_STYLE_KEYS: frozenset[str] = frozenset({
+    "node", "link", "arrangement",
+})
 _SEGMENT_KEYS: frozenset[str] = frozenset({"x", "from", "to", "horizontal"})
 
 #: Axis keys owned by the grid. A manifest may style axes, but it must not be
@@ -254,6 +297,7 @@ TRANSFORM_KEYS: dict[str, frozenset[str]] = {
     "limit": frozenset({"count", "from"}),
     "group_agg": frozenset({"groupBy", "field", "agg", "as"}),
     "cumulate": frozenset({"field", "as"}),
+    "reduce": frozenset({"field", "agg", "as"}),
 }
 GROUP_AGGS: tuple[str, ...] = ("sum", "mean", "count", "min", "max")
 
@@ -265,9 +309,11 @@ _RESERVED_SLOT_NAMES: frozenset[str] = frozenset({
 })
 _BASE_DATA_SLOTS: frozenset[str] = frozenset({
     "x", "y0", "y1", "y2", "y3", "y4", "color", "size", "z", "error",
-    "count", "index",
+    "source", "target", "count", "index",
 })
-_SLOT_CHANNEL_KEYS: frozenset[str] = frozenset({"x", "color", "size", "z", "error"})
+_SLOT_CHANNEL_KEYS: frozenset[str] = frozenset({
+    "x", "color", "size", "z", "error", "source", "target",
+})
 _Y_SLOT_RE = re.compile(r"^y([0-4])$")
 
 #: Nested style objects. The top-level style allowlist above is the security
@@ -287,6 +333,57 @@ _NESTED_STYLE_KEYS: dict[str, frozenset[str]] = {
     "error_y": frozenset({
         "type", "array", "arrayminus", "visible", "color", "thickness", "width",
     }),
+    "node": frozenset({"pad", "thickness", "line", "color"}),
+    "link": frozenset({"color", "line"}),
+}
+
+_FONT_KEYS: frozenset[str] = frozenset({"family", "size", "color"})
+_DELTA_MARKER_KEYS: frozenset[str] = frozenset({"color", "symbol"})
+_GAUGE_AXIS_KEYS: frozenset[str] = frozenset({
+    "range", "tickvals", "ticktext", "tickformat", "visible",
+})
+_GAUGE_BAR_KEYS: frozenset[str] = frozenset({"color", "thickness"})
+_GAUGE_STEP_KEYS: frozenset[str] = frozenset({"range", "color"})
+_INDICATOR_TITLE_KEYS: frozenset[str] = frozenset({"text", "font"})
+_INDICATOR_NUMBER_KEYS: frozenset[str] = frozenset({
+    "valueformat", "suffix", "prefix", "font",
+})
+_INDICATOR_DELTA_KEYS: frozenset[str] = frozenset({
+    "reference", "relative", "valueformat", "increasing", "decreasing",
+    "position",
+})
+_INDICATOR_GAUGE_KEYS: frozenset[str] = frozenset({
+    "axis", "bar", "bgcolor", "steps", "shape", "thickness",
+})
+
+#: Render-side schema mirror; kinds map to the resolver for that leaf/object.
+_INDICATOR_SCHEMA: dict[str, dict[str, str]] = {
+    "title": {
+        "text": "scalar",
+        "font": "font",
+    },
+    "number": {
+        "valueformat": "scalar",
+        "suffix": "scalar",
+        "prefix": "scalar",
+        "font": "font",
+    },
+    "delta": {
+        "reference": "scalar",
+        "relative": "scalar",
+        "valueformat": "scalar",
+        "position": "scalar",
+        "increasing": "delta_marker",
+        "decreasing": "delta_marker",
+    },
+    "gauge": {
+        "axis": "axis",
+        "bar": "bar",
+        "bgcolor": "scalar",
+        "steps": "steps",
+        "shape": "scalar",
+        "thickness": "scalar",
+    },
 }
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
@@ -296,6 +393,15 @@ _OPTION_KEY_RE = re.compile(r"^[a-z][a-zA-Z0-9_]{0,23}$")
 
 _MISSING = object()
 _OPTION_INVALID = object()
+
+
+class _SlotSet(set[str]):
+    """Available slot names plus how the current frame was reshaped."""
+
+    def __init__(self, values=(), *, declared_channels=()):
+        super().__init__(values)
+        self.declared_channels = set(declared_channels)
+        self.cleared_by: str | None = None
 _CACHE: dict[str, "CustomChartManifest"] | None = None
 _CACHE_SIG: tuple | None = None
 _LOG = logging.getLogger(__name__)
@@ -686,6 +792,35 @@ def _transform_slot(
     return slot
 
 
+def _transform_group_slots(
+    value: Any,
+    path: str,
+    errors: list[str],
+    available: set[str],
+) -> list[str]:
+    """Validate group_agg's groupBy: one slot or an array of 1-2 slots."""
+    if isinstance(value, str):
+        slot = _transform_slot(value, path, errors, available)
+        return [slot] if slot is not None else []
+    if isinstance(value, list) and 1 <= len(value) <= 2:
+        slots: list[str] = []
+        seen: set[str] = set()
+        for index, item in enumerate(value):
+            slot = _transform_slot(
+                item, f"{path}[{index}]", errors, available
+            )
+            if slot is None:
+                continue
+            if slot in seen:
+                errors.append(f"{path}: duplicate slot {slot!r}")
+                continue
+            seen.add(slot)
+            slots.append(slot)
+        return slots
+    errors.append(f"{path}: accepts a slot or an array of 1-2 slots")
+    return []
+
+
 def _transform_as(
     value: Any,
     path: str,
@@ -775,11 +910,11 @@ def _validate_transforms(
                     f"{path}: group_agg cannot be combined with a facet "
                     f"('facet'/'facetBy' drop the faceted column)"
                 )
-            group_by = None
+            group_slots: list[str] = []
             if "groupBy" not in item:
                 errors.append(f"{path}.groupBy: is required")
             else:
-                group_by = _transform_slot(
+                group_slots = _transform_group_slots(
                     item.get("groupBy"), f"{path}.groupBy", errors, available
                 )
             if "field" not in item:
@@ -796,15 +931,45 @@ def _validate_transforms(
                 errors.append(f"{path}.as: is required")
             else:
                 as_name = _transform_as(item.get("as"), f"{path}.as", errors, available)
-            # group_agg collapses the frame to the grouping column plus the
-            # aggregate, so later transforms may only see those two slots.
-            next_available: set[str] = set()
-            if group_by is not None:
-                next_available.add(group_by)
+            # group_agg collapses the frame to the grouped column(s) plus the
+            # aggregate, so later transforms see only those slots.
+            next_available: set[str] = set(group_slots)
             if as_name is not None:
                 next_available.add(as_name)
             available.clear()
             available.update(next_available)
+            if isinstance(available, _SlotSet):
+                available.cleared_by = "group_agg"
+
+        elif op == "reduce":
+            if has_facet:
+                errors.append(
+                    f"{path}: reduce cannot be combined with a facet "
+                    f"('facet'/'facetBy' drop the faceted column)"
+                )
+            if not all(key in item for key in ("field", "agg", "as")):
+                errors.append(
+                    f"{path}: 'reduce' requires 'field', 'agg' and 'as'"
+                )
+            if "field" in item:
+                _transform_slot(
+                    item.get("field"), f"{path}.field", errors, available
+                )
+            if "agg" in item and item.get("agg") not in GROUP_AGGS:
+                errors.append(
+                    f"{path}.agg: must be one of {', '.join(GROUP_AGGS)}"
+                )
+            as_name = None
+            if "as" in item:
+                as_name = _transform_as(
+                    item.get("as"), f"{path}.as", errors, available
+                )
+            # reduce collapses the whole frame to one row with only the alias.
+            available.clear()
+            if as_name is not None:
+                available.add(as_name)
+            if isinstance(available, _SlotSet):
+                available.cleared_by = "reduce"
 
         elif op == "cumulate":
             if "field" not in item:
@@ -817,6 +982,41 @@ def _validate_transforms(
                 as_name = _transform_as(item.get("as"), f"{path}.as", errors, available)
                 if as_name is not None:
                     available.add(as_name)
+
+
+def _y_slot_supplied(name: str, y_mode: str | None) -> bool:
+    if name == "y0":
+        return y_mode in ("one", "range", "multi")
+    if name == "y1":
+        return y_mode in ("range", "multi")
+    if name in ("y2", "y3", "y4"):
+        return y_mode == "multi"
+    return False
+
+
+def _slot_is_declared(
+    name: str,
+    available: set[str],
+    y_mode: str | None,
+) -> bool:
+    declared = getattr(available, "declared_channels", set())
+    if name in ("x", "color", "size", "z", "error", "source", "target"):
+        return name in declared
+    if _Y_SLOT_RE.fullmatch(name):
+        return _y_slot_supplied(name, y_mode)
+    return False
+
+
+def _reduce_unavailable_message(
+    path: str,
+    slot: str,
+    *,
+    kind: str = "data slot",
+) -> str:
+    return (
+        f"{path}: {kind} '${slot}' is not available after the preceding "
+        f"'reduce' transform (only its 'as' output, $index and $count remain)"
+    )
 
 
 def _y_slot_error(
@@ -858,17 +1058,49 @@ def _validate_label_slot(
     name = value[1:-len(".label")]
     if name == "x":
         if "x" not in available:
-            errors.append(f"{path}: label slot '$x.label' requires an 'x' channel")
+            if (
+                getattr(available, "cleared_by", None) == "reduce"
+                and _slot_is_declared("x", available, y_mode)
+            ):
+                errors.append(
+                    _reduce_unavailable_message(
+                        path, "x.label", kind="label slot"
+                    )
+                )
+            else:
+                errors.append(
+                    f"{path}: label slot '$x.label' requires an 'x' channel"
+                )
         return
     if name == "color":
         if "color" not in available:
-            errors.append(
-                f"{path}: label slot '$color.label' requires a 'color' channel"
-            )
+            if (
+                getattr(available, "cleared_by", None) == "reduce"
+                and _slot_is_declared("color", available, y_mode)
+            ):
+                errors.append(
+                    _reduce_unavailable_message(
+                        path, "color.label", kind="label slot"
+                    )
+                )
+            else:
+                errors.append(
+                    f"{path}: label slot '$color.label' requires a 'color' channel"
+                )
         return
     if _Y_SLOT_RE.fullmatch(name):
         if name not in available:
-            _y_slot_error(name, path, errors, y_mode, kind="label slot")
+            if (
+                getattr(available, "cleared_by", None) == "reduce"
+                and _slot_is_declared(name, available, y_mode)
+            ):
+                errors.append(
+                    _reduce_unavailable_message(
+                        path, f"{name}.label", kind="label slot"
+                    )
+                )
+            else:
+                _y_slot_error(name, path, errors, y_mode, kind="label slot")
         return
     errors.append(
         f"{path}: unsupported label slot {value!r}; use $x.label, "
@@ -910,6 +1142,12 @@ def _validate_data_slot(
     if name in _BASE_DATA_SLOTS:
         if name in available:
             return
+        if (
+            getattr(available, "cleared_by", None) == "reduce"
+            and _slot_is_declared(name, available, y_mode)
+        ):
+            errors.append(_reduce_unavailable_message(path, name))
+            return
         if name == "x":
             errors.append(f"{path}: data slot '$x' requires an 'x' channel")
         elif _Y_SLOT_RE.fullmatch(name):
@@ -923,7 +1161,7 @@ def _validate_data_slot(
         return  # transform output
     errors.append(
         f"{path}: unknown data slot {value!r}; use x, y0-y4, color, size, z, "
-        f"error, count, index or a transform output"
+        f"error, source, target, count, index or a transform output"
     )
 
 
@@ -1169,7 +1407,7 @@ def _validate_nested_style(
                 f"{item_path}: unsupported style key for {kind}"
             )
             continue
-        if kind == "marker" and key == "line":
+        if kind in ("marker", "node", "link") and key == "line":
             if not isinstance(item, dict):
                 errors.append(f"{item_path}: must be an object")
             else:
@@ -1220,6 +1458,332 @@ def _validate_style_value(
         _scan_style_list(value, path, errors, available, y_mode, option_keys)
         return
     # scalar literal
+
+
+def _check_object(
+    value: Any,
+    path: str,
+    errors: list[str],
+    allowed: frozenset[str],
+    kind: str,
+) -> bool:
+    if not isinstance(value, dict):
+        errors.append(f"{path}: must be an object")
+        return False
+    for key in sorted(set(value) - allowed, key=str):
+        errors.append(f"{path}.{key}: not allowed in {kind}")
+    return True
+
+
+def _validate_indicator_scalar(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    # Indicator scalar leaves allow literals and $opt scalars only; reuse the
+    # style walker so data/label slots get the established messages.
+    if isinstance(value, (dict, list)):
+        errors.append(f"{path}: must be a scalar")
+        return
+    if isinstance(value, str) and value.startswith("$"):
+        rest = value[1:]
+        if not value.startswith("$opt."):
+            first = rest[:1]
+            if not first or not (first.islower() or first == "_"):
+                # A literal currency-like prefix/suffix ("$", "$1,000",
+                # "$USD") is text, not a slot.
+                return
+    _validate_style_leaf(value, path, errors, set(), None, option_keys)
+
+
+def _validate_indicator_scalar_list(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not isinstance(value, list):
+        errors.append(f"{path}: must be a list")
+        return
+    for index, item in enumerate(value):
+        _validate_indicator_scalar(
+            item, f"{path}[{index}]", errors, option_keys
+        )
+
+
+def _validate_indicator_scalar_or_list(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if isinstance(value, list):
+        _validate_indicator_scalar_list(value, path, errors, option_keys)
+        return
+    _validate_indicator_scalar(value, path, errors, option_keys)
+
+
+def _validate_indicator_font(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _FONT_KEYS, "font"):
+        return
+    for key, item in value.items():
+        _validate_indicator_scalar(
+            item, f"{path}.{key}", errors, option_keys
+        )
+
+
+def _validate_indicator_delta_marker(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(
+        value, path, errors, _DELTA_MARKER_KEYS, "delta marker"
+    ):
+        return
+    for key, item in value.items():
+        _validate_indicator_scalar(
+            item, f"{path}.{key}", errors, option_keys
+        )
+
+
+def _validate_indicator_range(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not isinstance(value, list) or len(value) != 2:
+        errors.append(f"{path}: must contain exactly two values")
+        return
+    _validate_indicator_scalar_list(value, path, errors, option_keys)
+
+
+def _validate_indicator_axis(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _GAUGE_AXIS_KEYS, "gauge.axis"):
+        return
+    if "range" in value:
+        _validate_indicator_range(
+            value["range"], f"{path}.range", errors, option_keys
+        )
+    for key in ("tickvals", "ticktext"):
+        if key in value:
+            item = value[key]
+            if not isinstance(item, list):
+                errors.append(f"{path}.{key}: must be a list")
+            else:
+                _validate_indicator_scalar_list(
+                    item, f"{path}.{key}", errors, option_keys
+                )
+    for key in ("tickformat", "visible"):
+        if key in value:
+            _validate_indicator_scalar(
+                value[key], f"{path}.{key}", errors, option_keys
+            )
+
+
+def _validate_indicator_bar(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _GAUGE_BAR_KEYS, "gauge.bar"):
+        return
+    for key, item in value.items():
+        _validate_indicator_scalar(
+            item, f"{path}.{key}", errors, option_keys
+        )
+
+
+def _validate_indicator_steps(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not isinstance(value, list):
+        errors.append(f"{path}: must be a list")
+        return
+    if len(value) > 10:
+        errors.append(f"{path}: at most 10 steps are allowed")
+    for index, item in enumerate(value):
+        item_path = f"{path}[{index}]"
+        if not _check_object(
+            item, item_path, errors, _GAUGE_STEP_KEYS, "a gauge step"
+        ):
+            continue
+        if "range" not in item:
+            errors.append(f"{item_path}.range: is required")
+        else:
+            _validate_indicator_range(
+                item["range"], f"{item_path}.range", errors, option_keys
+            )
+        if "color" in item:
+            _validate_indicator_scalar_or_list(
+                item["color"], f"{item_path}.color", errors, option_keys
+            )
+
+
+def _validate_indicator_title(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _INDICATOR_TITLE_KEYS, "title"):
+        return
+    if "text" in value:
+        _validate_indicator_scalar(
+            value["text"], f"{path}.text", errors, option_keys
+        )
+    if "font" in value:
+        _validate_indicator_font(
+            value["font"], f"{path}.font", errors, option_keys
+        )
+
+
+def _validate_indicator_number(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _INDICATOR_NUMBER_KEYS, "number"):
+        return
+    for key in ("valueformat", "suffix", "prefix"):
+        if key in value:
+            _validate_indicator_scalar(
+                value[key], f"{path}.{key}", errors, option_keys
+            )
+    if "font" in value:
+        _validate_indicator_font(
+            value["font"], f"{path}.font", errors, option_keys
+        )
+
+
+def _validate_indicator_delta(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _INDICATOR_DELTA_KEYS, "delta"):
+        return
+    for key in ("reference", "relative", "valueformat", "position"):
+        if key in value:
+            _validate_indicator_scalar(
+                value[key], f"{path}.{key}", errors, option_keys
+            )
+    for key in ("increasing", "decreasing"):
+        if key in value:
+            _validate_indicator_delta_marker(
+                value[key], f"{path}.{key}", errors, option_keys
+            )
+
+
+def _validate_indicator_gauge(
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if not _check_object(value, path, errors, _INDICATOR_GAUGE_KEYS, "gauge"):
+        return
+    if "axis" in value:
+        _validate_indicator_axis(
+            value["axis"], f"{path}.axis", errors, option_keys
+        )
+    if "bar" in value:
+        _validate_indicator_bar(
+            value["bar"], f"{path}.bar", errors, option_keys
+        )
+    for key in ("bgcolor", "shape", "thickness"):
+        if key in value:
+            _validate_indicator_scalar(
+                value[key], f"{path}.{key}", errors, option_keys
+            )
+    if "steps" in value:
+        _validate_indicator_steps(
+            value["steps"], f"{path}.steps", errors, option_keys
+        )
+
+
+def _validate_indicator_style(
+    key: str,
+    value: Any,
+    path: str,
+    errors: list[str],
+    option_keys: set[str],
+) -> None:
+    if key == "title":
+        _validate_indicator_title(value, path, errors, option_keys)
+    elif key == "number":
+        _validate_indicator_number(value, path, errors, option_keys)
+    elif key == "delta":
+        _validate_indicator_delta(value, path, errors, option_keys)
+    elif key == "gauge":
+        _validate_indicator_gauge(value, path, errors, option_keys)
+
+
+def _validate_trace_data_value(
+    value: Any,
+    path: str,
+    errors: list[str],
+    available: set[str],
+    y_mode: str | None,
+    option_keys: set[str],
+) -> None:
+    if isinstance(value, str) and value.startswith("$"):
+        _validate_data_slot(
+            value, path, errors, available, y_mode, option_keys
+        )
+    elif isinstance(value, dict):
+        errors.append(
+            f"{path}: data values must be a slot string or a JSON literal, "
+            f"not an object"
+        )
+    elif isinstance(value, list):
+        _scan_literal_for_slots(value, path, errors)
+
+
+def _validate_sankey_trace(
+    item: dict,
+    path: str,
+    errors: list[str],
+) -> None:
+    message = (
+        f"{path}: sankey needs source, target and values of equal length"
+    )
+    keys = ("source", "target", "values")
+    if any(key not in item for key in keys):
+        errors.append(message)
+        return
+    lengths: list[int | None] = []
+    for key in keys:
+        value = item[key]
+        if isinstance(value, list):
+            lengths.append(len(value))
+        elif isinstance(value, str) and value.startswith("$"):
+            lengths.append(None)
+        else:
+            errors.append(message)
+            return
+    known = [length for length in lengths if length is not None]
+    if len(set(known)) > 1:
+        errors.append(message)
 
 
 def _validate_split_trace(
@@ -1313,24 +1877,92 @@ def _validate_traces(
                 trace_type,
                 facets_by_color,
             )
+        if trace_type == "sankey":
+            _validate_sankey_trace(item, path, errors)
         for key, item_value in item.items():
             if key in ("type", "segments", "splitBy"):
                 continue
-            if key in DATA_KEYS:
-                if isinstance(item_value, str) and item_value.startswith("$"):
-                    _validate_data_slot(
-                        item_value, f"{path}.{key}", errors, available, y_mode,
-                        option_keys,
-                    )
-                elif isinstance(item_value, dict):
+            if key in INDICATOR_STYLE_KEYS:
+                if trace_type != "indicator":
                     errors.append(
-                        f"{path}.{key}: data values must be a slot string or a "
-                        f"JSON literal, not an object"
+                        f"{path}.{key}: only allowed on the 'indicator' "
+                        f"trace type"
                     )
-                elif isinstance(item_value, list):
-                    _scan_literal_for_slots(
-                        item_value, f"{path}.{key}", errors
+                    continue
+                _validate_indicator_style(
+                    key,
+                    item_value,
+                    f"{path}.{key}",
+                    errors,
+                    option_keys,
+                )
+                continue
+            if key in SANKEY_STYLE_KEYS:
+                if trace_type != "sankey":
+                    errors.append(
+                        f"{path}.{key}: only allowed on the 'sankey' "
+                        f"trace type"
                     )
+                    continue
+                _validate_style_value(
+                    key,
+                    item_value,
+                    f"{path}.{key}",
+                    errors,
+                    available,
+                    y_mode,
+                    option_keys,
+                )
+                continue
+            if key in INDICATOR_DATA_KEYS:
+                if trace_type != "indicator":
+                    errors.append(
+                        f"{path}.{key}: only allowed on the 'indicator' "
+                        f"trace type"
+                    )
+                    continue
+                _validate_trace_data_value(
+                    item_value,
+                    f"{path}.{key}",
+                    errors,
+                    available,
+                    y_mode,
+                    option_keys,
+                )
+                continue
+            if key in SANKEY_DATA_KEYS:
+                if trace_type != "sankey":
+                    errors.append(
+                        f"{path}.{key}: only allowed on the 'sankey' "
+                        f"trace type"
+                    )
+                    continue
+                _validate_trace_data_value(
+                    item_value,
+                    f"{path}.{key}",
+                    errors,
+                    available,
+                    y_mode,
+                    option_keys,
+                )
+                continue
+            if key in DATA_KEYS:
+                if trace_type == "indicator" and key in (
+                    "z", "labels", "values",
+                ):
+                    errors.append(
+                        f"{path}.{key}: not allowed on the 'indicator' "
+                        f"trace type"
+                    )
+                    continue
+                _validate_trace_data_value(
+                    item_value,
+                    f"{path}.{key}",
+                    errors,
+                    available,
+                    y_mode,
+                    option_keys,
+                )
             elif key in STYLE_KEYS:
                 _validate_style_value(
                     key, item_value, f"{path}.{key}", errors, available, y_mode,
@@ -1340,7 +1972,8 @@ def _validate_traces(
                 errors.append(
                     f"{path}.{key}: unsupported key; allowed style keys: "
                     f"{', '.join(STYLE_KEYS)}; allowed data keys: "
-                    f"{', '.join(DATA_KEYS)}; 'segments'; 'splitBy'"
+                    f"{', '.join(DATA_KEYS)}; 'source'/'target' (sankey); "
+                    f"'value' (indicator); 'segments'; 'splitBy'"
                 )
 
 
@@ -1441,6 +2074,9 @@ def _validate_payload_data(data: Any, claimed: list[tuple[str, str]]) -> list[st
         set(channels_raw) if isinstance(channels_raw, dict) else set()
     )
     available, y_mode = _validate_channels(channels_raw, errors)
+    available = _SlotSet(
+        available, declared_channels=declared_channels
+    )
 
     facet_by = data.get("facetBy", _MISSING)
     facet_present = facet_by is not _MISSING and facet_by is not None
@@ -1831,11 +2467,14 @@ def channel_requirements(manifest: CustomChartManifest) -> dict[str, object]:
 
 
 def is_samplable(manifest: CustomChartManifest) -> bool:
-    """False when a transform changes row semantics (group_agg/cumulate/limit)."""
+    """False for row-changing transforms or any indicator trace."""
     for transform in (manifest.transforms or []):
         if isinstance(transform, dict) and transform.get("op") in {
-            "group_agg", "cumulate", "limit",
+            "group_agg", "cumulate", "limit", "reduce",
         }:
+            return False
+    for trace in (manifest.traces or []):
+        if isinstance(trace, dict) and trace.get("type") == "indicator":
             return False
     return True
 
@@ -1846,6 +2485,10 @@ def is_samplable(manifest: CustomChartManifest) -> bool:
 
 class _RenderError(Exception):
     """Internal signal: the current configuration cannot be rendered."""
+
+
+class _RenderConfigError(ValueError):
+    """Structural config error surfaced to the API as a 400, not swallowed."""
 
 
 def _json_safe(value: Any) -> Any:
@@ -2084,6 +2727,189 @@ class _OptionResolver:
         return _json_safe(coerced)
 
 
+def _resolve_indicator_scalar_value(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if isinstance(value, (dict, list)):
+        return _MISSING
+    if isinstance(value, str):
+        if value.startswith("$opt."):
+            return resolver.get(value[len("$opt."):])
+        if value.startswith("$"):
+            first = value[1:2]
+            if first and (first.islower() or first == "_"):
+                raise _RenderError(
+                    "indicator styles only allow $opt.<key> slots"
+                )
+            return value
+        return value
+    return _json_safe(value)
+
+
+def _resolve_indicator_scalar_list(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, list):
+        return _MISSING
+    result = []
+    for item in value:
+        resolved = _resolve_indicator_scalar_value(item, resolver)
+        if resolved is _MISSING:
+            return _MISSING
+        result.append(resolved)
+    return result
+
+
+def _resolve_indicator_scalar_or_list(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if isinstance(value, list):
+        return _resolve_indicator_scalar_list(value, resolver)
+    return _resolve_indicator_scalar_value(value, resolver)
+
+
+def _resolve_indicator_range(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, list) or len(value) != 2:
+        return _MISSING
+    return _resolve_indicator_scalar_list(value, resolver)
+
+
+def _resolve_indicator_font(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, dict):
+        return _MISSING
+    result = {}
+    for key in _FONT_KEYS:
+        if key not in value:
+            continue
+        resolved = _resolve_indicator_scalar_value(value[key], resolver)
+        if resolved is not _MISSING:
+            result[key] = resolved
+    return result
+
+
+def _resolve_indicator_delta_marker(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, dict):
+        return _MISSING
+    result = {}
+    for key in _DELTA_MARKER_KEYS:
+        if key not in value:
+            continue
+        resolved = _resolve_indicator_scalar_value(value[key], resolver)
+        if resolved is not _MISSING:
+            result[key] = resolved
+    return result
+
+
+def _resolve_indicator_axis(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, dict):
+        return _MISSING
+    result = {}
+    for key in _GAUGE_AXIS_KEYS:
+        if key not in value:
+            continue
+        if key == "range":
+            resolved = _resolve_indicator_range(value[key], resolver)
+        elif key in ("tickvals", "ticktext"):
+            resolved = _resolve_indicator_scalar_list(value[key], resolver)
+        else:
+            resolved = _resolve_indicator_scalar_value(value[key], resolver)
+        if resolved is not _MISSING:
+            result[key] = resolved
+    return result
+
+
+def _resolve_indicator_bar(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, dict):
+        return _MISSING
+    result = {}
+    for key in _GAUGE_BAR_KEYS:
+        if key not in value:
+            continue
+        resolved = _resolve_indicator_scalar_value(value[key], resolver)
+        if resolved is not _MISSING:
+            result[key] = resolved
+    return result
+
+
+def _resolve_indicator_steps(
+    value: Any,
+    resolver: _OptionResolver,
+) -> Any:
+    if not isinstance(value, list):
+        return _MISSING
+    result = []
+    for item in value[:10]:
+        if not isinstance(item, dict):
+            continue
+        step = {}
+        if "range" in item:
+            resolved_range = _resolve_indicator_range(
+                item["range"], resolver
+            )
+            if resolved_range is not _MISSING:
+                step["range"] = resolved_range
+        if "range" not in step:
+            continue
+        if "color" in item:
+            resolved_color = _resolve_indicator_scalar_or_list(
+                item["color"], resolver
+            )
+            if resolved_color is not _MISSING:
+                step["color"] = resolved_color
+        result.append(step)
+    return result
+
+
+def _resolve_indicator_style_value(
+    key: str,
+    value: Any,
+    resolver: _OptionResolver,
+) -> dict:
+    schema = _INDICATOR_SCHEMA.get(key)
+    if schema is None or not isinstance(value, dict):
+        return {}
+    result = {}
+    for object_key, kind in schema.items():
+        if object_key not in value:
+            continue
+        item = value[object_key]
+        if kind == "scalar":
+            resolved = _resolve_indicator_scalar_value(item, resolver)
+        elif kind == "font":
+            resolved = _resolve_indicator_font(item, resolver)
+        elif kind == "delta_marker":
+            resolved = _resolve_indicator_delta_marker(item, resolver)
+        elif kind == "axis":
+            resolved = _resolve_indicator_axis(item, resolver)
+        elif kind == "bar":
+            resolved = _resolve_indicator_bar(item, resolver)
+        elif kind == "steps":
+            resolved = _resolve_indicator_steps(item, resolver)
+        else:
+            resolved = _MISSING
+        if resolved is not _MISSING:
+            result[object_key] = resolved
+    return result
+
+
 def _resolve_layout_value(value: Any, resolver: _OptionResolver) -> Any:
     if isinstance(value, str):
         if value.startswith("$opt."):
@@ -2198,7 +3024,9 @@ class _RenderEnv:
         return value[1:] if value.startswith("$") else value
 
     def apply_transforms(self) -> None:
-        for transform in (self.manifest.transforms or []):
+        for transform_index, transform in enumerate(
+            self.manifest.transforms or []
+        ):
             if not isinstance(transform, dict):
                 raise _RenderError("invalid transform")
             op = transform.get("op")
@@ -2228,15 +3056,28 @@ class _RenderEnv:
                 else:
                     self.work = self.work.head(count)
             elif op == "group_agg":
-                group_slot = self._slot_name(transform.get("groupBy"))
+                raw_group = transform.get("groupBy")
+                if isinstance(raw_group, list):
+                    group_slots = [
+                        self._slot_name(item) for item in raw_group
+                    ]
+                else:
+                    group_slots = [self._slot_name(raw_group)]
+                group_columns: list[str] = []
+                for slot in group_slots:
+                    column = self._column(slot)
+                    if column not in group_columns:
+                        group_columns.append(column)
                 field_slot = self._slot_name(transform.get("field"))
-                group_column = self._column(group_slot)
                 field_column = self._column(field_slot)
                 as_name = transform.get("as")
-                if not isinstance(as_name, str) or as_name == group_column:
+                if (
+                    not isinstance(as_name, str)
+                    or as_name in group_columns
+                ):
                     raise _RenderError("invalid group_agg output name")
                 grouped = self.work.groupby(
-                    group_column, dropna=False, sort=False
+                    group_columns, dropna=False, sort=False
                 )[field_column]
                 agg = transform.get("agg")
                 if agg == "count":
@@ -2249,10 +3090,32 @@ class _RenderEnv:
                 next_slots = {
                     name: column
                     for name, column in self.slots.items()
-                    if column == group_column
+                    if column in group_columns
                 }
                 next_slots[as_name] = as_name
                 self.slots = next_slots
+            elif op == "reduce":
+                field_column = self._column(
+                    self._slot_name(transform.get("field"))
+                )
+                agg = transform.get("agg")
+                as_name = transform.get("as")
+                if not isinstance(as_name, str):
+                    raise _RenderError("invalid reduce output name")
+                series = self.work[field_column]
+                if agg == "count":
+                    value = series.count()
+                elif agg in GROUP_AGGS:
+                    if not pd.api.types.is_numeric_dtype(series):
+                        raise _RenderConfigError(
+                            f"transforms[{transform_index}]: aggregate "
+                            f"{agg!r} needs a numeric column"
+                        )
+                    value = series.agg(agg)
+                else:
+                    raise _RenderError("invalid reduce function")
+                self.work = pd.DataFrame({as_name: [value]})
+                self.slots = {as_name: as_name}
             elif op == "cumulate":
                 # Deliberate: cumulate is global (before facet/split). Facet
                 # cells therefore carry the global running totals; group_agg +
@@ -2437,7 +3300,7 @@ class _RenderEnv:
         for key, item in value.items():
             if key not in allowed:
                 continue
-            if kind == "marker" and key == "line":
+            if kind in ("marker", "node", "link") and key == "line":
                 if isinstance(item, dict):
                     result[key] = self._resolve_nested_style("line", item)
                 continue
@@ -2465,7 +3328,12 @@ class _RenderEnv:
             return self._resolve_style_list(value)
         return _json_safe(value)
 
-    def _build_trace_body(self, raw: dict, trace_type: str) -> dict:
+    def _build_trace_body(
+        self,
+        raw: dict,
+        trace_type: str,
+        trace_index: int = 0,
+    ) -> dict:
         has_segments = "segments" in raw
         if has_segments:
             if "x" in raw or "y" in raw:
@@ -2479,14 +3347,119 @@ class _RenderEnv:
         for key, value in raw.items():
             if key in ("type", "splitBy"):
                 continue
+            if key in INDICATOR_STYLE_KEYS:
+                if trace_type == "indicator":
+                    trace[key] = _resolve_indicator_style_value(
+                        key, value, self.resolver
+                    )
+                continue
+            if key in SANKEY_STYLE_KEYS:
+                if trace_type == "sankey":
+                    trace[key] = self._resolve_style_value(key, value)
+                continue
+            if key in INDICATOR_DATA_KEYS:
+                if trace_type == "indicator":
+                    trace[key] = self._resolve_data_value(value)
+                continue
+            if key in SANKEY_DATA_KEYS:
+                if trace_type == "sankey":
+                    trace[key] = self._resolve_data_value(value)
+                continue
             if key == "segments":
                 trace.update(self._resolve_segments(value))
             elif key in DATA_KEYS:
+                if trace_type == "indicator" and key in (
+                    "x", "y", "z", "labels", "values",
+                ):
+                    continue
                 trace[key] = self._resolve_data_value(value)
             elif key in STYLE_KEYS:
                 trace[key] = self._resolve_style_value(key, value)
             # Unknown keys are deliberately dropped, never passed through.
+        if trace_type == "indicator":
+            self._finalize_indicator(trace, trace_index)
+        elif trace_type == "sankey":
+            self._finalize_sankey(trace, trace_index)
         return trace
+
+    def _finalize_indicator(
+        self,
+        trace: dict,
+        trace_index: int,
+    ) -> None:
+        value = trace.pop("value", _MISSING)
+        trace.pop("x", None)
+        trace.pop("y", None)
+        if value is _MISSING:
+            return
+        if isinstance(value, list):
+            if len(value) == 0:
+                raise _RenderConfigError(
+                    f"traces[{trace_index}].value: no rows after transforms"
+                )
+            if len(value) != 1:
+                raise _RenderConfigError(
+                    f"traces[{trace_index}].value: needs exactly one row "
+                    f"after transforms (got {len(value)}); add a 'reduce' "
+                    f"transform"
+                )
+            value = value[0]
+        trace["value"] = value
+
+    def _finalize_sankey(
+        self,
+        trace: dict,
+        trace_index: int,
+    ) -> None:
+        source = trace.pop("source", None)
+        target = trace.pop("target", None)
+        values = trace.pop("values", None)
+        message = (
+            f"traces[{trace_index}]: sankey needs source, target and values "
+            f"of equal length"
+        )
+        if not (
+            isinstance(source, list)
+            and isinstance(target, list)
+            and isinstance(values, list)
+        ):
+            raise _RenderConfigError(message)
+        if not (len(source) == len(target) == len(values)):
+            raise _RenderConfigError(message)
+
+        numeric_values = pd.to_numeric(
+            pd.Series(values), errors="coerce"
+        )
+        if not bool(numeric_values.notna().any()):
+            raise _RenderConfigError(
+                f"traces[{trace_index}].values: sankey link values must be "
+                f"numeric"
+            )
+        link_values = _series_to_list(numeric_values)
+
+        node_index: dict = {}
+        try:
+            for label in source:
+                if label not in node_index:
+                    node_index[label] = len(node_index)
+            for label in target:
+                if label not in node_index:
+                    node_index[label] = len(node_index)
+        except TypeError as exc:
+            raise _RenderConfigError(message) from exc
+        node_labels = list(node_index)
+
+        node_style = trace.get("node")
+        node_style = dict(node_style) if isinstance(node_style, dict) else {}
+        node_style["label"] = node_labels
+        trace["node"] = node_style
+
+        link_style = trace.get("link")
+        link_style = dict(link_style) if isinstance(link_style, dict) else {}
+        link_style["source"] = [node_index[label] for label in source]
+        link_style["target"] = [node_index[label] for label in target]
+        link_style["value"] = link_values
+        trace["link"] = link_style
 
     def _apply_split_palette(
         self,
@@ -2534,6 +3507,7 @@ class _RenderEnv:
         trace_type: str,
         *,
         default_showlegend: bool = True,
+        trace_index: int = 0,
     ) -> list[dict]:
         if raw.get("splitBy") != "$color":
             raise _RenderError("splitBy must be '$color'")
@@ -2572,7 +3546,9 @@ class _RenderEnv:
                 if subset.empty:
                     continue
                 self.work = subset
-                trace = self._build_trace_body(raw, trace_type)
+                trace = self._build_trace_body(
+                    raw, trace_type, trace_index
+                )
                 value_label = _split_value_label(value)
                 if base_name is None or base_name == "":
                     trace["name"] = value_label
@@ -2622,7 +3598,7 @@ class _RenderEnv:
         default_showlegend: bool | None = None,
     ) -> list[dict]:
         traces: list[dict] = []
-        for raw in (self.manifest.traces or []):
+        for trace_index, raw in enumerate(self.manifest.traces or []):
             if not isinstance(raw, dict):
                 continue
             trace_type = raw.get("type")
@@ -2639,10 +3615,13 @@ class _RenderEnv:
                         raw,
                         trace_type,
                         default_showlegend=split_default,
+                        trace_index=trace_index,
                     )
                 )
             else:
-                trace = self._build_trace_body(raw, trace_type)
+                trace = self._build_trace_body(
+                    raw, trace_type, trace_index
+                )
                 if (
                     default_showlegend is not None
                     and "showlegend" not in raw
@@ -2759,6 +3738,11 @@ def render(
 
     ``palette`` overrides the ten-colour default used by ``splitBy`` traces;
     it is keyword-only so existing four-argument callers are unaffected.
+
+    Structural configuration errors — indicator ``value`` not exactly one row,
+    or Sankey ``source``/``target``/``values`` length mismatch — raise
+    ``ValueError`` so the API can return the actionable message instead of a
+    silent empty figure.
     """
     layout = dict(base_layout or {})
     try:
@@ -2789,6 +3773,10 @@ def render(
         if not traces:
             return {"data": [], "layout": layout}
         return {"data": traces, "layout": layout}
+    except _RenderConfigError:
+        # Actionable structural errors (indicator arity, sankey lengths) must
+        # reach the API/user instead of becoming a silent empty figure.
+        raise
     except _RenderError:
         return {"data": [], "layout": layout}
     except Exception:
