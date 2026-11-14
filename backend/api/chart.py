@@ -3,16 +3,19 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Callable
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Body, HTTPException
 
 logger = logging.getLogger("chart")
 logging.basicConfig(level=logging.DEBUG)
 
+from backend.core import chart_registry, custom_charts
 from backend.core.session import session
 from backend.models.chart import ChartPreviewRequest, AggregateRequest, TemplateSaveRequest, ChartTemplate, SelectionFilter, FilterSpec
 
@@ -20,6 +23,11 @@ router = APIRouter(prefix="/api/v1/chart", tags=["chart"])
 
 # Chart templates persist to ~/.metricstudio/templates/{id}.json (spec §9.2)
 TEMPLATES_DIR = Path.home() / ".metricstudio" / "templates"
+
+# Declarative custom charts live in custom_charts.CHART_DIR ({id}.json). Any id
+# that may become a filesystem path is checked against this pattern BEFORE any
+# file access; it is the core module's own id pattern (path-traversal guard).
+CUSTOM_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
 
 # v1.16.0: raw-row point cap per trace (payload is O(rows)); env-overridable.
 DEFAULT_MAX_POINTS = 5000
@@ -92,10 +100,6 @@ def _maybe_sample(df: pd.DataFrame, layout: dict) -> pd.DataFrame:
     return df.iloc[positions]
 
 
-# Relational raw-row types that reach the multi-Y section below.
-_SAMPLABLE_RELATIONAL = frozenset({"scatter", "line", "area", "step", "dot"})
-
-
 def _to_records(df):
     records = df.to_dict("records")
     for record in records:
@@ -146,16 +150,11 @@ def _style_datum(datum: dict, chart_type: str, stack_mode: bool) -> dict:
     return datum
 
 
-def _aggregate(df, encoding):
+def _base_layout(encoding) -> dict:
+    """Shared Plotly layout skeleton every chart type starts from."""
     y_fields = encoding.y_fields or []
     color = encoding.color
-    chart_type = encoding.chart_type
-    opts = encoding.options
-
-    import logging
-    logging.debug(f"_aggregate: chart_type={chart_type} x={encoding.x.field if encoding.x else 'AUTO'} y_fields={[yf.field for yf in y_fields]} color={color.field if color else None} cols={list(df.columns)}")
-
-    layout = {
+    return {
         "autosize": True,
         "margin": {"t": 40, "r": 20, "b": 60, "l": 60},
         "paper_bgcolor": "#ffffff",
@@ -165,6 +164,118 @@ def _aggregate(df, encoding):
         "yaxis": {"title": None, "gridcolor": "#e5e5e5"},
         "showlegend": bool(color) or len(y_fields) > 1,
     }
+
+
+def _build_gauge(df, encoding) -> dict:
+    """One aggregated value from yFields[0] rendered as an indicator gauge."""
+    y_fields = encoding.y_fields or []
+    if not y_fields or y_fields[0].field not in df.columns:
+        return {"data": [], "layout": _base_layout(encoding)}
+    primary = y_fields[0]
+    agg = primary.aggregate or "sum"
+    if agg == "count":
+        # count needs no numeric values — the EncodingPanel offers every column
+        # to yFields. Mirror the generic path's agg("count"): non-null rows.
+        value = float(df[primary.field].notna().sum())
+    else:
+        # sum/mean/min/max are numeric-only: a text or all-null column cannot
+        # produce a value, so keep the (deliberately empty) figure.
+        numeric = pd.to_numeric(df[primary.field], errors="coerce").dropna()
+        if numeric.empty:
+            return {"data": [], "layout": _base_layout(encoding)}
+        if agg == "mean":
+            value = float(numeric.mean())
+        elif agg == "min":
+            value = float(numeric.min())
+        elif agg == "max":
+            value = float(numeric.max())
+        else:
+            value = float(numeric.sum())
+
+    opts = encoding.options
+    option_min = opts.gauge_min if opts else None
+    option_max = opts.gauge_max if opts else None
+    # Auto-range: never derive lo and hi independently (an inverted range hides
+    # the needle). Each bound is derived from the value's own direction, and a
+    # bound the user pinned in options stays pinned.
+    lo, hi = option_min, option_max
+    if lo is not None and hi is not None:
+        pass
+    elif hi is not None:
+        lo = min(0.0, value * 1.25)
+    elif lo is not None:
+        hi = max(0.0, value * 1.25)
+    elif value == 0:
+        lo, hi = 0.0, 1.0
+    else:
+        lo = 0.0 if value >= 0 else value * 1.25
+        hi = value * 1.25 if value > 0 else 0.0
+    if hi <= lo:
+        # Never override a user-supplied bound: expand the derived side. When
+        # BOTH bounds are pinned that is impossible, so keep the lower bound
+        # (gaugeMin) and expand the upper one instead.
+        if option_max is not None and option_min is None:
+            lo = hi - 1.0
+        else:
+            hi = lo + 1.0
+
+    trace = {
+        "type": "indicator",
+        "mode": "gauge+number",
+        "value": value,
+        "title": {"text": primary.label or primary.field},
+        "number": {"font": {"color": "#333333"}},
+        "gauge": {
+            "axis": {"range": [lo, hi]},
+            "bar": {"color": DEFAULT_COLORS[0]},
+            "bgcolor": "#f5f5f5",
+            "borderwidth": 0,
+        },
+    }
+    layout = _base_layout(encoding)
+    layout["xaxis"] = {"visible": False}
+    layout["yaxis"] = {"visible": False}
+    layout["showlegend"] = False
+    layout["margin"] = {"t": 40, "r": 20, "b": 20, "l": 20}
+    return {"data": [trace], "layout": layout}
+
+
+# Registry-keyed dispatch seam: new chart types add a builder here instead of
+# another branch in _aggregate's if-chain.
+_BUILDERS: dict[str, Callable[[pd.DataFrame, object], dict]] = {"gauge": _build_gauge}
+
+
+def _aggregate(df, encoding):
+    # ---- Declarative custom charts: dispatch before the builder if-chain ----
+    chart_type = encoding.chart_type
+    if custom_charts.is_custom_id(chart_type):
+        manifest = custom_charts.load_manifest(chart_type)
+        if manifest is None:
+            # is_custom_id was true a moment ago (cache/race): the file vanished.
+            raise ValueError(f"custom chart {chart_type!r} is no longer available")
+        layout = _base_layout(encoding)
+        # Same rule as the built-in path: only raw-row manifests are sampled;
+        # group_agg/cumulate/limit change row semantics and must see every row.
+        if custom_charts.is_samplable(manifest):
+            df = _maybe_sample(df, layout)
+        # palette: custom split-by-colour series use the built-in palette so a
+        # "$color" split looks identical to a built-in multi-series chart.
+        return custom_charts.render(
+            df, manifest, encoding, layout, palette=DEFAULT_COLORS
+        )
+
+    y_fields = encoding.y_fields or []
+    color = encoding.color
+    opts = encoding.options
+
+    import logging
+    logging.debug(f"_aggregate: chart_type={chart_type} x={encoding.x.field if encoding.x else 'AUTO'} y_fields={[yf.field for yf in y_fields]} color={color.field if color else None} cols={list(df.columns)}")
+
+    builder = _BUILDERS.get(chart_type)
+    if builder is not None:
+        return builder(df, encoding)
+
+    layout = _base_layout(encoding)
 
     # ---- Single-Y types: pie, histogram, box ----
     if chart_type == "pie":
@@ -186,20 +297,41 @@ def _aggregate(df, encoding):
         return {"data": data, "layout": layout}
 
     if chart_type == "histogram":
-        if not y_fields:
+        # Both channels the registry advertises are real: yFields[0] wins, but a
+        # histogram may arrive with the value column in x only (LLM-style or an
+        # enforced retarget onto histogram) — bin that instead of rendering empty.
+        primary = y_fields[0] if y_fields else encoding.x
+        field = getattr(primary, "field", None)
+        if not field or field not in df.columns:
             return {"data": [], "layout": layout}
-        primary = y_fields[0]
-        trace = {
-            "type": "histogram",
-            "x": df[primary.field].tolist(),
-            "marker": {"color": DEFAULT_COLORS[0]},
-        }
-        if opts and opts.histnorm:
-            trace["histnorm"] = opts.histnorm
-        if opts and opts.cumulative:
-            trace["cumulative"] = {"enabled": True}
-        layout["yaxis"]["title"] = primary.label or primary.field
-        return {"data": [trace], "layout": layout}
+
+        def _hist_trace(vals: list, idx: int) -> dict:
+            trace = {
+                "type": "histogram",
+                "x": vals,
+                "marker": {"color": DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]},
+            }
+            if opts and opts.histnorm:
+                trace["histnorm"] = opts.histnorm
+            if opts and opts.cumulative:
+                trace["cumulative"] = {"enabled": True}
+            return trace
+
+        # color splits the bins into one overlaid trace per value; a color whose
+        # field is missing from the frame is ignored rather than fatal.
+        if color is not None and getattr(color, "field", None) in df.columns:
+            data = []
+            for idx, (key, group) in enumerate(df.groupby(color.field, dropna=False)):
+                trace = _hist_trace(group[field].tolist(), idx)
+                trace["name"] = str(key)
+                trace["opacity"] = 0.7
+                data.append(trace)
+            layout["barmode"] = "overlay"
+            layout["showlegend"] = True
+        else:
+            data = [_hist_trace(df[field].tolist(), 0)]
+        layout["yaxis"]["title"] = getattr(primary, "label", None) or field
+        return {"data": data, "layout": layout}
 
     # box / violin share the same shape; violin adds a density outline
     if chart_type in ("box", "violin"):
@@ -730,7 +862,7 @@ def _aggregate(df, encoding):
     # aggregate) and there is no color split — both of those paths group rows,
     # and sampling them would silently change the plotted totals.
     if (
-        chart_type in _SAMPLABLE_RELATIONAL
+        chart_registry.samplable(chart_type)
         and not color
         and y_fields
         and all(not yf.aggregate for yf in y_fields)
@@ -1010,6 +1142,87 @@ async def aggregate_chart(request: AggregateRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Declarative custom charts (backend/core/custom_charts.py)
+#
+# Mounted under the same navy router; these exact paths are declared before any
+# "/{...}" route so they can never be shadowed by a path parameter.
+# ---------------------------------------------------------------------------
+
+def _checked_custom_id(chart_id: str) -> str:
+    """Reject unsafe ids before they can reach the filesystem."""
+    if not CUSTOM_ID_RE.fullmatch(chart_id or ""):
+        raise HTTPException(
+            status_code=400, detail=f"invalid custom chart id: {chart_id!r}"
+        )
+    return chart_id
+
+
+def _absolute_file(entry: dict) -> dict:
+    """Invalid entries carry a file *name* from the core; the UI labels the
+    field "Source" for both lists, so report an absolute path everywhere."""
+    result = dict(entry)
+    name = result.get("file")
+    if isinstance(name, str) and not os.path.isabs(name):
+        result["file"] = str(custom_charts.CHART_DIR / name)
+    return result
+
+
+@router.get("/custom")
+async def list_custom_charts():
+    """Every valid manifest plus every invalid file (never raises per file)."""
+    valid, invalid = custom_charts.list_manifests()
+    items = []
+    for manifest in valid:
+        # exclude_none: an undeclared channel must be ABSENT, not null — the
+        # SPA renders one picker per channel key it sees, and a bound channel
+        # that the manifest never declared is silently ignored when rendering.
+        entry = manifest.model_dump(by_alias=True, exclude_none=True)
+        entry["file"] = str(custom_charts.CHART_DIR / f"{manifest.id}.json")
+        items.append(entry)
+    return {"items": items, "invalid": [_absolute_file(entry) for entry in invalid]}
+
+
+@router.get("/custom/{chart_id}")
+async def get_custom_chart(chart_id: str):
+    chart_id = _checked_custom_id(chart_id)
+    manifest = custom_charts.load_manifest(chart_id)
+    if manifest is None:
+        raise HTTPException(
+            status_code=404, detail=f"custom chart not found: {chart_id}"
+        )
+    return manifest.model_dump(by_alias=True, exclude_none=True)
+
+
+@router.post("/custom")
+async def save_custom_chart(payload: Any = Body(...)):
+    """Validate and persist a manifest; 400 carries the joined validation errors."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="manifest must be a JSON object")
+    try:
+        manifest, replaced = custom_charts.save_manifest(payload)
+    except (OSError, ValueError) as exc:
+        # ValueError: joined validation errors (non-regular file, reserved
+        # name, bad payload). OSError: read-only directory, full disk. Both are
+        # user-facing 400s, never a 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"id": manifest.id, "replaced": replaced}
+
+
+@router.delete("/custom/{chart_id}")
+async def delete_custom_chart(chart_id: str):
+    chart_id = _checked_custom_id(chart_id)
+    try:
+        deleted = custom_charts.delete_manifest(chart_id)
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(
+            status_code=404, detail=f"custom chart not found: {chart_id}"
+        )
+    return {"deleted": True}
 
 
 @router.get("/templates", response_model=list[ChartTemplate], response_model_by_alias=True)

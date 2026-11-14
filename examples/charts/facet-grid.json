@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "facet-grid",
+  "label": {
+    "zh": "分面网格",
+    "en": "Facet grid"
+  },
+  "description": {
+    "zh": "按分类列拆成子图网格",
+    "en": "Split categories into a subplot grid"
+  },
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    },
+    "facet": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    }
+  },
+  "traces": [
+    {
+      "type": "bar",
+      "x": "$x",
+      "y": "$y0"
+    }
+  ],
+  "layout": {
+    "showlegend": false,
+    "margin": {
+      "l": 50,
+      "r": 20,
+      "t": 30,
+      "b": 45
+    }
+  },
+  "keywords": [
+    "分面网格",
+    "facet grid"
+  ]
+}

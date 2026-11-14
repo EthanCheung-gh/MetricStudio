@@ -19,6 +19,12 @@ import type {
 import type { PlotlyFigure } from '@/types/plotly';
 import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, SelectionFilter } from '@/types/encoding';
 import type { DashboardConfig } from '@/types/dashboard';
+import type {
+  CustomChartDeleteResponse,
+  CustomChartListResponse,
+  CustomChartManifest,
+  CustomChartSaveResponse,
+} from '@/types/customChart';
 import type { QAConversation, QAFilter, QAFact, QAFactTable } from '@/stores/qaStore';
 import { getTraceId, getSessionId, newId, newTraceId, setTurnId } from '@/utils/logger';
 import { invoke } from '@tauri-apps/api/core';
@@ -837,6 +843,23 @@ export const api = {
   listTemplates: () => fetchJson<ChartTemplate[]>('/api/v1/chart/templates'),
   chartRecommendations: (id: string) =>
     fetchJson<{ recommendations: ChartRecommendation[] }>(`/api/v1/data/${id}/chart-recommendations`),
+
+  // Custom charts (declarative JSON manifests under ~/.metricstudio/charts/).
+  // Rendering needs no endpoint: previewChart accepts encoding.chartType = <custom id>.
+  listCustomCharts: () => fetchJson<CustomChartListResponse>('/api/v1/chart/custom'),
+  /** Raw manifest as stored on disk — used by the export action. */
+  getCustomChart: (id: string) =>
+    fetchJson<CustomChartManifest>(`/api/v1/chart/custom/${encodeURIComponent(id)}`),
+  /** Invalid manifests answer 400 with a string `detail` listing the problems. */
+  saveCustomChart: (manifest: CustomChartManifest) =>
+    fetchJson<CustomChartSaveResponse>('/api/v1/chart/custom', {
+      method: 'POST',
+      body: JSON.stringify(manifest),
+    }),
+  deleteCustomChart: (id: string) =>
+    fetchJson<CustomChartDeleteResponse>(`/api/v1/chart/custom/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
 
   // SQL import
   sqlUpload: (file: File) => {

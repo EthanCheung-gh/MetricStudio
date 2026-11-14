@@ -52,3 +52,4 @@ src-tauri/target/
 # local agent tooling (not part of the app)
 .agents/
 skills-lock.json
+/.openbitfun/search/flashgrep-index/

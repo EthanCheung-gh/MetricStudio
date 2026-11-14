@@ -41,7 +41,8 @@ In one line: **the LLM handles understanding and narration; the data handles com
 - SQL workbench: read-only SELECT across datasets, `EXPLAIN QUERY PLAN`, in-session history, save results as new datasets
 
 ### Visualization & dashboards
-- 33 chart types (line / bar / pie / histogram / box / violin / heatmap / treemap / sankey / parallel coordinates, etc.) with drag-and-drop encoding
+- 34 chart types (line / bar / pie / histogram / box / violin / heatmap / treemap / sankey / parallel coordinates / gauge, etc.) with drag-and-drop encoding
+- Custom charts (an extension to the built-in types): drop a JSON manifest into `~/.metricstudio/charts/` to declare a new chart type — no code execution, with in-app import / export; see [docs/custom-charts.md](docs/custom-charts.md)
 - Large-sample downsampling: raw-row charts (scatter / line / area / step / dot / splom / parcoords / parcats) switch to even-stride sampling above **5000 points**, always keeping the first and last row and recording `layout.meta.sampled` (total / shown); `METRICSTUDIO_CHART_MAX_POINTS` changes the cap, `0` disables it. Statistical charts (histogram / box / violin / pie / heatmap) always read every row — sampling only ever touches "one point per row" marks and never changes a statistic
 - Dashboards: multi-page composition, KPI cards, text cards, cross-card selection linking, dashboard-level filters (server-side search & pagination for high-cardinality fields)
 - Editing: edit/view modes, card locking, dashboard duplication, alignment & even-spacing layout tools, dashboard-level undo/redo, sidebar width memory
@@ -51,7 +52,7 @@ In one line: **the LLM handles understanding and narration; the data handles com
 - Natural-language cleaning: describe what you want → the operation chain lights up step by step in a live process card, applied only after confirmation; non-cleaning input degrades gracefully to an empty chain with a friendly hint instead of an error
 - Multi-turn data Q&A: bound to snapshots and dashboard filters; a 3-round iterative tool loop (11 deterministic tools: row counts, column stats, group-by aggregates, filtered stats, time aggregation, correlation, quantiles, crosstab, etc.) keeps every number exact
 - Answers to charts: tabular tool results (group-by / value counts / crosstab / time aggregation) carry structured data — one click materializes them as a new dataset with an auto chart that opens in the center panel; the chart's numbers share provenance with the answer's [n] citations
-- Charts by natural language: the AI bar's chart mode turns one sentence into a chart config (33 types) — strict validation (fields / types / aggregates), one self-correction retry, rule-based recommendation fallback; edits the currently open chart in place
+- Charts by natural language: the AI bar's chart mode turns one sentence into a chart config (34 types) — strict validation (fields / types / aggregates), one self-correction retry, rule-based recommendation fallback; edits the currently open chart in place
 - A named chart type is a hard contract: say "pie chart / bar chart / line chart" (Chinese or English) and it wins — the prompt pins the type, the LLM path deterministically rewrites misaligned configs within the relational family and re-validates, and even the degraded recommendation honors the request (ask for a pie, get a pie — LLM down or not)
 - Unconfigured-AI guidance: cleaning / Q&A / chart failures in the "LLM unavailable" family open a dialog that jumps straight into settings instead of a raw error
 - Streaming experience: answers stream in token by token while tool calls appear live on a timeline (running → done with result summaries); stop anytime — partial answers are kept without polluting history or compaction context

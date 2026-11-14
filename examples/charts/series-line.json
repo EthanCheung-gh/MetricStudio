@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "series-line",
+  "label": {
+    "zh": "分系列折线图",
+    "en": "Series line"
+  },
+  "description": {
+    "zh": "按颜色拆成多条折线",
+    "en": "Split one line per colour value"
+  },
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    },
+    "color": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    }
+  },
+  "traces": [
+    {
+      "type": "scatter",
+      "mode": "lines+markers",
+      "splitBy": "$color",
+      "x": "$x",
+      "y": "$y0",
+      "marker": {
+        "size": 6
+      }
+    }
+  ],
+  "layout": {
+    "showlegend": true
+  },
+  "keywords": [
+    "分系列折线图",
+    "series line chart"
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "id": "bubble",
+  "label": {
+    "zh": "气泡图",
+    "en": "Bubble"
+  },
+  "description": {
+    "zh": "用大小、颜色与误差表达三个维度",
+    "en": "Size, colour and error in one scatter"
+  },
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "quantitative"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    },
+    "color": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "size": {
+      "required": true,
+      "types": [
+        "quantitative"
+      ]
+    },
+    "error": {
+      "required": true,
+      "types": [
+        "quantitative"
+      ]
+    }
+  },
+  "traces": [
+    {
+      "type": "scatter",
+      "mode": "markers",
+      "x": "$x",
+      "y": "$y0",
+      "marker": {
+        "size": "$size.values",
+        "color": "$color.values"
+      },
+      "error_y": {
+        "type": "data",
+        "array": "$error.values",
+        "visible": true
+      }
+    }
+  ],
+  "layout": {
+    "showlegend": false,
+    "margin": {
+      "l": 60,
+      "r": 20,
+      "t": 24,
+      "b": 50
+    }
+  },
+  "keywords": [
+    "气泡图",
+    "bubble chart"
+  ]
+}

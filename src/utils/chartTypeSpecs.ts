@@ -1,4 +1,8 @@
-import type { ChartType } from '@/types/encoding';
+import type { ChartType } from '@/types/encoding'
+import {
+  GENERATED_CHART_TYPES,
+  type GeneratedChartType,
+} from '@/utils/chartTypeRegistry.generated'
 
 /** Single-field channels renderable in the EncodingPanel. */
 export type ChannelKey = 'x' | 'color' | 'size' | 'facet' | 'z' | 'error' | 'source' | 'target';
@@ -6,7 +10,7 @@ export type ChannelKey = 'x' | 'color' | 'size' | 'facet' | 'z' | 'error' | 'sou
 /** Per-type option controls shown in the EncodingPanel Options section. */
 export type OptionKey =
   | 'barmode' | 'orientation' | 'histnorm' | 'cumulative' | 'boxPoints'
-  | 'marginal' | 'annotated' | 'corr' | 'ganttFields' | 'candlestickFields';
+  | 'marginal' | 'annotated' | 'corr' | 'ganttFields' | 'candlestickFields' | 'gaugeRange';
 
 export interface ChartTypeSpec {
   label: string;
@@ -31,48 +35,51 @@ export const channelLabels: Record<ChannelKey, string> = {
   target: 'Target',
 };
 
-export const chartTypeSpecs: Record<ChartType, ChartTypeSpec> = {
-  // ---- Core relational ----
-  line:     { label: 'Line',            yFields: 'multi', channels: ['x', 'color', 'error'] },
-  bar:      { label: 'Bar',             yFields: 'multi', channels: ['x', 'color', 'error'], options: ['barmode'] },
-  barh:     { label: 'Bar (Horizontal)', yFields: 'multi', channels: ['x', 'color'] },
-  area:     { label: 'Area',            yFields: 'multi', channels: ['x', 'color', 'error'], options: ['barmode'] },
-  step:     { label: 'Step',            yFields: 'multi', channels: ['x', 'color'] },
-  scatter:  { label: 'Scatter',         yFields: 'multi', channels: ['x', 'color', 'size', 'error', 'facet'], options: ['marginal'] },
-  dot:      { label: 'Dot',             yFields: 'multi', channels: ['x', 'color'] },
-  scatter3d: { label: '3D Scatter',     yFields: 'first', channels: ['x', 'z', 'color'] },
-  pie:      { label: 'Pie',             yFields: 'first', channels: ['color'] },
-  // ---- Statistical distributions ----
-  histogram: { label: 'Histogram',      yFields: 'first', channels: ['x', 'color'], options: ['histnorm', 'cumulative'] },
-  box:      { label: 'Box',             yFields: 'first', channels: ['color'], options: ['orientation', 'boxPoints'] },
-  violin:   { label: 'Violin',          yFields: 'first', channels: ['color'], options: ['orientation', 'boxPoints'] },
-  ecdf:     { label: 'ECDF',            yFields: 'first', channels: ['color'] },
-  density_heatmap: { label: '2D Density (Heatmap)', yFields: 'first', channels: ['x'] },
-  density_contour: { label: '2D Density (Contour)', yFields: 'first', channels: ['x'] },
-  // ---- Matrix & correlation ----
-  heatmap:  { label: 'Heatmap',         yFields: 'first', channels: ['x', 'z'], options: ['annotated', 'corr'] },
-  contour:  { label: 'Contour',         yFields: 'first', channels: ['x', 'z'] },
-  splom:    { label: 'Scatter Matrix',  yFields: 'none', channels: ['color'], dimensionsLabel: 'Dimensions' },
-  // ---- Hierarchical / network / high-dim ----
-  treemap:  { label: 'Treemap',         yFields: 'first', channels: [], path: true },
-  sunburst: { label: 'Sunburst',        yFields: 'first', channels: [], path: true },
-  icicle:   { label: 'Icicle',          yFields: 'first', channels: [], path: true },
-  sankey:   { label: 'Sankey',          yFields: 'first', channels: ['source', 'target'] },
-  parcoords: { label: 'Parallel Coords', yFields: 'none', channels: ['color'], dimensionsLabel: 'Dimensions' },
-  parcats:  { label: 'Parallel Categories', yFields: 'none', channels: [], dimensionsLabel: 'Dimensions' },
-  // ---- Coordinate variants & misc ----
-  radar:    { label: 'Radar',           yFields: 'multi', channels: ['x'] },
-  ternary:  { label: 'Ternary',         yFields: 'first', channels: ['x', 'z', 'color'] },
-  waterfall: { label: 'Waterfall',      yFields: 'first', channels: ['x'] },
-  funnel:   { label: 'Funnel',          yFields: 'first', channels: ['x'] },
-  table:    { label: 'Table',           yFields: 'none', channels: [], dimensionsLabel: 'Columns' },
-  gantt:    { label: 'Gantt',           yFields: 'first', channels: ['color'], options: ['ganttFields'] },
-  candlestick: { label: 'Candlestick',   yFields: 'none', channels: ['x'], options: ['candlestickFields'] },
-  surface:  { label: '3D Surface',      yFields: 'first', channels: ['x', 'z'] },
-  timeline: { label: 'Timeline',        yFields: 'first', channels: ['x'] },
+/** Channel ids the panel can render (a newer registry may list more; those are skipped). */
+const CHANNEL_KEYS: readonly string[] = [
+  'x', 'color', 'size', 'facet', 'z', 'error', 'source', 'target',
+];
+
+/** Option ids the panel can render (a newer registry may list more; those are skipped). */
+const OPTION_KEYS: readonly string[] = [
+  'barmode', 'orientation', 'histnorm', 'cumulative', 'boxPoints',
+  'marginal', 'annotated', 'corr', 'ganttFields', 'candlestickFields', 'gaugeRange',
+];
+
+const DIMENSIONS_LABELS: Record<'dimensions' | 'columns', string> = {
+  dimensions: 'Dimensions',
+  columns: 'Columns',
 };
 
-export const chartTypeList = Object.entries(chartTypeSpecs).map(([value, spec]) => ({
-  value: value as ChartType,
-  label: spec.label,
-}));
+function projectSpec(entry: GeneratedChartType): ChartTypeSpec {
+  const spec: ChartTypeSpec = {
+    label: entry.label,
+    yFields: entry.yFields,
+    channels: entry.channels.filter((c): c is ChannelKey => CHANNEL_KEYS.includes(c)),
+  };
+  if (entry.dimensions) spec.dimensionsLabel = DIMENSIONS_LABELS[entry.dimensions];
+  if (entry.path) spec.path = true;
+  const options = entry.options.filter((o): o is OptionKey => OPTION_KEYS.includes(o));
+  if (options.length > 0) spec.options = options;
+  return spec;
+}
+
+/** Projection of the registry, indexed by chart id — the only lookup table. */
+const SPECS_BY_ID = new Map<string, ChartTypeSpec>(
+  GENERATED_CHART_TYPES.map((entry) => [entry.id, projectSpec(entry)]),
+);
+
+/**
+ * Spec for a chart id, never throwing.
+ * Unknown ids (older frontend vs newer project file, or future plugin types) get an
+ * inert spec: no y-field list, no channels, no options — the chart simply shows no controls
+ * instead of crashing the panel.
+ */
+export function getChartTypeSpec(id: string): ChartTypeSpec {
+  return SPECS_BY_ID.get(id) ?? { label: id, yFields: 'none', channels: [], options: [] };
+}
+
+/** Ordered chart-type list for pickers (registry order, registry labels). */
+export const chartTypeList: { value: ChartType; label: string }[] = GENERATED_CHART_TYPES.map(
+  (entry) => ({ value: entry.id, label: entry.label }),
+);

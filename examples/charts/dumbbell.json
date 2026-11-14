@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "id": "dumbbell",
+  "label": {
+    "zh": "哑铃图",
+    "en": "Dumbbell"
+  },
+  "description": {
+    "zh": "比较两个时点的差距",
+    "en": "Compare two points per category"
+  },
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "nominal",
+        "temporal"
+      ]
+    },
+    "yFields": {
+      "mode": "range"
+    },
+    "color": {
+      "required": false,
+      "types": [
+        "nominal"
+      ]
+    }
+  },
+  "transforms": [
+    {
+      "op": "dropna",
+      "slots": [
+        "x",
+        "y0",
+        "y1"
+      ]
+    },
+    {
+      "op": "sort",
+      "by": "y1",
+      "descending": true
+    },
+    {
+      "op": "limit",
+      "count": 20
+    }
+  ],
+  "traces": [
+    {
+      "type": "scatter",
+      "mode": "lines",
+      "segments": {
+        "x": "$x",
+        "from": "$y0",
+        "to": "$y1"
+      },
+      "showlegend": false,
+      "line": {
+        "color": "$opt.connector",
+        "width": "$opt.width"
+      }
+    },
+    {
+      "type": "scatter",
+      "mode": "markers",
+      "x": "$x",
+      "y": "$y0",
+      "name": "$y0.label",
+      "marker": {
+        "size": 10,
+        "color": "#94a3b8"
+      }
+    },
+    {
+      "type": "scatter",
+      "mode": "markers",
+      "x": "$x",
+      "y": "$y1",
+      "name": "$y1.label",
+      "marker": {
+        "size": 12,
+        "color": "#2563eb"
+      }
+    }
+  ],
+  "layout": {
+    "showlegend": true,
+    "margin": {
+      "l": 70,
+      "r": 20,
+      "t": 30,
+      "b": 50
+    }
+  },
+  "options": [
+    {
+      "key": "connector",
+      "type": "text",
+      "default": "#cbd5e1",
+      "label": {
+        "zh": "连线颜色",
+        "en": "Connector color"
+      }
+    },
+    {
+      "key": "width",
+      "type": "number",
+      "default": 2,
+      "label": {
+        "zh": "线宽",
+        "en": "Line width"
+      }
+    }
+  ],
+  "keywords": [
+    "哑铃图",
+    "dumbbell chart"
+  ]
+}

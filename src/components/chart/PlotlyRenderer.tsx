@@ -80,13 +80,23 @@ export function PlotlyRenderer({
     // Backend layout hardcodes dark-theme colors; override them to match the UI theme.
     // font.color cascades to tick labels, axis titles and legend text.
     const gridColor = isDark ? '#333333' : '#e5e5e5'
+    // One style object shared by every axis key, so the primary and the facet
+    // subplot axes can never drift apart.
+    const axisStyle = { gridcolor: gridColor, zerolinecolor: gridColor }
     const themeLayout: Record<string, unknown> = {
       font: { color: isDark ? '#f5f5f5' : '#262626' },
-      xaxis: { gridcolor: gridColor, zerolinecolor: gridColor },
-      yaxis: { gridcolor: gridColor, zerolinecolor: gridColor },
-      xaxis2: { gridcolor: gridColor },
-      yaxis2: { gridcolor: gridColor },
     }
+    // Facet/custom charts emit a subplot grid: xaxis, xaxis2 … xaxisN and
+    // yaxis, yaxis2 … yaxisN (no suffix for the first cell). The primary axes
+    // (plus xaxis2/yaxis2, which the overlay has always covered) are set
+    // unconditionally, so single-plot output stays as before; every further
+    // axis present in the backend layout is recoloured too, otherwise cells
+    // 3..N keep the backend's light-theme grid/zeroline on a dark canvas.
+    const axisKeys = new Set(['xaxis', 'yaxis', 'xaxis2', 'yaxis2'])
+    for (const key of Object.keys(figure.layout)) {
+      if (/^[xy]axis\d*$/.test(key)) axisKeys.add(key)
+    }
+    for (const key of axisKeys) themeLayout[key] = axisStyle
     const themeFigure = applyPlotlyUserStyle(
       { data: figure.data, layout: mergePlotlyLayout(figure.layout, themeLayout) },
       userLayout,

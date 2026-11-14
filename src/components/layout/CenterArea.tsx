@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Database, X, Plus, SlidersHorizontal, LayoutDashboard, Sparkles } from 'lucide-react'
+import { AlertTriangle, Database, X, Plus, SlidersHorizontal, LayoutDashboard, Sparkles } from 'lucide-react'
 import { Button } from '@heroui/react'
 import { DataView } from '@/components/data/DataView'
 import { ChartCanvas } from '@/components/chart/ChartCanvas'
@@ -26,6 +26,11 @@ export function CenterArea() {
   const createChart = useChartStore((s) => s.createChart)
   const setActiveChart = useChartStore((s) => s.setActiveChart)
   const charts = useChartStore((s) => s.charts)
+  // Preview failures (e.g. a project saved by a newer build carrying a chart id
+  // this frontend/backend cannot render -> 422) are only tracked in the store;
+  // surface them here so the plot never fails silently.
+  const chartPreviewError = useChartStore((s) => s.error)
+  const clearChartPreviewError = useChartStore((s) => s.clearError)
   const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
   const setChartConfigDialogOpen = useUIStore((s) => s.setChartConfigDialogOpen)
   const backendConnected = useUIStore((s) => s.backendConnected)
@@ -222,7 +227,33 @@ export function CenterArea() {
           ) : activeTab === 'dashboard' ? (
             <DashboardView />
           ) : (
-            <ChartCanvas />
+            <div className="flex h-full min-h-0 flex-col gap-2">
+              {/* Compact, dismissible preview-failure banner: nothing is rendered
+                  when the store has no error, so the normal path is untouched. */}
+              {chartPreviewError && (
+                <div
+                  role="alert"
+                  className="flex shrink-0 items-start gap-1.5 rounded border border-danger/40 bg-danger/10 px-2.5 py-1.5 text-[11px] text-danger"
+                >
+                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span className="min-w-0 flex-1 break-words">
+                    <span className="font-semibold">{t('chart.renderError')}</span>
+                    <span className="ml-1">{chartPreviewError}</span>
+                  </span>
+                  <button
+                    className="shrink-0 rounded p-0.5 hover:bg-danger/20"
+                    onClick={clearChartPreviewError}
+                    aria-label={t('common.close')}
+                    title={t('common.close')}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <ChartCanvas />
+              </div>
+            </div>
           )}
         </ErrorBoundary>
       </div>

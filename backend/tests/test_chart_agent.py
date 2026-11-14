@@ -66,12 +66,29 @@ def test_validate_rejects_chart_illegal_aggregate(df):
     assert any("aggregate" in e for e in errors)
 
 
-def test_validate_allows_dimension_types_without_yfields(df):
+@pytest.mark.parametrize("chart_type", ["splom", "parcoords", "parcats", "table", "candlestick"])
+def test_validate_allows_dimension_driven_types_without_yfields(df, chart_type):
+    # These registry entries are y_fields="none": they consume dimensions/
+    # columns (or OHLC options), so yFields must stay optional for them.
     cfg = {
-        "chartType": "treemap",
-        "encoding": {"path": ["region"], "yFields": []},
+        "chartType": chart_type,
+        "encoding": {"dimensions": ["region", "amount"], "yFields": []},
     }
     assert validate_encoding(df, cfg) == []
+
+
+def test_validate_requires_value_field_for_treemap(df):
+    # treemap/sunburst/icicle are y_fields="first": the rectangle area IS
+    # yFields[0], so a hierarchy without a value field is unrenderable.
+    without_value = {"chartType": "treemap", "encoding": {"path": ["region"], "yFields": []}}
+    errors = validate_encoding(df, without_value)
+    assert errors == ["encoding.yFields must be a non-empty array for this chart type"]
+
+    with_value = {
+        "chartType": "treemap",
+        "encoding": {"path": ["region"], "yFields": [{"field": "amount", "type": "quantitative"}]},
+    }
+    assert validate_encoding(df, with_value) == []
 
 
 def test_build_returns_validated_config_with_defaults(df, monkeypatch):
@@ -138,9 +155,23 @@ def test_column_names_are_wrapped_as_untrusted(monkeypatch):
 def test_detect_requested_chart_type_keywords():
     assert chart_agent.detect_requested_chart_type("画各地区的平均sales饼状图") == "pie"
     assert chart_agent.detect_requested_chart_type("改成柱状图") == "bar"
-    assert chart_agent.detect_requested_chart_type("horizontal bar chart please") == "bar"
+    assert chart_agent.detect_requested_chart_type("bar chart") == "bar"
+    # Longest keyword wins: "horizontal bar chart" (barh) beats "bar chart".
+    assert chart_agent.detect_requested_chart_type("horizontal bar chart please") == "barh"
     assert chart_agent.detect_requested_chart_type("PIE Chart of share") == "pie"
+    assert chart_agent.detect_requested_chart_type("K线图") == "candlestick"
+    # gauge is named by an unambiguous phrase only: 仪表盘/仪表 are gone because
+    # 仪表盘 is the app's own word for the Dashboard page.
+    assert chart_agent.detect_requested_chart_type("做一个仪表图") == "gauge"
     assert chart_agent.detect_requested_chart_type("画个圆图") is None
+    assert chart_agent.detect_requested_chart_type("make me a nice picture") is None
+
+
+def test_dashboard_mention_does_not_pin_a_gauge():
+    # 仪表盘 means the Dashboard *page* (nav.dashboard), not this chart type.
+    assert chart_agent.detect_requested_chart_type("把这个图放到仪表盘上做成饼图") == "pie"
+    assert chart_agent.detect_requested_chart_type("帮我把这张图放到仪表盘上") is None
+    assert chart_agent.detect_requested_chart_type("帮我做个仪表盘") is None
 
 
 def test_enforce_moves_category_channel_for_pie():

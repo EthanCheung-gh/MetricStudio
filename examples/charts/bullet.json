@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "id": "bullet",
+  "label": {
+    "zh": "子弹图",
+    "en": "Bullet"
+  },
+  "description": {
+    "zh": "对比实际值与目标值",
+    "en": "Compare actual values with targets"
+  },
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "yFields": {
+      "mode": "range"
+    }
+  },
+  "transforms": [
+    {
+      "op": "dropna",
+      "slots": [
+        "x",
+        "y0",
+        "y1"
+      ]
+    }
+  ],
+  "traces": [
+    {
+      "type": "bar",
+      "orientation": "h",
+      "x": "$y0",
+      "y": "$x",
+      "width": "$opt.barWidth",
+      "marker": {
+        "color": "#93c5fd"
+      },
+      "showlegend": false
+    },
+    {
+      "type": "scatter",
+      "mode": "markers",
+      "x": "$y1",
+      "y": "$x",
+      "name": "$y1.label",
+      "showlegend": false,
+      "marker": {
+        "symbol": "line-ns",
+        "size": "$opt.targetSize",
+        "color": "$opt.targetColor",
+        "line": {
+          "width": 2
+        }
+      }
+    }
+  ],
+  "layout": {
+    "showlegend": false,
+    "margin": {
+      "l": 90,
+      "r": 20,
+      "t": 30,
+      "b": 40
+    },
+    "xaxis": {
+      "gridcolor": "#e2e8f0"
+    },
+    "yaxis": {
+      "automargin": true
+    }
+  },
+  "options": [
+    {
+      "key": "barWidth",
+      "type": "number",
+      "default": 0.55,
+      "label": {
+        "zh": "柱宽",
+        "en": "Bar width"
+      }
+    },
+    {
+      "key": "targetColor",
+      "type": "text",
+      "default": "#1e293b",
+      "label": {
+        "zh": "目标颜色",
+        "en": "Target color"
+      }
+    },
+    {
+      "key": "targetSize",
+      "type": "number",
+      "default": 18,
+      "label": {
+        "zh": "目标标记大小",
+        "en": "Target marker size"
+      }
+    }
+  ],
+  "keywords": [
+    "子弹图",
+    "bullet chart"
+  ]
+}

@@ -1,12 +1,21 @@
-import { Button, Select, SelectItem, Switch } from '@heroui/react'
+import { useState } from 'react'
+import { Button, Input, Select, SelectItem, Switch } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { Plus, X } from 'lucide-react'
 import type { ColumnMeta } from '@/types/data'
 import type { ChartConfig, ChartOptions, YFieldConfig, FieldType, AggregateType } from '@/types/encoding'
 import { useChartStore } from '@/stores/chartStore'
-import { aggregateOptions } from '@/utils/encodingToPlotly'
-import { chartTypeSpecs, type ChannelKey } from '@/utils/chartTypeSpecs'
+import { useCustomChart } from '@/stores/customChartStore'
+import { aggregateOptions } from '@/utils/chartConstants'
+import { getChartTypeSpec, type ChannelKey, type OptionKey } from '@/utils/chartTypeSpecs'
+import {
+  customChartSpec,
+  customOptionDefs,
+  resolveCustomOptions,
+} from '@/utils/customChartSpecs'
+import { localizedCustomText } from '@/utils/chartTypeLabel'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
+import type { CustomChartManifest, CustomChartOption } from '@/types/customChart'
 
 interface EncodingPanelProps {
   chart: ChartConfig
@@ -192,9 +201,57 @@ function MultiColumnSelect({ label, values, columns, onChange }: {
   )
 }
 
+/**
+ * Optional numeric chart-option input.
+ *
+ * The text being typed lives in local state: intermediate states like "-" or
+ * "1." are not numbers, so committing on every keystroke would drop them (and
+ * turn a typed "-10" into "+5"). The store is written on blur / Enter only;
+ * empty or non-finite input means "delete the option" as before.
+ */
+function NumericOptionInput({ label, value, onChange }: {
+  label: string
+  value?: number
+  onChange: (next: number | undefined) => void
+}) {
+  const committed = value === undefined ? '' : String(value)
+  // null = not editing, render whatever the store holds.
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = (raw: string) => {
+    setDraft(null)
+    const trimmed = raw.trim()
+    if (trimmed === '') {
+      onChange(undefined)
+      return
+    }
+    const num = Number(trimmed)
+    if (Number.isFinite(num)) onChange(num)
+    // Unparseable ("-", "abc") is discarded; the field reverts to the store value.
+  }
+
+  return (
+    <Input
+      size="sm"
+      type="number"
+      label={label}
+      placeholder="—"
+      value={draft ?? committed}
+      onValueChange={(raw) => setDraft(raw)}
+      onBlur={() => {
+        if (draft !== null) commit(draft)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && draft !== null) commit(draft)
+      }}
+      classNames={{ input: 'text-xs', inputWrapper: 'h-7 min-h-7', label: 'text-[10px] text-muted' }}
+    />
+  )
+}
+
 function OptionsSection({ chart, specOptions, columns }: {
   chart: ChartConfig
-  specOptions: NonNullable<(typeof chartTypeSpecs)[ChartConfig['encoding']['chartType']]['options']>
+  specOptions: OptionKey[]
   columns: ColumnMeta[]
 }) {
   const { t } = useTranslation()
@@ -202,6 +259,14 @@ function OptionsSection({ chart, specOptions, columns }: {
   const opts: ChartOptions = chart.encoding.options || {}
   const setOpts = (patch: Partial<ChartOptions>) =>
     updateEncoding(chart.id, { options: { ...opts, ...patch } })
+
+  /** Write a gauge bound, removing the key entirely when the input is cleared. */
+  const setGaugeBound = (key: 'gaugeMin' | 'gaugeMax', value: number | undefined) => {
+    const next: ChartOptions = { ...opts }
+    if (value === undefined) delete next[key]
+    else next[key] = value
+    updateEncoding(chart.id, { options: next })
+  }
 
   const fieldItems = columns.map((c) => ({ key: c.name, label: c.name }))
 
@@ -339,6 +404,147 @@ function OptionsSection({ chart, specOptions, columns }: {
             />
           </>
         )}
+        {specOptions.includes('gaugeRange') && (
+          <div className="flex items-center gap-1.5">
+            <div className="flex-1 min-w-0">
+              <NumericOptionInput
+                label={t('chart.gaugeMin')}
+                value={opts.gaugeMin}
+                onChange={(v) => setGaugeBound('gaugeMin', v)}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <NumericOptionInput
+                label={t('chart.gaugeMax')}
+                value={opts.gaugeMax}
+                onChange={(v) => setGaugeBound('gaugeMax', v)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </CollapsibleSection>
+  )
+}
+
+/**
+ * Custom chart option values share `encoding.options` with the built-in knobs,
+ * but ChartOptions only names the built-in keys — custom keys are declared by
+ * the manifest, so writes go through a widened view of the same object.
+ */
+function withOption(options: ChartOptions | undefined, key: string, value: unknown): ChartOptions {
+  const next: Record<string, unknown> = { ...(options ?? {}) };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  return next as unknown as ChartOptions;
+}
+
+/** Free-text custom option — same commit-on-blur/Enter contract as the numeric one. */
+function TextOptionInput({ label, value, onChange }: {
+  label: string
+  value: string
+  onChange: (next: string | undefined) => void
+}) {
+  const committed = value
+  // null = not editing, render whatever the store holds.
+  const [draft, setDraft] = useState<string | null>(null)
+
+  const commit = (raw: string) => {
+    setDraft(null)
+    onChange(raw.trim() === '' ? undefined : raw)
+  }
+
+  return (
+    <Input
+      size="sm"
+      label={label}
+      placeholder="—"
+      value={draft ?? committed}
+      onValueChange={(raw) => setDraft(raw)}
+      onBlur={() => {
+        if (draft !== null && draft !== committed) commit(draft)
+        else setDraft(null)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && draft !== null) commit(draft)
+      }}
+      classNames={{ input: 'text-xs', inputWrapper: 'h-7 min-h-7', label: 'text-[10px] text-muted' }}
+    />
+  )
+}
+
+/**
+ * Options declared by a custom chart manifest (`options[]`), rendered instead of
+ * the built-in OptionKey section. Setting a value back to the manifest default
+ * deletes the key, so the stored encoding only ever carries real overrides.
+ */
+function CustomOptionsSection({ chart, manifest }: {
+  chart: ChartConfig
+  manifest: CustomChartManifest
+}) {
+  const { t, i18n } = useTranslation()
+  const updateEncoding = useChartStore((s) => s.updateEncoding)
+  const language = i18n.resolvedLanguage || i18n.language || 'zh'
+  const defs = customOptionDefs(manifest)
+  const values = resolveCustomOptions(
+    manifest,
+    chart.encoding.options as Record<string, unknown> | undefined,
+  )
+
+  const setOption = (def: CustomChartOption, value: unknown) => {
+    updateEncoding(chart.id, {
+      options: withOption(chart.encoding.options, def.key, Object.is(value, def.default) ? undefined : value),
+    })
+  }
+
+  return (
+    <CollapsibleSection title={t('chart.options')} defaultOpen={false}>
+      <div className="flex flex-col gap-1.5">
+        {defs.map((def) => {
+          const label = localizedCustomText(def.label, language) || def.key
+          const value = values[def.key]
+          if (def.type === 'boolean') {
+            return (
+              <div key={def.key} className="flex items-center justify-between text-xs">
+                <span>{label}</span>
+                <Switch
+                  size="sm"
+                  isSelected={value === true}
+                  onValueChange={(checked) => setOption(def, checked)}
+                />
+              </div>
+            )
+          }
+          if (def.type === 'number') {
+            return (
+              <NumericOptionInput
+                key={def.key}
+                label={label}
+                value={typeof value === 'number' ? value : undefined}
+                onChange={(next) => setOption(def, next)}
+              />
+            )
+          }
+          if (def.type === 'select') {
+            return (
+              <SearchableSelect
+                key={def.key}
+                label={label}
+                items={(def.choices ?? []).map((choice) => ({ key: choice, label: choice }))}
+                selectedKey={typeof value === 'string' ? value : undefined}
+                onSelect={(choice) => setOption(def, choice ?? undefined)}
+              />
+            )
+          }
+          return (
+            <TextOptionInput
+              key={def.key}
+              label={label}
+              value={typeof value === 'string' ? value : ''}
+              onChange={(next) => setOption(def, next)}
+            />
+          )
+        })}
       </div>
     </CollapsibleSection>
   )
@@ -348,7 +554,12 @@ export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
   const { t } = useTranslation()
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const yFields = chart.encoding.yFields || []
-  const spec = chartTypeSpecs[chart.encoding.chartType]
+  // Custom manifests own their channels/options; built-ins keep the generated
+  // registry projection (byte-identical behavior when the id is not custom).
+  const customManifest = useCustomChart(chart.encoding.chartType)
+  const spec = customManifest
+    ? customChartSpec(customManifest)
+    : getChartTypeSpec(chart.encoding.chartType)
 
   const updateYField = (index: number, updated: YFieldConfig) => {
     const newYFields = [...yFields]
@@ -431,6 +642,12 @@ export function EncodingPanel({ chart, columns }: EncodingPanelProps) {
 
       {spec.options && spec.options.length > 0 && (
         <OptionsSection chart={chart} specOptions={spec.options} columns={columns} />
+      )}
+
+      {/* Custom charts declare their own options; the built-in OptionKey section
+          above stays empty for them (customChartSpec never projects `options`). */}
+      {customManifest && customOptionDefs(customManifest).length > 0 && (
+        <CustomOptionsSection chart={chart} manifest={customManifest} />
       )}
     </div>
   )

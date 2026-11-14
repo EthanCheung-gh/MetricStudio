@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button, Input, Select, SelectItem } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
-import { GripHorizontal, Save, Trash2, X } from 'lucide-react'
+import { GripHorizontal, Save, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { useChartStore } from '@/stores/chartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
+import { useCustomChart, useCustomChartStore } from '@/stores/customChartStore'
 import { api } from '@/api/client'
-import { chartTypeOptions } from '@/utils/encodingToPlotly'
+import { chartTypeOptions } from '@/utils/chartConstants'
+import { chartTypeLabel, localizedCustomText } from '@/utils/chartTypeLabel'
+import { CustomChartsDialog } from '@/components/chart/CustomChartsDialog'
 import { EncodingPanel } from '@/components/chart/EncodingPanel'
 import type { ChartType, ChartTemplate } from '@/types/encoding'
 
@@ -71,6 +74,12 @@ export function ChartConfigDialog() {
   const columns = useDataStore((s) => s.columns)
   const activeChart = charts.find((c) => c.id === activeChartId)
 
+  // Declarative custom charts (backend-owned manifests under ~/.metricstudio/charts)
+  const language = useUIStore((s) => s.language)
+  const customCharts = useCustomChartStore((s) => s.items)
+  const customChart = useCustomChart(activeChart?.encoding.chartType ?? '')
+  const [manageOpen, setManageOpen] = useState(false)
+
   // Chart templates (persisted server-side under ~/.metricstudio/templates)
   const [templates, setTemplates] = useState<ChartTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
@@ -119,6 +128,15 @@ export function ChartConfigDialog() {
   const onClose = () => setOpen(false)
 
   const encoding = activeChart.encoding
+  // Unknown ids (project saved by a newer build, or a plugin type) have no i18n
+  // copy — fall back to the registry label (the bare id) instead of leaking the
+  // raw key "chart.type.whatever" into the title. Custom chart ids resolve to
+  // their manifest label first.
+  const typeLabel = chartTypeLabel(encoding.chartType, language, t)
+  // A custom chart describes itself; built-ins keep their i18n copy.
+  const typeDescription = customChart
+    ? localizedCustomText(customChart.description, language)
+    : t(`chart.desc.${encoding.chartType}`, { defaultValue: '' })
 
   const applyTemplate = () => {
     const tpl = templates.find((t) => t.id === selectedTemplateId)
@@ -163,6 +181,7 @@ export function ChartConfigDialog() {
   }
 
   return (
+    <>
     <div
       ref={panelRef}
       className="fixed z-50 flex max-h-[85vh] flex-col overflow-hidden rounded-lg border border-border bg-surface-elevated shadow-2xl"
@@ -200,7 +219,19 @@ export function ChartConfigDialog() {
           <div className="flex flex-1 min-h-0 gap-4">
             {/* Left: Chart Type (scrolls independently from the config column) */}
             <div className="w-36 shrink-0 overflow-y-auto pr-1">
-              <span className="text-xs font-semibold text-muted mb-2 block">{t('chart.chartType')}</span>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted">{t('chart.chartType')}</span>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="light"
+                  className="h-5 w-5 min-w-0"
+                  aria-label={t('chart.custom.manage')}
+                  onPress={() => setManageOpen(true)}
+                >
+                  <SlidersHorizontal className="h-3 w-3" />
+                </Button>
+              </div>
               <div className="flex flex-col gap-1">
                 {chartTypeOptions.map((opt) => (
                   <Button
@@ -215,14 +246,33 @@ export function ChartConfigDialog() {
                   </Button>
                 ))}
               </div>
+              {customCharts.length > 0 && (
+                <div className="mt-2 flex flex-col gap-1 border-t border-border pt-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    {t('chart.custom.group')}
+                  </span>
+                  {customCharts.map((item) => (
+                    <Button
+                      key={item.id}
+                      size="sm"
+                      variant={encoding.chartType === item.id ? 'solid' : 'flat'}
+                      color={encoding.chartType === item.id ? 'primary' : 'default'}
+                      onPress={() => updateEncoding(activeChart.id, { chartType: item.id as ChartType })}
+                      className="justify-start text-xs"
+                    >
+                      {chartTypeLabel(item.id, language, t)}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Right: Configuration (scrolls independently from the type list) */}
             <div className="flex-1 min-h-0 min-w-0 overflow-y-auto pl-1 pr-1">
               {/* Selected chart type summary — fills the otherwise empty area and orients new users */}
               <div className="mb-4 rounded border border-border bg-surface p-3">
-                <div className="text-xs font-semibold">{t(`chart.type.${encoding.chartType}`)}</div>
-                <p className="mt-1 text-[11px] leading-relaxed text-muted">{t(`chart.desc.${encoding.chartType}`)}</p>
+                <div className="text-xs font-semibold">{typeLabel}</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-muted">{typeDescription}</p>
               </div>
 
               {/* Templates */}
@@ -293,5 +343,7 @@ export function ChartConfigDialog() {
         </Button>
       </div>
     </div>
+    <CustomChartsDialog open={manageOpen} onOpenChange={setManageOpen} />
+    </>
   )
 }

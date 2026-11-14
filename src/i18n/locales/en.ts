@@ -364,6 +364,7 @@ export default {
   'chart.type.candlestick': 'Candlestick',
   'chart.type.surface': '3D Surface',
   'chart.type.timeline': 'Timeline',
+  'chart.type.gauge': 'Gauge',
   // Chart type descriptions (shown in the config panel for the selected type)
   'chart.desc.line': 'Connects points with line segments to show trends over time or ordered categories. Best for time series.',
   'chart.desc.bar': 'Compares values across categories by bar height. The most common comparison chart.',
@@ -398,6 +399,7 @@ export default {
   'chart.desc.candlestick': 'Shows open, close, high, and low prices for financial volatility analysis.',
   'chart.desc.surface': 'A 3D surface of how two variables continuously affect a result value.',
   'chart.desc.timeline': 'Orders events or phases along time to show progress and milestones.',
+  'chart.desc.gauge': 'A gauge dial for one aggregated value; the range min and max can be pinned in options.',
   // Aggregation / axis / normalize / channel labels
   'chart.agg.none': 'None',
   'chart.agg.sum': 'Sum',
@@ -418,6 +420,20 @@ export default {
   'chart.channel.error': 'Error ±',
   'chart.channel.source': 'Source',
   'chart.channel.target': 'Target',
+  // Custom charts
+  'chart.custom.group': 'Custom',
+  'chart.custom.manage': 'Manage custom charts',
+  'chart.custom.empty': 'No custom charts yet — import a JSON manifest to add one',
+  'chart.custom.import': 'Import JSON',
+  'chart.custom.export': 'Export',
+  'chart.custom.delete': 'Delete',
+  'chart.custom.reload': 'Reload',
+  'chart.custom.invalid': 'Invalid manifest',
+  'chart.custom.importError': 'Import failed: {{message}}',
+  'chart.custom.confirmDelete': 'Delete the custom chart "{{name}}"?',
+  'chart.custom.fileHint': 'JSON manifest files only (≤ 256 KB)',
+  'chart.custom.source': 'Source',
+  'chart.custom.folderHint': 'You can also drop JSON files into ~/.metricstudio/charts/',
   // Encoding panel
   'chart.options': 'Options',
   'chart.field': 'Field',
@@ -462,6 +478,8 @@ export default {
   'chart.highField': 'High Field',
   'chart.lowField': 'Low Field',
   'chart.closeField': 'Close Field',
+  'chart.gaugeMin': 'Range min',
+  'chart.gaugeMax': 'Range max',
   // Chart config dialog
   'chart.configTitle': 'Chart Configuration',
   'chart.chartType': 'Chart Type',

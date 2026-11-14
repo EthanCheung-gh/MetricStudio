@@ -1,14 +1,5 @@
-export type ChartType =
-  // Core relational
-  | 'line' | 'bar' | 'barh' | 'area' | 'step' | 'scatter' | 'dot' | 'scatter3d' | 'pie'
-  // Statistical distributions
-  | 'histogram' | 'box' | 'violin' | 'ecdf' | 'density_heatmap' | 'density_contour'
-  // Matrix & correlation
-  | 'heatmap' | 'contour' | 'splom'
-  // Hierarchical / network / high-dim
-  | 'treemap' | 'sunburst' | 'icicle' | 'sankey' | 'parcoords' | 'parcats'
-  // Coordinate variants & misc
-  | 'radar' | 'ternary' | 'waterfall' | 'funnel' | 'table' | 'gantt' | 'candlestick' | 'surface' | 'timeline';
+/** Chart id from the backend registry (see utils/chartTypeRegistry.generated.ts); open-ended so persisted and future plugin ids stay valid. */
+export type ChartType = string;
 
 export type FieldType = 'quantitative' | 'nominal' | 'temporal';
 
@@ -47,6 +38,8 @@ export interface ChartOptions {
   highField?: string;                      // candlestick
   lowField?: string;                       // candlestick
   closeField?: string;                     // candlestick
+  gaugeMin?: number;                       // gauge: axis range override (lower bound)
+  gaugeMax?: number;                       // gauge: axis range override (upper bound)
 }
 
 export interface ChartEncoding {

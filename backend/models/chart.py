@@ -1,5 +1,9 @@
-from backend.models.data import CBaseModel
 from typing import Optional, Literal
+
+from pydantic import field_validator
+
+from backend.core import chart_registry
+from backend.models.data import CBaseModel
 
 
 class EncodingChannel(CBaseModel):
@@ -18,22 +22,18 @@ class YFieldConfig(CBaseModel):
     label: Optional[str] = None
 
 
-ChartTypeLiteral = Literal[
-    # Core relational
-    "line", "bar", "barh", "area", "step", "scatter", "dot", "scatter3d", "pie",
-    # Statistical distributions
-    "histogram", "box", "violin", "ecdf", "density_heatmap", "density_contour",
-    # Matrix & correlation
-    "heatmap", "contour", "splom",
-    # Hierarchical / network / high-dim
-    "treemap", "sunburst", "icicle", "sankey", "parcoords", "parcats",
-    # Coordinate variants & misc
-    "radar", "ternary", "waterfall", "funnel", "table", "gantt",
-    "candlestick", "surface", "timeline",
-]
-
-
 class ChartOptions(CBaseModel):
+    """Per-type knobs.
+
+    Declarative custom charts expose scalar options (``connector``, ``width``,
+    ...) declared by the manifest, so the option keys cannot be enumerated
+    here. ``extra="allow"`` keeps them as ``model_extra`` and round-trips them
+    through ``model_dump``; the custom renderer resolves ``$opt.<key>`` from
+    exactly that dictionary.
+    """
+
+    model_config = {**CBaseModel.model_config, "extra": "allow"}
+
     orientation: Optional[Literal["v", "h"]] = None
     barmode: Optional[Literal["group", "stack"]] = None
     histnorm: Optional[Literal["percent", "probability", "density"]] = None
@@ -49,6 +49,8 @@ class ChartOptions(CBaseModel):
     high_field: Optional[str] = None
     low_field: Optional[str] = None
     close_field: Optional[str] = None
+    gauge_min: Optional[float] = None
+    gauge_max: Optional[float] = None
 
 
 class ChartEncoding(CBaseModel):
@@ -64,7 +66,25 @@ class ChartEncoding(CBaseModel):
     source: Optional[EncodingChannel] = None
     target: Optional[EncodingChannel] = None
     options: Optional[ChartOptions] = None
-    chart_type: ChartTypeLiteral = "scatter"
+    chart_type: str = "scatter"
+
+    @field_validator("chart_type")
+    @classmethod
+    def _validate_chart_type(cls, value: str) -> str:
+        """Open enum: built-in registry ids or valid declarative custom ids."""
+        if chart_registry.is_known_chart_type(value):
+            return value
+        # Lazy import: custom_charts imports chart_registry and models.data;
+        # keeping the edge local avoids any future import cycle.
+        from backend.core import custom_charts
+
+        if custom_charts.is_custom_id(value):
+            return value
+        raise ValueError(
+            f"unknown chart type {value!r}; it is neither a built-in id from "
+            f"backend/core/chart_registry.py nor a valid custom chart id "
+            f"(see backend/core/custom_charts.py)"
+        )
 
 
 class SelectionFilter(CBaseModel):

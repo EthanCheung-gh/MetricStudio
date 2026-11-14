@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "colors-grid",
+  "label": {
+    "zh": "颜色网格",
+    "en": "Colors grid"
+  },
+  "description": {
+    "zh": "按颜色值拆成子图网格",
+    "en": "Split colour values into a subplot grid"
+  },
+  "facetBy": "$color",
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    },
+    "color": {
+      "required": true,
+      "types": [
+        "nominal"
+      ]
+    }
+  },
+  "traces": [
+    {
+      "type": "scatter",
+      "mode": "markers",
+      "x": "$x",
+      "y": "$y0",
+      "marker": {
+        "size": 8,
+        "color": "$color.values"
+      }
+    }
+  ],
+  "layout": {
+    "showlegend": false,
+    "margin": {
+      "l": 50,
+      "r": 20,
+      "t": 30,
+      "b": 45
+    }
+  },
+  "keywords": [
+    "颜色网格",
+    "colors grid"
+  ]
+}

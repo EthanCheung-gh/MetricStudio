@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "id": "lollipop",
+  "label": {
+    "zh": "棒棒糖图",
+    "en": "Lollipop"
+  },
+  "description": {
+    "zh": "用一条细柱连接零点与数值",
+    "en": "Connect zero to each value with a thin stem"
+  },
+  "channels": {
+    "x": {
+      "required": true,
+      "types": [
+        "nominal",
+        "temporal"
+      ]
+    },
+    "yFields": {
+      "mode": "one"
+    }
+  },
+  "transforms": [
+    {
+      "op": "dropna",
+      "slots": [
+        "x",
+        "y0"
+      ]
+    },
+    {
+      "op": "sort",
+      "by": "y0",
+      "descending": true
+    }
+  ],
+  "traces": [
+    {
+      "type": "bar",
+      "x": "$x",
+      "y": "$y0",
+      "width": 0.08,
+      "showlegend": false,
+      "marker": {
+        "color": "$opt.stem"
+      }
+    },
+    {
+      "type": "scatter",
+      "mode": "markers",
+      "x": "$x",
+      "y": "$y0",
+      "name": "$y0.label",
+      "marker": {
+        "size": 12,
+        "color": "$opt.dot"
+      }
+    }
+  ],
+  "layout": {
+    "showlegend": false,
+    "margin": {
+      "l": 60,
+      "r": 20,
+      "t": 24,
+      "b": 50
+    }
+  },
+  "options": [
+    {
+      "key": "stem",
+      "type": "text",
+      "default": "#cbd5e1",
+      "label": {
+        "zh": "柱颜色",
+        "en": "Stem color"
+      }
+    },
+    {
+      "key": "dot",
+      "type": "text",
+      "default": "#2563eb",
+      "label": {
+        "zh": "圆点颜色",
+        "en": "Dot color"
+      }
+    }
+  ],
+  "keywords": [
+    "棒棒糖图",
+    "lollipop chart"
+  ]
+}

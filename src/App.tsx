@@ -7,6 +7,7 @@ import { useBackend } from '@/hooks/useBackend'
 import { resolvedTheme, useSystemThemeSync } from '@/hooks/useSystemTheme'
 import { useDataStore } from '@/stores/dataStore'
 import { useChartStore } from '@/stores/chartStore'
+import { useCustomChartStore } from '@/stores/customChartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 import { useTranslation } from 'react-i18next'
@@ -17,6 +18,7 @@ import type { FieldType } from '@/types/encoding'
 function App() {
   const { connected, recheck } = useBackend()
   const loadDataFrames = useDataStore((s) => s.loadDataFrames)
+  const loadCustomCharts = useCustomChartStore((s) => s.load)
   const addNotification = useUIStore((s) => s.addNotification)
   const columns = useDataStore((s) => s.columns)
   const activeChartId = useChartStore((s) => s.activeChartId)
@@ -68,6 +70,14 @@ function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  // Declarative custom charts (~/.metricstudio/charts). The single place the
+  // list is fetched: load() is idempotent and records its error without
+  // throwing, so an absent backend only costs one failed request here and the
+  // pickers keep showing the built-in types.
+  useEffect(() => {
+    void loadCustomCharts()
+  }, [loadCustomCharts, connected])
 
   useEffect(() => {
     if (connected) {

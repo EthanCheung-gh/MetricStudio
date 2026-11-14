@@ -364,6 +364,7 @@ export default {
   'chart.type.candlestick': 'K线',
   'chart.type.surface': '三维曲面',
   'chart.type.timeline': '时间轴',
+  'chart.type.gauge': '仪表盘',
   // 图表类型描述（配置面板中展示所选类型）
   'chart.desc.line': '用线段连接数据点，展示随时间或有序类别的变化趋势，适合走势与时间序列分析。',
   'chart.desc.bar': '用柱高比较不同类别的数值大小，最通用的分类对比图。',
@@ -398,6 +399,7 @@ export default {
   'chart.desc.candlestick': '展示开盘、收盘、最高、最低价，用于金融行情波动分析。',
   'chart.desc.surface': '用三维曲面展示两个变量对结果值的连续影响。',
   'chart.desc.timeline': '按时间顺序排列事件或阶段，展示进程与里程碑。',
+  'chart.desc.gauge': '用仪表盘指针展示单个聚合值，量程上下限可在选项中固定。',
   // 聚合 / 轴 / 归一化 / 通道
   'chart.agg.none': '无',
   'chart.agg.sum': '求和',
@@ -418,6 +420,20 @@ export default {
   'chart.channel.error': '误差 ±',
   'chart.channel.source': '源',
   'chart.channel.target': '目标',
+  // 自定义图表
+  'chart.custom.group': '自定义',
+  'chart.custom.manage': '管理自定义图表',
+  'chart.custom.empty': '还没有自定义图表，导入 JSON 清单即可新增',
+  'chart.custom.import': '导入 JSON',
+  'chart.custom.export': '导出',
+  'chart.custom.delete': '删除',
+  'chart.custom.reload': '重新加载',
+  'chart.custom.invalid': '清单无效',
+  'chart.custom.importError': '导入失败：{{message}}',
+  'chart.custom.confirmDelete': '确定删除自定义图表“{{name}}”？',
+  'chart.custom.fileHint': '仅支持 JSON 清单文件（≤ 256 KB）',
+  'chart.custom.source': '来源',
+  'chart.custom.folderHint': '也可以直接把 JSON 文件放进 ~/.metricstudio/charts/',
   // 编码面板
   'chart.options': '选项',
   'chart.field': '字段',
@@ -462,6 +478,8 @@ export default {
   'chart.highField': '最高价字段',
   'chart.lowField': '最低价字段',
   'chart.closeField': '收盘价字段',
+  'chart.gaugeMin': '量程下限',
+  'chart.gaugeMax': '量程上限',
   // 图表配置对话框
   'chart.configTitle': '图表配置',
   'chart.chartType': '图表类型',

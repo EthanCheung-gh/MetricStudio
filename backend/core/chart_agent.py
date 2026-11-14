@@ -12,21 +12,23 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, get_args
+from typing import Any
 
 import pandas as pd
 
+from backend.core import chart_registry, custom_charts
 from backend.core.agent_trace import trace_event
 from backend.core.llm import chat, load_config
 from backend.core.qa_agent import _extract_json_object, _wrap_untrusted
 from backend.core.recommend import _col_types, recommend_charts
-from backend.models.chart import ChartTypeLiteral
 
-CHART_TYPES: tuple[str, ...] = get_args(ChartTypeLiteral)
+# Every type list below derives from backend/core/chart_registry.py, the single
+# source of truth shared with the preview API and the TypeScript mirror.
+CHART_TYPES: tuple[str, ...] = chart_registry.CHART_TYPE_IDS
 VALID_AGGREGATES = {"sum", "mean", "count", "min", "max", None}
 FIELD_TYPES = ("quantitative", "nominal", "temporal")
 # Chart types whose encodings are dimension-driven instead of y-driven.
-NO_YFIELD_TYPES = {"splom", "parcoords", "parcats", "table", "treemap", "sunburst", "icicle"}
+NO_YFIELD_TYPES = chart_registry.no_yfield_types()
 # Simple field channels validated like x; yFields gets its own stricter pass.
 _CHANNELS = ("x", "color", "size", "facet", "z", "error", "source", "target")
 # Encoding keys kept in the final payload (anything else the LLM invents is dropped).
@@ -41,7 +43,7 @@ _SCHEMA_DESC = """Encoding schema (all keys optional except yFields):
 - "source"/"target": link endpoints for sankey
 - "dimensions": array of column names (splom/parcoords/parcats/table)
 - "path": array of column names as hierarchy levels (treemap/sunburst/icicle)
-- "options": per-type knobs, e.g. {"barmode": "stack"}, {"orientation": "h"}, {"histnorm": "percent"}
+- "options": per-type knobs, e.g. {"barmode": "stack"}, {"orientation": "h"}, {"histnorm": "percent"}, {"gaugeMin": 0, "gaugeMax": 100} (gauge renders one aggregated value from yFields[0])
 Chart types: """ + ", ".join(CHART_TYPES) + """
 
 If the request names a chart type (in any language), you MUST use exactly that
@@ -51,31 +53,78 @@ one categorical distribution -> pie, two numeric -> scatter, hierarchy ->
 treemap). Do NOT invent column names."""
 
 
-# Chart-type keywords detected in the user's request (zh + en). A named type is
-# a hard contract: it outranks both the data-fit heuristics above and the
-# current encoding in update mode (a bar chart told 「改成饼图」 must not stay
-# bar) — and it survives the LLM being down via the retargeted recommendation.
-_TYPE_KEYWORDS: tuple[tuple[str, str], ...] = (
-    ("饼图", "pie"), ("饼状图", "pie"), ("柱状图", "bar"), ("柱形图", "bar"), ("条形图", "barh"),
-    ("折线图", "line"), ("面积图", "area"), ("散点图", "scatter"), ("直方图", "histogram"),
-    ("箱线图", "box"), ("箱形图", "box"), ("热力图", "heatmap"), ("雷达图", "radar"),
-    ("漏斗图", "funnel"), ("pie chart", "pie"), ("bar chart", "bar"),
-)
+# Chart-type keywords detected in the user's request (zh + en) live in the
+# registry; detect_chart_type resolves them by first mention (earliest offset,
+# longer phrase on a tie). A named type is a hard contract: it outranks both the
+# data-fit heuristics above and the current encoding in update mode (a bar chart
+# told 「改成饼图」 must not stay bar) — and it survives the LLM being down via
+# the retargeted recommendation.
+
+
+#: yFields entries a custom chart's declared mode requires. Derived from
+#: custom_charts.channel_requirements()["yFields"]: "none" uses no y fields,
+#: "one"/"multi" render from a single entry (multi may take up to five),
+#: "range" needs both endpoints.
+_CUSTOM_YFIELD_MIN = {"none": 0, "one": 1, "range": 2, "multi": 1}
+#: How the same modes are spelled in the prompt's one-line summary.
+_CUSTOM_YFIELD_LABEL = {"one": "1", "range": "2", "multi": "1-5"}
+#: The prompt summary lists at most this many custom charts, then "…".
+_CUSTOM_PROMPT_LIMIT = 10
 
 
 def detect_requested_chart_type(request: str) -> str | None:
+    """Return the chart type the user explicitly named, or None.
+
+    Same first-mention rule as :func:`chart_registry.detect_chart_type`:
+    the earliest start offset wins, the longer phrase breaks a tie at the same
+    offset. Keywords come from the registry plus every valid custom manifest
+    (the merge is local so chart_registry stays free of custom-chart knowledge).
+    """
     lowered = request.lower()
-    for keyword, chart_type in _TYPE_KEYWORDS:
-        if keyword in lowered:
-            return chart_type
-    return None
+    best: tuple[int, int] | None = None  # (start offset, negative length)
+    winner: str | None = None
+    for keyword, chart_id in chart_registry.type_keywords() + custom_charts.keywords():
+        start = lowered.find(keyword)
+        if start == -1:
+            continue
+        rank = (start, -len(keyword))
+        if best is None or rank < best:
+            best, winner = rank, chart_id
+    return winner
+
+
+def _custom_types_line() -> str | None:
+    """One compact prompt line describing valid custom charts, or None."""
+    manifests = sorted(custom_charts.manifest_map().values(), key=lambda item: item.id)
+    if not manifests:
+        return None
+    entries: list[str] = []
+    for manifest in manifests[:_CUSTOM_PROMPT_LIMIT]:
+        requirements = custom_charts.channel_requirements(manifest)
+        parts = [
+            name
+            for name in custom_charts.CHANNEL_KEYS
+            if isinstance(requirements.get(name), dict)
+            and requirements[name]["required"]  # type: ignore[index]
+        ]
+        mode = requirements.get("yFields", "none")
+        if mode in _CUSTOM_YFIELD_LABEL:
+            parts.append(f"yFields×{_CUSTOM_YFIELD_LABEL[mode]}")
+        entries.append(f"{manifest.id} ({', '.join(parts)})")
+    line = "Custom chart types: " + ", ".join(entries)
+    if len(manifests) > _CUSTOM_PROMPT_LIMIT:
+        line += " …"
+    return line
 
 
 # The y-driven relational family shares channel semantics, so a requested type
 # inside it can be produced deterministically by moving the category channel
 # (x <-> color). Exotic targets keep the model's config untouched: forcing
 # them would produce empty charts.
-_RELATIONAL_TYPES = ("bar", "barh", "line", "area", "step", "dot", "scatter", "pie")
+_RELATIONAL_TYPES = chart_registry.relational_types()
+# histogram is y-driven like the relational family, so renaming a recommendation
+# onto it still renders; bar/barh channel flipping stays in enforce_requested_type.
+_RETARGETABLE = _RELATIONAL_TYPES | {"histogram"}
 
 
 def enforce_requested_type(cfg: dict[str, Any], requested: str) -> bool:
@@ -121,7 +170,7 @@ def retarget_recommendation(encoding: dict[str, Any], requested: str) -> None:
         if isinstance(encoding.get("x"), dict):
             encoding["color"] = encoding["x"]
         encoding["chartType"] = "pie"
-    elif requested in ("bar", "barh", "line", "area", "step", "scatter", "dot", "histogram"):
+    elif requested in _RETARGETABLE:
         encoding["chartType"] = requested
 
 
@@ -136,6 +185,9 @@ def _build_prompt(df: pd.DataFrame, request: str, current_encoding: dict[str, An
         "",
         _SCHEMA_DESC,
     ]
+    custom_line = _custom_types_line()
+    if custom_line:
+        parts.append(custom_line)
     if current_encoding:
         parts.append(
             "Current encoding of the existing chart (modify it according to the request):\n"
@@ -157,12 +209,30 @@ def _build_prompt(df: pd.DataFrame, request: str, current_encoding: dict[str, An
     return "\n".join(parts)
 
 
+def _yfields_error(chart_type: str, mode: str, needed: int) -> str:
+    noun = "entry" if needed == 1 else "entries"
+    return (
+        f"encoding.yFields must contain at least {needed} {noun} for custom "
+        f"chart {chart_type!r} (yFields mode {mode!r})"
+    )
+
+
 def validate_encoding(df: pd.DataFrame, cfg: dict[str, Any]) -> list[str]:
     """Return a list of human-readable problems; empty list = executable."""
     errors: list[str] = []
     chart_type = cfg.get("chartType")
+    manifest: custom_charts.CustomChartManifest | None = None
     if chart_type not in CHART_TYPES:
-        return [f"chartType {chart_type!r} must be one of: {', '.join(CHART_TYPES)}"]
+        # Custom charts are declarative data, not registry entries: a valid
+        # manifest id is a first-class chartType.
+        if isinstance(chart_type, str):
+            manifest = custom_charts.load_manifest(chart_type)
+        if manifest is None:
+            return [
+                f"chartType {chart_type!r} must be a built-in id "
+                f"({', '.join(CHART_TYPES)}) or a valid custom chart id "
+                f"(declarative manifests in {custom_charts.CHART_DIR})"
+            ]
     encoding = cfg.get("encoding")
     if not isinstance(encoding, dict):
         return ["encoding must be an object"]
@@ -192,23 +262,35 @@ def validate_encoding(df: pd.DataFrame, cfg: dict[str, Any]) -> list[str]:
     for name in _CHANNELS:
         check_channel(name)
 
-    if chart_type not in NO_YFIELD_TYPES:
-        y_fields = encoding.get("yFields")
-        if not isinstance(y_fields, list) or not y_fields:
+    if manifest is not None:
+        y_mode = str(custom_charts.channel_requirements(manifest).get("yFields") or "none")
+        y_needed = _CUSTOM_YFIELD_MIN.get(y_mode, 1)
+    else:
+        y_mode = None
+        y_needed = 0 if chart_type in NO_YFIELD_TYPES else 1
+
+    y_fields = encoding.get("yFields")
+    if y_needed and (not isinstance(y_fields, list) or not y_fields):
+        if manifest is None:
             errors.append("encoding.yFields must be a non-empty array for this chart type")
         else:
-            for index, item in enumerate(y_fields):
-                if not isinstance(item, dict):
-                    errors.append(f"yFields[{index}] must be an object")
-                    continue
-                field = item.get("field")
-                if not isinstance(field, str) or field not in columns:
-                    errors.append(f"yFields[{index}].field {field!r} is not a dataset column")
-                    continue
-                if types[field] != "quantitative":
-                    errors.append(f"yFields[{index}]: column {field!r} is {types[field]}, y needs a numeric column")
-                if item.get("aggregate") not in VALID_AGGREGATES:
-                    errors.append(f"yFields[{index}].aggregate must be sum/mean/count/min/max or null")
+            errors.append(_yfields_error(chart_type, y_mode, y_needed))
+    elif y_needed and len(y_fields) < y_needed:
+        errors.append(_yfields_error(chart_type, y_mode, y_needed))
+
+    if y_needed and isinstance(y_fields, list):
+        for index, item in enumerate(y_fields):
+            if not isinstance(item, dict):
+                errors.append(f"yFields[{index}] must be an object")
+                continue
+            field = item.get("field")
+            if not isinstance(field, str) or field not in columns:
+                errors.append(f"yFields[{index}].field {field!r} is not a dataset column")
+                continue
+            if types[field] != "quantitative":
+                errors.append(f"yFields[{index}]: column {field!r} is {types[field]}, y needs a numeric column")
+            if item.get("aggregate") not in VALID_AGGREGATES:
+                errors.append(f"yFields[{index}].aggregate must be sum/mean/count/min/max or null")
 
     for name in ("dimensions", "path"):
         value = encoding.get(name)
