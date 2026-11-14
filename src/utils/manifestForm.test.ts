@@ -13,6 +13,7 @@ import {
   previewEncodingFor,
   previewManifestFor,
   reseedPreviewBindings,
+  seedFormFor,
   seedPreviewBindings,
   type ManifestForm,
 } from '@/utils/manifestForm'
@@ -487,5 +488,53 @@ describe('id helpers', () => {
     expect(long).toHaveLength(40)
     expect(long.endsWith('-copy')).toBe(true)
     expect(isValidCustomChartId(long)).toBe(true)
+  })
+})
+
+describe('seedFormFor', () => {
+  /** What "从当前图表创建" opens: a converted manifest under a fresh id. */
+  const converted: CustomChartManifest = { ...dumbbell, id: 'custom-demo' }
+
+  it('keeps the seed id for an edit session', () => {
+    const seeded = seedFormFor({ mode: 'edit', seed: dumbbell })
+    expect(seeded.form.id).toBe('dumbbell')
+    expect(seeded.suggestedId).toBe('')
+    expect(formToManifest(seeded.form).manifest.id).toBe('dumbbell')
+  })
+
+  it('blanks the id and still suggests <id>-copy for a duplicate session', () => {
+    const seeded = seedFormFor({ mode: 'duplicate', seed: dumbbell })
+    expect(seeded.form.id).toBe('')
+    expect(seeded.suggestedId).toBe('dumbbell-copy')
+    expect(isValidCustomChartId(seeded.suggestedId)).toBe(true)
+    // Blank id + suggestion is what makes "另存为副本" write a new file.
+    expect(formToManifest(seeded.form).manifest.id).toBe('')
+    expect(seeded.form.traces).toEqual(manifestToForm(dumbbell).traces)
+  })
+
+  it('keeps the seed id for a new session seeded from a chart', () => {
+    const seeded = seedFormFor({ mode: 'new', seed: converted })
+    expect(seeded.form.id).toBe('custom-demo')
+    expect(seeded.suggestedId).toBe('')
+    // The converted id survives the round trip, so preview/save work unedited.
+    expect(isValidCustomChartId(seeded.form.id)).toBe(true)
+    expect(formToManifest(seeded.form).manifest.id).toBe('custom-demo')
+    expect(formToManifest(seeded.form).errors).toEqual({})
+  })
+
+  it('opens the empty skeleton for a blank new session', () => {
+    expect(seedFormFor({ mode: 'new', seed: null })).toEqual({
+      form: emptyManifest(),
+      suggestedId: '',
+    })
+    expect(seedFormFor({ mode: 'new' }).form).toEqual(emptyManifest())
+  })
+
+  it('never invents an id without a seed', () => {
+    for (const mode of ['new', 'edit', 'duplicate'] as const) {
+      const seeded = seedFormFor({ mode, seed: null })
+      expect(seeded.form.id, mode).toBe('')
+      expect(seeded.suggestedId, mode).toBe('')
+    }
   })
 })

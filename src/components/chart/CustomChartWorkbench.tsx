@@ -24,7 +24,9 @@ import {
   X,
 } from 'lucide-react'
 import { api, apiErrorDetail, apiErrorStatus, isLlmUnavailableError } from '@/api/client'
+import { LayoutEditor } from '@/components/chart/LayoutEditor'
 import { PlotlyRenderer } from '@/components/chart/PlotlyRenderer'
+import { TraceEditor } from '@/components/chart/TraceEditor'
 import { useCustomChartStore, type CustomChartWorkbenchSession } from '@/stores/customChartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
@@ -40,7 +42,6 @@ import {
   Y_MODES,
   Y_MODE_SLOTS,
   duplicateChartId,
-  emptyManifest,
   formToManifest,
   isValidCustomChartId,
   manifestToForm,
@@ -49,6 +50,7 @@ import {
   previewManifestFor,
   reseedPreviewBindings,
   sectionForPath,
+  seedFormFor,
   type ChannelForm,
   type ChannelKey,
   type ManifestForm,
@@ -137,12 +139,9 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
 }
 
 function initialFormFor(session: CustomChartWorkbenchSession): ManifestForm {
-  if (!session.seed) return emptyManifest()
-  const form = manifestToForm(session.seed)
-  // "另存为副本" opens the same manifest with a blank id so saving writes a new
-  // file instead of overwriting the source.
-  if (session.mode !== 'edit') form.id = ''
-  return form
+  // One rule decides whether this session may write to the seed's file: only
+  // "另存为副本" blanks the id (see `seedFormFor`).
+  return seedFormFor(session).form
 }
 
 /**
@@ -170,9 +169,7 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
 
   const [form, setForm] = useState<ManifestForm>(() => initialFormFor(session))
   const initialForm = useRef(form)
-  const [suggestedId, setSuggestedId] = useState(() =>
-    session.mode === 'duplicate' && session.seed ? duplicateChartId(session.seed.id) : '',
-  )
+  const [suggestedId, setSuggestedId] = useState(() => seedFormFor(session).suggestedId)
   const [dataset, setDataset] = useState(activeDataFrameId ?? dataFrames[0]?.id ?? '')
   const [bindings, setBindings] = useState<PreviewBindings>({ fields: {}, yFields: [] })
   // Columns are tagged with the dataset they came from, so a switch can never
@@ -820,22 +817,6 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                   >
                     <div className="flex items-center gap-1">
                       <span className="w-4 shrink-0 text-[10px] text-muted">{index + 1}</span>
-                      <Select
-                        size="sm"
-                        aria-label={t('chart.workbench.field.traceType')}
-                        selectedKeys={[trace.type]}
-                        onSelectionChange={(keys) => {
-                          const next = String(Array.from(keys)[0] ?? '')
-                          if (next !== '') patchTrace(index, { type: next })
-                        }}
-                        classNames={{ trigger: 'h-7 min-h-7', value: 'text-[11px]' }}
-                      >
-                        {TRACE_TYPES.map((type) => (
-                          <SelectItem key={type} textValue={type}>
-                            {type}
-                          </SelectItem>
-                        ))}
-                      </Select>
                       <IconButton
                         label="↑"
                         disabled={index === 0}
@@ -852,11 +833,11 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                         onPress={() => patch({ traces: form.traces.filter((_, i) => i !== index) })}
                       />
                     </div>
-                    <JsonField
-                      label={t('chart.workbench.field.json')}
-                      value={trace.json}
+                    <TraceEditor
+                      trace={trace}
+                      form={form}
                       error={formErrors[`traces[${index}].json`]}
-                      onChange={(json) => patchTrace(index, { json })}
+                      onChange={(next) => patchTrace(index, next)}
                     />
                   </div>
                 ))}
@@ -880,9 +861,9 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
               flagged={flaggedSections.has('layout')}
               defaultOpen={false}
             >
-              <JsonField
-                label={t('chart.workbench.section.layout')}
-                value={form.layout}
+              <LayoutEditor
+                layout={form.layout}
+                options={form.options}
                 error={formErrors.layout}
                 onChange={(layout) => patch({ layout })}
               />
@@ -1190,35 +1171,6 @@ function IconButton({
     >
       <span className="text-[11px]">{label}</span>
     </Button>
-  )
-}
-
-/** JSON textarea with its parse error rendered underneath. */
-function JsonField({
-  label,
-  value,
-  error,
-  onChange,
-}: {
-  label: string
-  value: string
-  error?: string
-  onChange: (next: string) => void
-}) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <Textarea
-        size="sm"
-        aria-label={label}
-        minRows={3}
-        placeholder="{ }"
-        value={value}
-        onValueChange={onChange}
-        isInvalid={error !== undefined}
-        classNames={{ input: 'font-mono text-[11px]', label: FIELD_LABEL }}
-      />
-      {error !== undefined && <span className="text-[10px] text-danger">{error}</span>}
-    </div>
   )
 }
 

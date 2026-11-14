@@ -42,7 +42,7 @@
 
 ### 可视化与 Dashboard
 - 34 种图表类型（折线 / 柱状 / 饼图 / 直方图 / box / violin / 热力图 / treemap / sankey / 平行坐标 / 仪表盘等），拖拽式编码配置
-- 自定义图表（内置类型的扩展）：把 JSON 清单放进 `~/.metricstudio/charts/` 即可声明新的图表类型——无代码执行，支持应用内导入 / 导出，并提供全屏工作台（结构化表单 + 实时预览 + 校验错误 + AI 草稿），详见 [docs/custom-charts.md](docs/custom-charts.md)
+- 自定义图表（内置类型的扩展）：把 JSON 清单放进 `~/.metricstudio/charts/` 即可声明新的图表类型——无代码执行，支持应用内导入 / 导出，并提供全屏工作台（结构化表单 + 实时预览 + 校验错误 + AI 草稿），其中 traces / layout 也有结构化编辑器（数据槽下拉、按类型的样式对象、`segments` 与 `splitBy`、轴与图例表单，表单覆盖不到的键保留在「高级（JSON）」面板里），内置图表还可以「从当前图表创建」直接推导出一份草稿，详见 [docs/custom-charts.md](docs/custom-charts.md)
 - 大样本降采样：原始行图表（散点 / 折线 / 面积 / 阶梯 / 点 / splom / 平行坐标 / 平行类别）超过 **5000 点**时按等距抽样绘制，首末行始终保留，抽样信息记录在 `layout.meta.sampled`（total / shown）；`METRICSTUDIO_CHART_MAX_POINTS` 可调整上限，置 `0` 关闭。直方图 / box / violin / 饼图 / 热力图等统计类图表始终按全量行计算，抽样只影响「一行一个点」的图形，绝不改变统计量
 - Dashboard：多页编排、KPI 卡片、文本卡片、跨卡片框选联动、Dashboard 级筛选（高基数字段服务端搜索分页）
 - 编辑增强：编辑 / 查看模式、卡片锁定、Dashboard 复制、对齐 / 等距批量布局、Dashboard 级撤销重做、侧栏宽度记忆

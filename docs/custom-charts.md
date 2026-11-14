@@ -64,12 +64,30 @@
 「自定义图表工作台」是全屏编辑表单，带实时预览、校验错误和 AI 生成草稿。入口：
 
 - 「管理自定义图表」→「新建自定义图表」或某一行的「编辑」；
-- 图表类型选择器 →「管理自定义图表」。
+- 图表类型选择器 →「管理自定义图表」；
+- 「管理自定义图表」→「从当前图表创建」（把当前内置图表推导成草稿，见下文「从现有图表创建」）。
 
 编辑方式：
 
-- 结构化表单：基础信息、通道、选项、算子（transforms）；
-- JSON 编辑：traces 与 layout。
+- 结构化表单：基础信息、通道、选项、算子（transforms）、轨迹（traces）、布局（layout）；
+- 每条 trace 有独立的子表单：轨迹类型下拉、数据槽下拉、按类型的样式对象、`segments` 子表单、`splitBy` 开关；
+- 整个 layout 也有表单：开关/标量顶层键，加上轴与图例；
+- 表单覆盖不到的键不会被丢掉，而是留在 JSON 里（见下一小节）。
+
+traces 的表单：
+
+- **轨迹类型**下拉（`chart.workbench.field.traceType`）只列后端白名单里的 9 种：`scatter` / `bar` / `box` / `violin` / `waterfall` / `funnel` / `indicator` / `histogram` / `sankey`（第 7 节）。
+- **数据槽**下拉（`chart.workbench.trace.data`）给 `x` / `y` / `z` / `labels` / `values` 选值（`indicator` 是 `value`，`sankey` 是 `source` / `target`），可选值是 `$x`、`$y0`…`$y4`、`$color`、`$size`、`$z`、`$error`、`$source`、`$target`、`$index`、`$count`，以及算子 `as` 产出的 `$<as>`。下拉只列**当前清单真正提供**的槽位：通道没声明、`yFields.mode` 不够（`range` 只给 `$y0` / `$y1`），或前置 `group_agg` / `reduce` 已经把列清掉时，对应槽位根本不会出现（第 4、5 节）。
+- **样式**（`chart.workbench.trace.style`）按 trace 类型给出对应的嵌套样式对象，键集合就是第 7 节的白名单：`line`、`marker`（含 `marker.line`）、`error_x` / `error_y`；`indicator` 额外给 `title` / `number` / `gauge` / `delta`；`sankey` 额外给 `node` / `link`。
+- **`segments` 子表单**（`chart.workbench.segments`）只在 `scatter` 上出现，编辑 `x` / `from` / `to` 三个数据槽和 `horizontal` 开关；用它的 trace 只产出 layout 线段，不产出 trace（第 7 节）。
+- **`splitBy` 开关**（`chart.workbench.splitBy`）勾选即写入 `"splitBy": "$color"`；只在 `scatter` / `bar` / `box` / `violin` / `histogram` / `funnel` 上可用，且要求清单声明 `color` 通道（第 7 节）。
+
+layout 的表单（`chart.workbench.layout.axis` / `chart.workbench.layout.legend`）：
+
+- 开关与标量：`showlegend`、`barmode`、`hovermode`；
+- 对象：`margin`、`title`、`legend`、`polar`；
+- `xaxis` / `yaxis` 各给 `title`、`type`、`range`、`showgrid`、`gridcolor`、`tickangle`；
+- 表单只覆盖第 8 节那九键之内的内容；`xaxis.automargin`、`xaxis.tickformat`、`legend.orientation` 这类嵌套键属于 JSON（见下一小节）。
 
 通道表单里，未启用的通道不会写入清单；带必填标记的通道缺少绑定时图表无法渲染（`chart.workbench.hint.channels`）。
 
@@ -87,6 +105,49 @@ AI 草稿的约定：
 - 编辑已有 manifest 时 `id` 锁定；AI 草稿也不会改掉这个锁定 id。
 
 需要新 id 时用「另存为副本」或新建；编辑已有 manifest 时不能在原文件上改名。
+
+### 高级（JSON）：表单之外的键
+
+每条 trace 和整个 layout 都保留一个可折叠的「高级（JSON）」面板（trace 上是 `chart.workbench.trace.advanced`，layout 区是同名面板）。面板里放的是**完整对象**，不是「表单没覆盖的那一小块」：
+
+- 表单不认识的键**不会被删掉**。`textposition`、`hovertemplate`、`boxpoints`、`cumulative`、`histnorm`、`offsetgroup`、`hole`、`arrangement`、`marker.colorscale`、`marker.sizeref`、`xaxis.automargin` 之类照样留在对象里；工作台会在面板旁把它们点名列出（`chart.workbench.unsupportedKeys`：`以下字段暂不支持表单编辑，已保留在 JSON 中：textposition, cumulative`），提醒你这些键只能在 JSON 里改。
+- 在 JSON 里保存等于**整体替换**这个对象：解析出来的内容就是 trace / layout 本身，不是增量补丁。要删一个键就在 JSON 里删掉，把它从 JSON 里去掉就是把它从清单里去掉。
+- **JSON 不是后门**。面板内容随整份清单走同一套校验（第 3、7、8 节的白名单仍然生效）：`["$x", "$x"]` 这种槽位数组、未声明的 `$opt.<key>`、layout 里的数据槽、不在 7 个数组样式路径里的 `$<slot>.values`，照旧是校验错误。表单不给入口的写法也不会因为写了 JSON 就变合法——例如把 `$y0.values` 放进 `line.color`，后端照样报 `traces[0].line.color: '$y0.values' is only allowed at marker.color, marker.size, marker.opacity, error_x.array, error_x.arrayminus, error_y.array, error_y.arrayminus`。
+- 类型专属键不会跟着类型走：`title` / `number` / `gauge` / `delta` 只在 `indicator` 上合法，`node` / `link` / `arrangement` 只在 `sankey` 上合法。把轨迹类型从 `indicator` 改回 `bar` 后，留在 JSON 里的这些键会在保存时报 `traces[0].title: only allowed on the 'indicator' trace type`，需要到 JSON 面板里删掉。
+
+### 从现有图表创建
+
+反向入口：不用从空白清单开始，而是把当前打开的内置图表推导成一份草稿。
+
+1. 打开（或选中）一个内置图表；
+2. 图表类型选择器 →「管理自定义图表」→「从当前图表创建」（`chart.custom.fromChart`）；
+3. 工作台带着草稿打开，并提示 `chart.custom.fromChartDone`（已生成草稿，请在工作台中检查后保存）。
+
+草稿里有什么：
+
+- 编码通道（`x` / `color` / `size` / `z` / `error` / `source` / `target` / `facet`）按当前图表的绑定推导，`yFields.mode` 按 Y 字段的数量推导（`one` / `range` / `multi`，见第 4 节）；
+- `traces` 与 `layout` 按当前图表推导，并裁剪到第 7、8 节允许的键；
+- **草稿不落盘**：工作台不写任何文件，只有点「校验并保存」才会创建 `~/.metricstudio/charts/{id}.json`。`id` 只是候选值，请按第 3 节的正则改成自己的名字；保存到已存在的 `id` 会先弹覆盖确认。
+
+可以转换的内置类型（15 种）：`line`、`area`、`step`、`dot`、`scatter`、`bar`、`barh`、`histogram`、`box`、`violin`、`waterfall`、`funnel`、`timeline`、`gauge`、`sankey`。
+
+其余类型没有「从当前图表创建」：`pie`、`heatmap` / `contour` / `surface`、`splom`、`treemap` / `sunburst` / `icicle`、`parcoords` / `parcats`、`table`、`candlestick`、`gantt`、`radar`、`ternary`、`scatter3d`。它们的配置在清单语法里没有等价物——第 7 节那 9 种 trace 类型里没有饼图、三维、多维、表格、金融和甘特——所以工作台直接提示「当前图表类型暂不支持转换为自定义图表」（`chart.custom.fromChartUnavailable`），而不是给一份半坏的清单让你自己猜哪里断了。
+
+转换不了时，管理对话框在导入 / 导出错误同一个位置显示**本地化原因**，不是后端的英文原文（`chart.custom.reason.*` 的键）：
+
+| 原因 | 文案（`zh`） | 什么时候出现 |
+| --- | --- | --- |
+| `chart.custom.reason.unsupportedType` | 内置图表「{{type}}」暂无可声明的等价形式 | 图表类型不在上面 15 种之内（`pie`、3D、多维、表格、金融、甘特等）；`{{type}}` 是内置类型 id |
+| `chart.custom.reason.noYField` | 当前图表没有绑定 Y 字段，没有可转换的数据 | 可转换的类型（`histogram` 以外）一个 Y 字段都没绑 |
+| `chart.custom.reason.noValueField` | 当前图表缺少可转换的数据字段 | `gauge` / `sankey` 没绑 Y 字段（它们的值来自折叠后的单值），或 `histogram` 既没绑 Y 也没绑 `x` |
+| `chart.custom.reason.missingLinks` | 桑基图需要同时绑定 source 与 target | `sankey` 有 Y 字段，但 source / target 没同时绑上 |
+
+这四种情况下**什么都不写盘**：不生成草稿、不打开工作台，`~/.metricstudio/charts/` 下也不会多出文件——需要先把图表补成可转换的样子，或直接新建清单。
+
+两条诚实的限制：
+
+- **部分聚合的 Y 字段会退回原始值**：内置图表里带聚合的 Y 字段不一定能原样翻译（典型是按类目求和后的柱状图），这类 Y 字段会退回绑定原始列，并给出警告。图看起来会和原来不一样，需要你在「算子」里自己补 `group_agg` 把聚合补回来（第 6 节）。
+- **九键之外的 layout 会被丢弃**：清单 `layout` 顶层只允许 `showlegend`、`barmode`、`margin`、`xaxis`、`yaxis`、`legend`、`hovermode`、`polar`、`title`（第 8 节）。当前图表里其他 layout 设置（`plot_bgcolor`、`font`、`colorway`、`bargap` 等）不会进入草稿，工作台会逐个点名它们。
 
 ## 3. 清单字段
 
@@ -1611,6 +1672,10 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `traces[0].line.bogus: unsupported style key for line` | 嵌套样式键不在 `line` 白名单 | 只用 `color` / `width` / `dash` / `shape` / `smoothing` / `simplify` |
 | `traces[0]: 'segments' and 'x' are mutually exclusive` | `segments` 和 `x` / `y` 同时写了 | 二选一；线段只写 `segments` |
 | `traces[0].segments: only allowed on type 'scatter'` | 把 `segments` 写在 bar/box 等 trace 上 | 改成 `scatter` |
+| `traces[0].segments: must be an object with 'x', 'from' and 'to'` | `segments` 值不是对象 | 写成 `{ "x": ..., "from": ..., "to": ... }`，不要写字符串或数组 |
+| `traces[0].segments.to: is required` | `segments` 少了 `x` / `from` / `to` 之一 | 三个数据槽都填上；错误路径会指出缺的是哪个（`x` / `from` / `to` 同理） |
+| `traces[0].segments.horizontal: must be true or false` | `horizontal` 写了字符串或数字 | 只写布尔 `true` / `false` |
+| `traces[0].segments.color: not allowed on segments` | 往 `segments` 里塞了 `x` / `from` / `to` / `horizontal` 之外的键 | 线段样式只能放在同一条 trace 的 `line` 上，`segments` 里删掉 |
 | `traces[0].x[0]: slots inside literal arrays are not supported; use a single slot string` | 用了 `["$x", "$x"]` 这种槽位数组 | 改用 `segments`，或单槽位字符串 |
 | `traces[0].splitBy: only '$color' is supported` | `splitBy` 写了别的槽位 | 只能写 `"$color"` |
 | `traces[0].splitBy: requires a 'color' channel` | 清单没有声明 `color` 通道 | 在 `channels` 里声明 `color` |
@@ -1619,6 +1684,10 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `traces[0].line.color: '$x.values' is only allowed at marker.color, marker.size, marker.opacity, error_x.array, error_x.arrayminus, error_y.array, error_y.arrayminus` | 在非数组样式路径用了 `$slot.values` | 只用第 5 节列出的 7 个路径 |
 | `traces[0].error_y.bogus: unsupported style key for error_y` | `error_y` / `error_x` 里有未知键 | 只用 `type` / `array` / `arrayminus` / `visible` / `color` / `thickness` / `width` |
 | `traces[0].error_y: must be an object` | `error_y` / `error_x` 不是对象 | 写嵌套对象，不要写成字符串或数组 |
+| `traces[0].marker: must be an object` | 样式对象写成了标量（`line` / `marker` / `cumulative` / `node` / `link` 同理） | 写 `{ ... }` 形式 |
+| `traces[0].line.color: must be a scalar or list` | 样式叶子写了对象 | 叶子只能是标量、列表或 `$opt.<key>` |
+| `traces[0].marker.color: data slots like '$y0' are only allowed on x, y, z, labels, values; style positions accept $opt.<key> or literals` | 把普通数据槽写进样式位置 | 要按数据着色/定大小/画误差，请用 `$<slot>.values` 并放在第 5 节的 7 个数组样式路径上 |
+| `traces[0].marker.size: option slot '$opt.size' refers to unknown option 'size'` | 样式里引用了没在 `options` 里声明的 `$opt` 键 | 先在 `options` 里声明该键，或删掉这个 `$opt` 引用 |
 | `traces[0].title: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
 | `traces[0].number: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
 | `traces[0].gauge: only allowed on the 'indicator' trace type` | 把 indicator 专用样式键放到其他 trace 类型 | 只写在 `indicator` trace 上 |
@@ -1629,6 +1698,7 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `traces[0].z: not allowed on the 'indicator' trace type` | indicator 上写了 `z` | indicator 只用 `value` |
 | `traces[0].value: no rows after transforms` | 0 行数据进入 indicator | 先修正筛选/变换，或提供一行数据 |
 | `traces[0].number.valueformat: must be a scalar` | indicator 标量叶子写了列表 | 标量叶子只写标量或 `$opt`；列表只用于 range/tickvals/ticktext 等 |
+| `traces[0].title.text: must be a scalar` | indicator 的 `title.text` 等标量叶子写了列表（`number.prefix` / `suffix`、`gauge.bgcolor` 同理） | 标量叶子只写标量或 `$opt` |
 | `traces[0].node: only allowed on the 'sankey' trace type` | 把 sankey 的 `node` 放到其他 trace | 只写在 `sankey` trace 上 |
 | `traces[0].link: only allowed on the 'sankey' trace type` | 把 sankey 的 `link` 放到其他 trace | 只写在 `sankey` trace 上 |
 | `traces[0].arrangement: only allowed on the 'sankey' trace type` | 把 sankey 的 `arrangement` 放到其他 trace | 只写在 `sankey` trace 上 |
@@ -1643,6 +1713,8 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `layout.template: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | layout 顶层键不在白名单 | 只用 9 个顶层键；想调轴样式写进 `xaxis` / `yaxis` |
 | `layout.grid: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | 试图在清单里声明/覆盖 `grid` | 删除 `grid`；分面网格由渲染器根据 `facet` / `facetBy` 写入 |
 | `layout.shapes: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | 试图在清单里声明 `shapes` | 删除 `shapes`；线段由 `segments` trace 生成，渲染器在 layout 合并后追加 |
+| `layout: must be an object` | `layout` 写成了数组、字符串或数字 | `layout` 必须是对象；不需要覆盖任何键时整块省略 |
+| `layout.xaxis.title: layout values may only use $opt.<key> slots; data and label slots are not available in layout` | 把数据槽 / 标签槽写进了 layout | layout 里只能写字面量或 `$opt.<key>`；要动态轴标题就先把值声明成选项 |
 | `options[0].choices: select options need 1-20 choices` | `select` 缺少 `choices` 或数量不对 | 给 1–20 个不重复字符串 |
 | `options[1].default: must be a finite number` | `number` 选项默认值不是有限数字 | 改成数字；布尔不算数字 |
 | `options[0].default: is required` | 漏写 `default` | 每个选项都必须有类型匹配的默认值 |

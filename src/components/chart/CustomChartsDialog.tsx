@@ -9,11 +9,13 @@ import {
   Spinner,
 } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Download, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { Copy, Download, Pencil, Plus, RefreshCw, Trash2, Upload, Wand2 } from 'lucide-react'
 import { api } from '@/api/client'
+import { useChartStore } from '@/stores/chartStore'
 import { useCustomChartStore } from '@/stores/customChartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { chartTypeLabel } from '@/utils/chartTypeLabel'
+import { manifestFromChart } from '@/utils/manifestFromChart'
 import { CustomChartWorkbench } from '@/components/chart/CustomChartWorkbench'
 import type { CustomChartItem, CustomChartManifest } from '@/types/customChart'
 
@@ -53,6 +55,10 @@ export function CustomChartsDialog({ open, onOpenChange }: CustomChartsDialogPro
   const save = useCustomChartStore((s) => s.save)
   const remove = useCustomChartStore((s) => s.remove)
   const openWorkbench = useCustomChartStore((s) => s.openWorkbench)
+  // Reverse entry: the built-in chart currently open in the workspace is the
+  // starting point for a new manifest. `find` keeps the reference stable, so
+  // this selector never re-renders on unrelated chart-store writes.
+  const activeChart = useChartStore((s) => s.charts.find((c) => c.id === s.activeChartId) ?? null)
 
   const [importError, setImportError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -124,6 +130,26 @@ export function CustomChartsDialog({ open, onOpenChange }: CustomChartsDialogPro
     setActionError(null)
     const ok = await remove(item.id)
     if (!ok) setActionError(useCustomChartStore.getState().error ?? '')
+  }
+
+  /**
+   * Turn the active built-in chart into a manifest and open it for authoring.
+   * A chart with no declarative equivalent answers with a reason *code*, which
+   * is rendered through `chart.custom.reason.<code>` in the same inline slot as
+   * the import/export failures — the converter never produces prose, so nothing
+   * untranslated can reach the UI.
+   */
+  const convertActiveChart = () => {
+    if (!activeChart) return
+    setActionError(null)
+    const result = manifestFromChart(activeChart)
+    if ('reason' in result) {
+      setActionError(
+        t(`chart.custom.reason.${result.reason.code}`, result.reason.params ?? {}),
+      )
+      return
+    }
+    openWorkbench(owner, result.manifest, 'new')
   }
 
   return (
@@ -257,6 +283,16 @@ export function CustomChartsDialog({ open, onOpenChange }: CustomChartsDialogPro
               onPress={() => openWorkbench(owner, null, 'new')}
             >
               {t('chart.workbench.new')}
+            </Button>
+            <Button
+              size="sm"
+              variant="flat"
+              className="text-xs"
+              isDisabled={!activeChart}
+              startContent={<Wand2 className="h-3 w-3" />}
+              onPress={convertActiveChart}
+            >
+              {t('chart.custom.fromChart')}
             </Button>
             <Button
               size="sm"

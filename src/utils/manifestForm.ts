@@ -481,6 +481,51 @@ export function manifestToForm(manifest: CustomChartManifest | null | undefined)
 }
 
 // ---------------------------------------------------------------------------
+// session seeding
+// ---------------------------------------------------------------------------
+
+/** `new` = blank or freshly seeded; `edit`/`duplicate` come from the chart list. */
+export type WorkbenchSeedMode = 'new' | 'edit' | 'duplicate'
+
+/** The parts of a workbench session that decide the starting form. */
+export interface WorkbenchSeedSession {
+  mode: WorkbenchSeedMode
+  seed?: CustomChartManifest | null
+}
+
+export interface SeededWorkbenchForm {
+  form: ManifestForm
+  /**
+   * Id the save falls back to when the form's id is blank. Only
+   * "另存为副本" suggests one (`<id>-copy`).
+   */
+  suggestedId: string
+}
+
+/**
+ * Starting form for a workbench session — the single rule for "may this session
+ * write to the seed's file?".
+ *
+ * - `edit` opens the seed untouched, id included (the id field is locked).
+ * - `duplicate` blanks the id so saving writes a new file, and suggests
+ *   `<id>-copy` so "另存为副本" → "校验并保存" works without retyping.
+ * - `new` without a seed is the blank skeleton (no id either way).
+ * - `new` *with* a seed (e.g. "从当前图表创建") keeps the seed's id: the draft
+ *   is meant to be previewed and saved under that id without retyping it.
+ */
+export function seedFormFor(session: WorkbenchSeedSession): SeededWorkbenchForm {
+  if (!session.seed) return { form: emptyManifest(), suggestedId: '' }
+  const form = manifestToForm(session.seed)
+  if (session.mode === 'duplicate') {
+    return {
+      form: { ...form, id: '' },
+      suggestedId: duplicateChartId(session.seed.id),
+    }
+  }
+  return { form, suggestedId: '' }
+}
+
+// ---------------------------------------------------------------------------
 // form -> manifest
 // ---------------------------------------------------------------------------
 
