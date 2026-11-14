@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 import {
+  FIELD_LABEL,
   JsonTextarea,
   LeafField,
   ObjectSection,
@@ -14,6 +15,7 @@ import {
 import { SPLIT_BY_TRACE_TYPES, TRACE_TYPES } from '@/utils/manifestForm'
 import {
   dataKeysFor,
+  errorAtPath,
   formToTrace,
   isRecord,
   optionalLabel,
@@ -29,7 +31,7 @@ import {
   unrepresentedTraceKeys,
   writeSegments,
 } from '@/utils/traceFields'
-import type { SegmentState, SlotSources, TraceState } from '@/utils/traceFields'
+import type { SegmentState, SlotSources, TraceErrorSet, TraceState } from '@/utils/traceFields'
 import type { ManifestForm, TraceForm } from '@/utils/manifestForm'
 
 /**
@@ -40,20 +42,29 @@ import type { ManifestForm, TraceForm } from '@/utils/manifestForm'
  * here patches one path and re-serializes the same object, so keys the form has
  * no control for survive untouched; the "高级（JSON）" panel is the only place
  * that replaces the object wholesale.
+ *
+ * `errors` carries this trace's slice of the validation problems (see
+ * `traceErrors`), so the control the backend blamed — not just the section —
+ * gets the red outline.
  */
 export function TraceEditor({
   trace,
   form,
+  errors,
   error,
   onChange,
 }: {
   trace: TraceForm
   form: ManifestForm
+  /** Problems scoped to this trace, keyed by leaf path (`marker.color`). */
+  errors?: TraceErrorSet
+  /** `traces[n].json` problem (the JSON escape hatch's own). */
   error?: string
   onChange: (next: Partial<TraceForm>) => void
 }) {
   const { t } = useTranslation()
   const label = (key: string, fallback: string) => optionalLabel((name) => t(name), key, fallback)
+  const fieldErrors = errors?.fields ?? {}
 
   const parsed = useMemo(() => parseTraceFields(trace.json), [trace.json])
   const sources = useMemo(() => slotSources(form), [form])
@@ -110,8 +121,8 @@ export function TraceEditor({
     <div className="flex flex-col gap-1.5">
       {!invalid && (
         <>
-          <div className="flex items-center gap-1">
-            <span className="w-[72px] shrink-0 text-[10px] text-muted">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className={FIELD_LABEL}>
               {label('chart.workbench.field.traceType', 'Trace type')}
             </span>
             <Select
@@ -122,6 +133,7 @@ export function TraceEditor({
                 const next = String(Array.from(keys)[0] ?? '')
                 if (next !== '' && next !== trace.type) changeType(next)
               }}
+              isInvalid={errors?.type !== undefined}
               classNames={{ trigger: 'h-7 min-h-7', value: 'font-mono text-[11px]' }}
             >
               {typeOptions.map((type) => (
@@ -130,6 +142,9 @@ export function TraceEditor({
                 </SelectItem>
               ))}
             </Select>
+            {errors?.type !== undefined && (
+              <span className="text-[10px] text-danger break-words">{errors.type}</span>
+            )}
           </div>
 
           {dropped.length > 0 && (
@@ -147,6 +162,7 @@ export function TraceEditor({
                     label={key}
                     value={fields[key]}
                     options={sources.data}
+                    error={errorAtPath(fieldErrors, key)}
                     onChange={(next) => setField(key, next)}
                   />
                 ))}
@@ -158,17 +174,18 @@ export function TraceEditor({
                     title={label('chart.workbench.segments', 'segments')}
                     segment={segment}
                     sources={sources}
+                    errors={fieldErrors}
                     onChange={(next) => commit(writeSegments(fields, next))}
                   />
                 ) : (
                   <Button
                     size="sm"
-                    variant="flat"
-                    className="text-[11px]"
+                    variant="bordered"
+                    className="w-full justify-start text-[11px]"
                     startContent={<Plus className="h-3 w-3" />}
                     onPress={() => commit(writeSegments(fields, defaultSegment()))}
                   >
-                    segments
+                    {label('chart.workbench.segments', 'segments')}
                   </Button>
                 ))}
 
@@ -192,7 +209,11 @@ export function TraceEditor({
 
           <CollapsibleSection
             title={label('chart.workbench.trace.style', 'Style')}
-            defaultOpen={false}
+            // A trace that already carries style objects opens on them, so a
+            // converted chart shows its swatches instead of an empty row.
+            defaultOpen={traceObjects(trace.type, fields).some((spec) =>
+              isRecord(fields[spec.key]),
+            )}
           >
             <div className="flex flex-col gap-1.5">
               <div className="grid grid-cols-2 gap-1.5">
@@ -200,8 +221,10 @@ export function TraceEditor({
                   <LeafField
                     key={spec.key}
                     spec={spec}
+                    path={spec.key}
                     value={fields[spec.key]}
                     sources={sources}
+                    error={errorAtPath(fieldErrors, spec.key)}
                     onChange={(next) => setField(spec.key, next)}
                   />
                 ))}
@@ -211,9 +234,11 @@ export function TraceEditor({
                   <ObjectSection
                     key={spec.key}
                     spec={spec}
-                    value={fields[spec.key]}
+                    path={spec.key}
+                    fields={fields}
                     sources={sources}
-                    onChange={(next) => setField(spec.key, next)}
+                    errors={fieldErrors}
+                    commit={commit}
                   />
                 ))}
               </div>
@@ -228,7 +253,11 @@ export function TraceEditor({
         title={label('chart.workbench.trace.advanced', 'Advanced (JSON)')}
         defaultOpen={invalid}
       >
-        <TraceJsonBody trace={trace} error={error ?? parsed.error} onChange={onChange} />
+        <TraceJsonBody
+          trace={trace}
+          error={error ?? errors?.json ?? parsed.error}
+          onChange={onChange}
+        />
       </CollapsibleSection>
     </div>
   )
@@ -243,36 +272,45 @@ function SegmentsForm({
   title,
   segment,
   sources,
+  errors,
   onChange,
 }: {
   title: string
   segment: SegmentState
   sources: SlotSources
+  errors: Readonly<Record<string, string>>
   onChange: (next: SegmentState | null) => void
 }) {
+  const { t } = useTranslation()
+  const removeLabel = optionalLabel(
+    (key) => t(key),
+    'chart.workbench.remove',
+    'Remove',
+  )
   return (
     <div className="flex flex-col gap-1 rounded border border-border p-1.5">
       <div className="flex items-center justify-between">
         <span className="font-mono text-[11px]">{title}</span>
-        <RemoveButton label="remove segments" onPress={() => onChange(null)} />
+        <RemoveButton label={`${removeLabel} ${title}`} onPress={() => onChange(null)} />
       </div>
       <div className="grid grid-cols-3 gap-1.5">
         {(['x', 'from', 'to'] as const).map((key) => (
           <SlotValueField
             key={key}
-            label={key}
+            label={`segments.${key}`}
             value={segment[key]}
             options={sources.data}
             allowLiteral={false}
+            error={errorAtPath(errors, `segments.${key}`)}
             onChange={(next) => onChange({ ...segment, [key]: String(next ?? '') })}
           />
         ))}
       </div>
       <div className="flex h-7 items-center justify-between gap-1">
-        <span className="font-mono text-[11px]">horizontal</span>
+        <span className={FIELD_LABEL}>segments.horizontal</span>
         <Switch
           size="sm"
-          aria-label="segments horizontal"
+          aria-label="segments.horizontal"
           isSelected={segment.horizontal}
           onValueChange={(horizontal) => onChange({ ...segment, horizontal })}
         />

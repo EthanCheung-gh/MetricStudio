@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   Checkbox,
-  Input,
   Modal,
   ModalBody,
   ModalContent,
@@ -15,21 +14,34 @@ import {
 } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   Copy,
+  Database,
   Download,
   Plus,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react'
 import { api, apiErrorDetail, apiErrorStatus, isLlmUnavailableError } from '@/api/client'
 import { LayoutEditor } from '@/components/chart/LayoutEditor'
 import { PlotlyRenderer } from '@/components/chart/PlotlyRenderer'
+import { WorkbenchInput } from '@/components/chart/StyleField'
 import { TraceEditor } from '@/components/chart/TraceEditor'
 import { useCustomChartStore, type CustomChartWorkbenchSession } from '@/stores/customChartStore'
 import { useDataStore } from '@/stores/dataStore'
 import { useUIStore } from '@/stores/uiStore'
+import {
+  layoutFieldErrors,
+  optionalLabel,
+  parseTraceFields,
+  traceErrors,
+  traceSummary,
+} from '@/utils/traceFields'
+import type { TraceErrorSet } from '@/utils/traceFields'
 import {
   AGGREGATES,
   CHANNEL_KEYS,
@@ -160,6 +172,8 @@ export function CustomChartWorkbench({ owner }: { owner: string }) {
 
 function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
   const { t } = useTranslation()
+  /** New keys fall back to plain text until the locale catches up. */
+  const tOr = (key: string, fallback: string) => optionalLabel((name) => t(name), key, fallback)
   const closeWorkbench = useCustomChartStore((s) => s.closeWorkbench)
   const save = useCustomChartStore((s) => s.save)
   // Reserved ids the save would overwrite; only consulted when the id is unlocked.
@@ -546,8 +560,8 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
               title={t('chart.workbench.section.basics')}
               flagged={flaggedSections.has('manifest')}
             >
-              <div className="grid grid-cols-2 gap-2">
-                <Input
+              <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+                <WorkbenchInput
                   size="sm"
                   isRequired
                   isReadOnly={idLocked}
@@ -562,50 +576,44 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                       ? t('chart.workbench.invalidId')
                       : undefined
                   }
-                  classNames={{ input: 'text-xs', inputWrapper: 'h-8 min-h-8', label: FIELD_LABEL }}
                 />
-                <Input
+                <WorkbenchInput
                   size="sm"
                   label={t('chart.workbench.field.keywords')}
                   value={form.keywords}
                   onValueChange={(value) => patch({ keywords: value })}
                   isInvalid={formErrors.keywords !== undefined}
                   errorMessage={formErrors.keywords}
-                  classNames={{ input: 'text-xs', inputWrapper: 'h-8 min-h-8', label: FIELD_LABEL }}
                 />
-                <Input
+                <WorkbenchInput
                   size="sm"
                   isRequired
                   label={t('chart.workbench.field.labelZh')}
                   value={form.label.zh}
                   onValueChange={(value) => patch({ label: { ...form.label, zh: value } })}
-                  classNames={{ input: 'text-xs', inputWrapper: 'h-8 min-h-8', label: FIELD_LABEL }}
                 />
-                <Input
+                <WorkbenchInput
                   size="sm"
                   isRequired
                   label={t('chart.workbench.field.labelEn')}
                   value={form.label.en}
                   onValueChange={(value) => patch({ label: { ...form.label, en: value } })}
-                  classNames={{ input: 'text-xs', inputWrapper: 'h-8 min-h-8', label: FIELD_LABEL }}
                 />
-                <Input
+                <WorkbenchInput
                   size="sm"
                   label={t('chart.workbench.field.descriptionZh')}
                   value={form.description.zh}
                   onValueChange={(value) =>
                     patch({ description: { ...form.description, zh: value } })
                   }
-                  classNames={{ input: 'text-xs', inputWrapper: 'h-8 min-h-8', label: FIELD_LABEL }}
                 />
-                <Input
+                <WorkbenchInput
                   size="sm"
                   label={t('chart.workbench.field.descriptionEn')}
                   value={form.description.en}
                   onValueChange={(value) =>
                     patch({ description: { ...form.description, en: value } })
                   }
-                  classNames={{ input: 'text-xs', inputWrapper: 'h-8 min-h-8', label: FIELD_LABEL }}
                 />
               </div>
             </Section>
@@ -810,36 +818,35 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                   {t('chart.workbench.field.traceType')}: {TRACE_TYPES.join(' / ')} · splitBy:{' '}
                   {SPLIT_BY_TRACE_TYPES.join(' / ')}
                 </p>
+                {form.traces.length === 0 && (
+                  <p className={HINT}>
+                    {tOr('chart.workbench.noTraces', 'No traces yet — add at least one')}
+                  </p>
+                )}
                 {form.traces.map((trace, index) => (
-                  <div
+                  <TraceCard
                     key={index}
-                    className="flex flex-col gap-1 rounded border border-border bg-surface p-1.5"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span className="w-4 shrink-0 text-[10px] text-muted">{index + 1}</span>
-                      <IconButton
-                        label="↑"
-                        disabled={index === 0}
-                        onPress={() => patch({ traces: moveItem(form.traces, index, index - 1) })}
-                      />
-                      <IconButton
-                        label="↓"
-                        disabled={index === form.traces.length - 1}
-                        onPress={() => patch({ traces: moveItem(form.traces, index, index + 1) })}
-                      />
-                      <IconButton
-                        label="×"
-                        danger
-                        onPress={() => patch({ traces: form.traces.filter((_, i) => i !== index) })}
-                      />
-                    </div>
-                    <TraceEditor
-                      trace={trace}
-                      form={form}
-                      error={formErrors[`traces[${index}].json`]}
-                      onChange={(next) => patchTrace(index, next)}
-                    />
-                  </div>
+                    index={index}
+                    total={form.traces.length}
+                    trace={trace}
+                    form={form}
+                    errors={traceErrors(allProblems, index)}
+                    jsonError={formErrors[`traces[${index}].json`]}
+                    onPatch={(next) => patchTrace(index, next)}
+                    onMove={(to) => patch({ traces: moveItem(form.traces, index, to) })}
+                    onDuplicate={() =>
+                      patch({
+                        traces: [
+                          ...form.traces.slice(0, index + 1),
+                          { ...trace },
+                          ...form.traces.slice(index + 1),
+                        ],
+                      })
+                    }
+                    onDelete={() =>
+                      patch({ traces: form.traces.filter((_, i) => i !== index) })
+                    }
+                  />
                 ))}
                 <Button
                   size="sm"
@@ -859,11 +866,12 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
             <Section
               title={t('chart.workbench.section.layout')}
               flagged={flaggedSections.has('layout')}
-              defaultOpen={false}
+              defaultOpen={form.layout.trim() !== ''}
             >
               <LayoutEditor
                 layout={form.layout}
                 options={form.options}
+                errors={layoutFieldErrors(allProblems)}
                 error={formErrors.layout}
                 onChange={(layout) => patch({ layout })}
               />
@@ -883,12 +891,13 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                     className="flex flex-col gap-1 rounded border border-border bg-surface p-1.5"
                   >
                     <div className="flex items-center gap-1">
-                      <Input
+                      <WorkbenchInput
                         size="sm"
                         placeholder="key"
                         value={option.key}
                         onValueChange={(key) => patchOption(index, { key })}
-                        classNames={{ input: 'font-mono text-[11px]', inputWrapper: 'h-7 min-h-7' }}
+                        dense
+                        classNames={{ input: 'font-mono text-[11px]' }}
                       />
                       <Select
                         size="sm"
@@ -919,33 +928,33 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                         }
                       />
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <Input
+                    <div className="grid grid-cols-3 gap-x-1.5 gap-y-2">
+                      <WorkbenchInput
                         size="sm"
                         label="default"
                         value={option.default}
                         onValueChange={(value) => patchOption(index, { default: value })}
                         isInvalid={formErrors[`options[${index}].default`] !== undefined}
                         errorMessage={formErrors[`options[${index}].default`]}
-                        classNames={{ input: 'text-[11px]', inputWrapper: 'h-7 min-h-7', label: FIELD_LABEL }}
+                        dense
                       />
-                      <Input
+                      <WorkbenchInput
                         size="sm"
                         label="zh"
                         value={option.labelZh}
                         onValueChange={(labelZh) => patchOption(index, { labelZh })}
-                        classNames={{ input: 'text-[11px]', inputWrapper: 'h-7 min-h-7', label: FIELD_LABEL }}
+                        dense
                       />
-                      <Input
+                      <WorkbenchInput
                         size="sm"
                         label="en"
                         value={option.labelEn}
                         onValueChange={(labelEn) => patchOption(index, { labelEn })}
-                        classNames={{ input: 'text-[11px]', inputWrapper: 'h-7 min-h-7', label: FIELD_LABEL }}
+                        dense
                       />
                     </div>
                     {option.type === 'select' && (
-                      <Input
+                      <WorkbenchInput
                         size="sm"
                         label="choices"
                         placeholder="a, b, c"
@@ -953,7 +962,7 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
                         onValueChange={(choices) => patchOption(index, { choices })}
                         isInvalid={formErrors[`options[${index}].choices`] !== undefined}
                         errorMessage={formErrors[`options[${index}].choices`]}
-                        classNames={{ input: 'text-[11px]', inputWrapper: 'h-7 min-h-7', label: FIELD_LABEL }}
+                        dense
                       />
                     )}
                   </div>
@@ -973,20 +982,26 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
 
           {/* right column: preview + bindings + AI + errors */}
           <div className="flex min-h-0 flex-col gap-2 overflow-y-auto border-l border-border p-3">
-            <Select
-              size="sm"
-              label={t('chart.workbench.previewDataset')}
-              aria-label={t('chart.workbench.previewDataset')}
-              selectedKeys={dataset !== '' ? [dataset] : []}
-              onSelectionChange={(keys) => setDataset(String(Array.from(keys)[0] ?? ''))}
-              classNames={{ trigger: 'h-8 min-h-8', value: 'text-xs', label: FIELD_LABEL }}
-            >
-              {dataFrames.map((frame) => (
-                <SelectItem key={frame.id} textValue={frame.name}>
-                  {frame.name}
-                </SelectItem>
-              ))}
-            </Select>
+            <div className="flex flex-col gap-1">
+              <span className={FIELD_LABEL}>{t('chart.workbench.previewDataset')}</span>
+              <Select
+                size="sm"
+                variant="bordered"
+                aria-label={t('chart.workbench.previewDataset')}
+                placeholder="—"
+                isDisabled={dataFrames.length === 0}
+                startContent={<Database className="h-3 w-3 shrink-0 text-muted" />}
+                selectedKeys={dataset !== '' ? [dataset] : []}
+                onSelectionChange={(keys) => setDataset(String(Array.from(keys)[0] ?? ''))}
+                classNames={{ trigger: 'h-8 min-h-8', value: 'text-xs' }}
+              >
+                {dataFrames.map((frame) => (
+                  <SelectItem key={frame.id} textValue={frame.name}>
+                    {frame.name}
+                  </SelectItem>
+                ))}
+              </Select>
+            </div>
 
             <BindingEditor
               form={form}
@@ -1043,6 +1058,11 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
               >
                 {t('chart.workbench.ai.generate')}
               </Button>
+              {aiRequest.trim() === '' && (
+                <p className={HINT}>
+                  {tOr('chart.workbench.ai.disabledHint', 'Describe the chart first')}
+                </p>
+              )}
               {aiMessage && <div className={ERROR_BOX}>{aiMessage}</div>}
               {aiProblems.length > 0 && (
                 <ul className="list-disc pl-4 text-[10px] text-danger">
@@ -1073,7 +1093,7 @@ function WorkbenchModal({ session }: { session: CustomChartWorkbenchSession }) {
           </div>
         </ModalBody>
         <ModalFooter className="gap-2">
-          <Button size="sm" variant="light" className="text-xs" onPress={requestClose}>
+          <Button size="sm" variant="bordered" className="text-xs" onPress={requestClose}>
             {t('chart.workbench.cancel')}
           </Button>
           <Button
@@ -1174,6 +1194,151 @@ function IconButton({
   )
 }
 
+/** Tiny icon-only button (reorder / duplicate / delete). */
+function IconAction({
+  icon,
+  label,
+  onPress,
+  disabled = false,
+  danger = false,
+}: {
+  icon: React.ReactNode
+  label: string
+  onPress: () => void
+  disabled?: boolean
+  danger?: boolean
+}) {
+  return (
+    <Button
+      isIconOnly
+      size="sm"
+      variant="light"
+      color={danger ? 'danger' : 'default'}
+      isDisabled={disabled}
+      className="h-6 w-6 min-w-0 shrink-0"
+      aria-label={label}
+      title={label}
+      onPress={onPress}
+    >
+      {icon}
+    </Button>
+  )
+}
+
+/**
+ * One trace card.
+ *
+ * The header states what the trace draws (`scatter · $x × $y0`) and carries the
+ * reorder/duplicate/delete actions; the body collapses so a many-trace chart
+ * stays scannable. A trace-level backend problem tints the card and prints its
+ * message above the fields.
+ */
+function TraceCard({
+  index,
+  total,
+  trace,
+  form,
+  errors,
+  jsonError,
+  onPatch,
+  onMove,
+  onDuplicate,
+  onDelete,
+}: {
+  index: number
+  total: number
+  trace: TraceForm
+  form: ManifestForm
+  errors: TraceErrorSet
+  jsonError?: string
+  onPatch: (next: Partial<TraceForm>) => void
+  onMove: (to: number) => void
+  onDuplicate: () => void
+  onDelete: () => void
+}) {
+  const { t } = useTranslation()
+  const tOr = (key: string, fallback: string) => optionalLabel((name) => t(name), key, fallback)
+  const [open, setOpen] = useState(true)
+
+  const summary = useMemo(
+    () => traceSummary(trace.type, parseTraceFields(trace.json).fields),
+    [trace.type, trace.json],
+  )
+  const hasError =
+    errors.trace !== undefined ||
+    errors.type !== undefined ||
+    errors.json !== undefined ||
+    jsonError !== undefined ||
+    Object.keys(errors.fields).length > 0
+
+  return (
+    <div
+      className={`flex flex-col rounded border bg-surface ${hasError ? 'border-danger/60' : 'border-border'}`}
+    >
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          className="h-6 w-6 min-w-0 shrink-0"
+          aria-label={summary}
+          aria-expanded={open}
+          onPress={() => setOpen(!open)}
+        >
+          {open ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </Button>
+        <span className="shrink-0 rounded bg-surface-elevated px-1 text-[10px] tabular-nums text-muted">
+          #{index + 1}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[11px]">{summary}</span>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <IconAction
+            icon={<ArrowUp className="h-3 w-3" />}
+            label={tOr('chart.workbench.moveUp', 'Move up')}
+            disabled={index === 0}
+            onPress={() => onMove(index - 1)}
+          />
+          <IconAction
+            icon={<ArrowDown className="h-3 w-3" />}
+            label={tOr('chart.workbench.moveDown', 'Move down')}
+            disabled={index === total - 1}
+            onPress={() => onMove(index + 1)}
+          />
+          <IconAction
+            icon={<Copy className="h-3 w-3" />}
+            label={tOr('chart.workbench.duplicateTrace', 'Duplicate trace')}
+            onPress={onDuplicate}
+          />
+          <IconAction
+            icon={<Trash2 className="h-3 w-3" />}
+            label={tOr('chart.workbench.deleteTrace', 'Delete trace')}
+            danger
+            onPress={onDelete}
+          />
+        </div>
+      </div>
+      {errors.trace !== undefined && (
+        <p className="px-2 pb-1 text-[10px] text-danger break-words">{errors.trace}</p>
+      )}
+      {open && (
+        <div className="border-t border-border p-1.5">
+          <TraceEditor
+            trace={trace}
+            form={form}
+            errors={errors}
+            error={jsonError}
+            onChange={onPatch}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Op-specific fields; only the keys the selected op accepts are rendered. */
 function TransformFields({
   transform,
@@ -1182,33 +1347,28 @@ function TransformFields({
   transform: TransformForm
   onChange: (next: Partial<TransformForm>) => void
 }) {
-  const cls = {
-    input: 'text-[11px]',
-    inputWrapper: 'h-7 min-h-7',
-    label: FIELD_LABEL,
-  }
   switch (transform.op) {
     case 'dropna':
       return (
-        <Input
+        <WorkbenchInput
           size="sm"
           label="slots"
           placeholder="x, y0"
           value={transform.slots}
           onValueChange={(slots) => onChange({ slots })}
-          classNames={cls}
+          dense
         />
       )
     case 'sort':
       return (
         <div className="flex items-end gap-1.5">
-          <Input
+          <WorkbenchInput
             size="sm"
             label="by"
             placeholder="y0"
             value={transform.by}
             onValueChange={(by) => onChange({ by })}
-            classNames={cls}
+            dense
           />
           <Checkbox
             size="sm"
@@ -1222,13 +1382,13 @@ function TransformFields({
     case 'limit':
       return (
         <div className="flex items-end gap-1.5">
-          <Input
+          <WorkbenchInput
             size="sm"
             label="count"
             type="number"
             value={transform.count}
             onValueChange={(count) => onChange({ count })}
-            classNames={cls}
+            dense
           />
           <Select
             size="sm"
@@ -1246,69 +1406,69 @@ function TransformFields({
       )
     case 'group_agg':
       return (
-        <div className="grid grid-cols-2 gap-1.5">
-          <Input
+        <div className="grid grid-cols-2 gap-x-1.5 gap-y-2">
+          <WorkbenchInput
             size="sm"
             label="groupBy"
             placeholder="x, color"
             value={transform.groupBy}
             onValueChange={(groupBy) => onChange({ groupBy })}
-            classNames={cls}
+            dense
           />
-          <Input
+          <WorkbenchInput
             size="sm"
             label="field"
             value={transform.field}
             onValueChange={(field) => onChange({ field })}
-            classNames={cls}
+            dense
           />
           <AggSelect value={transform.agg} onChange={(agg) => onChange({ agg })} />
-          <Input
+          <WorkbenchInput
             size="sm"
             label="as"
             value={transform.as}
             onValueChange={(as) => onChange({ as })}
-            classNames={cls}
+            dense
           />
         </div>
       )
     case 'cumulate':
       return (
-        <div className="grid grid-cols-2 gap-1.5">
-          <Input
+        <div className="grid grid-cols-2 gap-x-1.5 gap-y-2">
+          <WorkbenchInput
             size="sm"
             label="field"
             value={transform.field}
             onValueChange={(field) => onChange({ field })}
-            classNames={cls}
+            dense
           />
-          <Input
+          <WorkbenchInput
             size="sm"
             label="as"
             value={transform.as}
             onValueChange={(as) => onChange({ as })}
-            classNames={cls}
+            dense
           />
         </div>
       )
     case 'reduce':
     default:
       return (
-        <div className="grid grid-cols-3 gap-1.5">
-          <Input
+        <div className="grid grid-cols-3 gap-x-1.5 gap-y-2">
+          <WorkbenchInput
             size="sm"
             label="field"
             value={transform.field}
             onValueChange={(field) => onChange({ field })}
-            classNames={cls}
+            dense
           />
           <AggSelect value={transform.agg} onChange={(agg) => onChange({ agg })} />
-          <Input
+          <WorkbenchInput
             size="sm"
             label="as"
             value={transform.as}
             onValueChange={(as) => onChange({ as })}
-            classNames={cls}
+            dense
           />
         </div>
       )

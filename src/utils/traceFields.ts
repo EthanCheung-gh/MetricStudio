@@ -927,3 +927,340 @@ export function sameJsonValue(left: unknown, right: unknown): boolean {
   }
   return left === right
 }
+
+// ---------------------------------------------------------------------------
+// control metadata (colours, numbers, placeholders)
+// ---------------------------------------------------------------------------
+
+/** Fold a list index away: `gauge.steps[2].color` -> `gauge.steps[].color`. */
+export function canonicalStylePath(path: string): string {
+  return path.replace(/\[\d+\]/g, '[]')
+}
+
+/**
+ * Style leaves whose value is a colour (the backend reads them as such).
+ *
+ * `marker.color` acts as an array slot too; the swatch additionally hides for
+ * slots/lists (see `swatchColor`), so a `$x.values` colour list stays editable.
+ */
+export const COLOR_PATHS: readonly string[] = [
+  'line.color',
+  'marker.color',
+  'marker.line.color',
+  'error_x.color',
+  'error_y.color',
+  'node.color',
+  'link.color',
+  'gauge.bar.color',
+  'gauge.bgcolor',
+  'gauge.steps[].color',
+  'delta.increasing.color',
+  'delta.decreasing.color',
+  'title.font.color',
+  'number.font.color',
+]
+
+/** Layout keys that take a Plotly colour (same swatch, no style allowlist). */
+export const LAYOUT_COLOR_PATHS: readonly string[] = [
+  'polar.bgcolor',
+  'xaxis.gridcolor',
+  'yaxis.gridcolor',
+]
+
+export function isColorPath(path: string): boolean {
+  const canonical = canonicalStylePath(path)
+  return COLOR_PATHS.includes(canonical) || LAYOUT_COLOR_PATHS.includes(canonical)
+}
+
+export const DEFAULT_SWATCH_COLOR = '#3b82f6'
+
+const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
+
+/**
+ * Hex the colour swatch shows for `value`; `null` when it must not render.
+ *
+ * A slot (`$opt.brand`) or a list (`$x.values`) is not something a picker can
+ * represent, and writing a hex there would replace it, so the text control
+ * stays the only editor for those. Any other value seeds the picker: a hex as
+ * written, a named colour/`rgba()` with the default, so the swatch keeps
+ * working as "pick a literal hex".
+ */
+export function swatchColor(value: unknown): string | null {
+  if (isSlotString(value) || Array.isArray(value) || isRecord(value)) return null
+  if (typeof value === 'string' && HEX_COLOR_RE.test(value)) {
+    if (value.length === 4) {
+      return `#${value[1]}${value[1]}${value[2]}${value[2]}${value[3]}${value[3]}`.toLowerCase()
+    }
+    return value.toLowerCase()
+  }
+  return DEFAULT_SWATCH_COLOR
+}
+
+export interface NumberConstraints {
+  min?: number
+  max?: number
+  /** `any` lets the browser accept every decimal (Plotly does too). */
+  step: number | 'any'
+}
+
+/**
+ * Opacities are 0–1 in 0.05 steps; sizes/widths are whole numbers from 0.
+ * Anything else (a free value such as `delta.reference`) stays unrestricted so
+ * a legitimate negative or fractional literal is not blocked.
+ */
+const OPACITY_PATHS = ['opacity', 'marker.opacity', 'link.opacity', 'node.opacity']
+const WHOLE_NUMBER_PATHS = [
+  'width',
+  'line.width',
+  'marker.line.width',
+  'marker.size',
+  'container.pad',
+  'node.pad',
+  'node.thickness',
+  'gauge.thickness',
+  'gauge.bar.thickness',
+  'gauge.steps[].thickness',
+  'error_x.thickness',
+  'error_y.thickness',
+  'error_x.width',
+  'error_y.width',
+]
+const STEP_NUMBER_PATHS = ['margin.l', 'margin.r', 'margin.t', 'margin.b']
+const ANGLE_PATHS = ['xaxis.tickangle', 'yaxis.tickangle']
+
+export function numberConstraints(path: string): NumberConstraints {
+  const canonical = canonicalStylePath(path)
+  if (OPACITY_PATHS.includes(canonical)) return { min: 0, max: 1, step: 0.05 }
+  if (WHOLE_NUMBER_PATHS.includes(canonical)) return { min: 0, step: 1 }
+  if (STEP_NUMBER_PATHS.includes(canonical)) return { step: 1 }
+  if (canonical === 'legend.x' || canonical === 'legend.y') return { step: 0.01 }
+  if (ANGLE_PATHS.includes(canonical)) return { min: -180, max: 180, step: 1 }
+  return { step: 'any' }
+}
+
+/** `arrayStyle` leaves that are a single number when literal, not a list. */
+export const NUMERIC_ARRAY_PATHS: readonly string[] = ['marker.size', 'marker.opacity']
+
+export function isNumericArrayPath(path: string): boolean {
+  return NUMERIC_ARRAY_PATHS.includes(canonicalStylePath(path))
+}
+
+/** i18n suffix (`chart.workbench.placeholder.<kind>`) for a control's hint. */
+export type PlaceholderKind = 'opacity' | 'color' | 'hovertemplate' | 'number'
+
+export function placeholderKind(path: string, control: LeafControl): PlaceholderKind | null {
+  const canonical = canonicalStylePath(path)
+  if (canonical === 'opacity' || canonical === 'marker.opacity') return 'opacity'
+  if (isColorPath(path)) return 'color'
+  if (canonical === 'hovertemplate') return 'hovertemplate'
+  if (canonical === 'marker.size') return 'number'
+  if (control === 'styleNumber' || control === 'pair' || control === 'list') return 'number'
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// per-field validation
+// ---------------------------------------------------------------------------
+
+export interface ErrorLike {
+  path: string
+  message: string
+}
+
+/**
+ * Message for the control bound to `path`, tolerating the backend's own leaf
+ * granularity:
+ *
+ * - `xaxis.title` is reported at the object, the control writes `.text`;
+ * - `xaxis.range[0]` is reported per item, the control is the pair;
+ * - `gauge.steps[2].color` is reported per step row.
+ */
+export function errorAtPath(
+  errors: Readonly<Record<string, string>>,
+  path: string,
+): string | undefined {
+  const direct = errors[path]
+  if (direct !== undefined) return direct
+  if (path.endsWith('.text')) {
+    const parent = errors[path.slice(0, -'.text'.length)]
+    if (parent !== undefined) return parent
+  }
+  for (let index = 0; index < 10; index += 1) {
+    const item = errors[`${path}[${index}]`]
+    if (item !== undefined) return item
+  }
+  // A list control owns every item below it: `gauge.steps` is the only control
+  // for `gauge.steps[2].color`, so that message belongs on the steps field.
+  const childPrefix = `${path}[`
+  for (const [key, message] of Object.entries(errors)) {
+    if (key.startsWith(childPrefix)) return message
+  }
+  const withoutIndex = path.replace(/\[\d+\]$/, '')
+  if (withoutIndex !== path) {
+    const parent = errors[withoutIndex]
+    if (parent !== undefined) return parent
+  }
+  return undefined
+}
+
+export interface TraceErrorSet {
+  /** `traces[n]` itself (mutually exclusive keys, trace count, …). */
+  trace?: string
+  /** `traces[n].json`: the escape hatch's own parse/validation problem. */
+  json?: string
+  /** `traces[n].type`: highlights the type select. */
+  type?: string
+  /** Trace-local leaf path (`marker.color`, `gauge.steps[2].range[0]`). */
+  fields: Record<string, string>
+}
+
+const TRACE_PROBLEM_RE = /^traces\[(\d+)\](?:\.(.+))?$/
+
+/** Split the manifest-level problems down to one trace card. */
+export function traceErrors(problems: readonly ErrorLike[], index: number): TraceErrorSet {
+  const result: TraceErrorSet = { fields: {} }
+  for (const problem of problems) {
+    const match = TRACE_PROBLEM_RE.exec(problem.path)
+    if (match === null || Number(match[1]) !== index) continue
+    const leaf = match[2]
+    if (leaf === undefined) result.trace ??= problem.message
+    else if (leaf === 'json') result.json ??= problem.message
+    else if (leaf === 'type') result.type ??= problem.message
+    else result.fields[leaf] ??= problem.message
+  }
+  return result
+}
+
+/** Split the manifest-level problems down to `layout` paths (prefix stripped). */
+export function layoutFieldErrors(problems: readonly ErrorLike[]): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const problem of problems) {
+    if (problem.path !== 'layout' && !problem.path.startsWith('layout.')) continue
+    const leaf = problem.path === 'layout' ? '' : problem.path.slice('layout.'.length)
+    result[leaf] ??= problem.message
+  }
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// object / list editing
+// ---------------------------------------------------------------------------
+
+/** `gauge.steps` is capped by the backend at 10 entries. */
+export const MAX_GAUGE_STEPS = 10
+/** Default row an added step starts from (`{range: [lo, hi], color}`). */
+export const NEW_GAUGE_STEP = { range: [0, 0], color: DEFAULT_SWATCH_COLOR }
+
+/**
+ * Add the empty object a "+ line" action turns into a form block. Idempotent:
+ * an object that is already there is never overwritten (that would drop the
+ * keys the user filled in).
+ */
+export function addNestedObject(
+  fields: Record<string, unknown>,
+  path: string,
+): Record<string, unknown> {
+  const current = getPath(fields, path)
+  return isRecord(current) ? fields : setPath(fields, path, {})
+}
+
+/** Remove a whole object (`line`, `marker.line`, `gauge.axis`, …). */
+export function removeNestedObject(
+  fields: Record<string, unknown>,
+  path: string,
+): Record<string, unknown> {
+  return setPath(fields, path, undefined)
+}
+
+/**
+ * Append a `{range, color}` row to `gauge.steps`, capped at
+ * `MAX_GAUGE_STEPS`; a full list is returned unchanged (the add action is
+ * disabled at that point anyway).
+ */
+export function appendGaugeStep(steps: unknown): unknown[] {
+  const list = Array.isArray(steps) ? steps.filter(isRecord) : []
+  if (list.length >= MAX_GAUGE_STEPS) return list
+  return [...list, { range: [...NEW_GAUGE_STEP.range], color: NEW_GAUGE_STEP.color }]
+}
+
+// ---------------------------------------------------------------------------
+// trace card summary
+// ---------------------------------------------------------------------------
+
+/** One-line header summary: `scatter · $x × $y0`, `sankey · $a → $b`. */
+export function traceSummary(type: string, fields: Record<string, unknown>): string {
+  const slot = (key: string) => (typeof fields[key] === 'string' ? (fields[key] as string) : '')
+  if (type === 'indicator') {
+    const detail = slot('value') || slot('mode')
+    return detail === '' ? type : `${type} · ${detail}`
+  }
+  if (type === 'sankey') {
+    return `${type} · ${slot('source') || '—'} → ${slot('target') || '—'}`
+  }
+  if (isRecord(fields.segments)) {
+    const segment = fields.segments
+    const part = (key: string) => {
+      const value = segment[key]
+      return typeof value === 'string' ? value : '—'
+    }
+    return `${type} · ${part('x')} ${part('from')} → ${part('to')}`
+  }
+  const x = slot('x') || '—'
+  const y = slot('y')
+  return y === '' ? `${type} · ${x}` : `${type} · ${x} × ${y}`
+}
+
+// ---------------------------------------------------------------------------
+// layout: the full core set
+// ---------------------------------------------------------------------------
+
+/**
+ * Every layout control the form always renders, as a path into `layout`.
+ *
+ * The controls read these paths but never write one until it changes, so a
+ * fresh manifest keeps `layout: ''` (see `layoutLeafValue`, which turns a
+ * cleared control into a delete instead of `""`/`0`). `xaxis.title.text` is
+ * the leaf because Plotly accepts both a bare string and `{text}`.
+ */
+export const LAYOUT_FIELD_PATHS = [
+  'showlegend',
+  'barmode',
+  'hovermode',
+  'title.text',
+  'margin.l',
+  'margin.r',
+  'margin.t',
+  'margin.b',
+  'legend.orientation',
+  'legend.x',
+  'legend.y',
+  'polar.bgcolor',
+  'xaxis.title.text',
+  'xaxis.type',
+  'xaxis.showgrid',
+  'xaxis.gridcolor',
+  'xaxis.tickangle',
+  'xaxis.range',
+  'yaxis.title.text',
+  'yaxis.type',
+  'yaxis.showgrid',
+  'yaxis.gridcolor',
+  'yaxis.tickangle',
+  'yaxis.range',
+] as const
+
+/** Blank input -> delete the key; anything else commits as typed. */
+export function layoutLeafValue(value: unknown): unknown {
+  if (value === undefined || value === null || value === '') return undefined
+  return value
+}
+
+/**
+ * A range (`xaxis.range`) with both ends blank is no range at all: delete it
+ * rather than write `["", ""]`, which Plotly would read as two empty bounds.
+ */
+export function layoutRangeValue(lo: unknown, hi: unknown): unknown[] | undefined {
+  const blank = (value: unknown) => value === undefined || value === null || value === ''
+  if (blank(lo) && blank(hi)) return undefined
+  return [lo ?? '', hi ?? '']
+}

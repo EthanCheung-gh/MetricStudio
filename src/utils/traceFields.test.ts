@@ -10,27 +10,45 @@ import lollipopRaw from '../../examples/charts/lollipop.json?raw'
 import seriesLineRaw from '../../examples/charts/series-line.json?raw'
 import { emptyManifest, type ManifestForm } from '@/utils/manifestForm'
 import {
+  addNestedObject,
+  appendGaugeStep,
   arrayValueSlots,
   availableSlots,
   dataKeysFor,
+  DEFAULT_SWATCH_COLOR,
+  errorAtPath,
   fieldsToSegments,
   formToLayout,
   formToTrace,
+  getPath,
   isApplicableKey,
+  isColorPath,
+  isNumericArrayPath,
   labelSlots,
+  LAYOUT_FIELD_PATHS,
+  layoutFieldErrors,
+  layoutLeafValue,
+  layoutRangeValue,
   layoutToForm,
+  MAX_GAUGE_STEPS,
+  numberConstraints,
   optionSlots,
   optionalLabel,
   parseLayoutFields,
   parseLiteralText,
   parseTraceFields,
+  placeholderKind,
   readSegments,
+  removeNestedObject,
   sameJsonValue,
   serializeLayoutFields,
   serializeTraceFields,
   setPath,
+  swatchColor,
   switchTraceType,
   titleText,
+  traceErrors,
+  traceSummary,
   traceToForm,
   unrepresentedLayoutKeys,
   unrepresentedTraceKeys,
@@ -460,5 +478,257 @@ describe('helpers', () => {
   it('falls back to plain text for a section heading the locale lacks', () => {
     expect(optionalLabel((key) => key, 'chart.workbench.trace.data', 'Data')).toBe('Data')
     expect(optionalLabel(() => '数据', 'chart.workbench.trace.data', 'Data')).toBe('数据')
+  })
+})
+
+describe('control metadata', () => {
+  it('recognises every colour-valued style path, indexes and all', () => {
+    for (const path of [
+      'line.color',
+      'marker.color',
+      'marker.line.color',
+      'error_x.color',
+      'error_y.color',
+      'node.color',
+      'link.color',
+      'gauge.bar.color',
+      'gauge.bgcolor',
+      'delta.increasing.color',
+      'delta.decreasing.color',
+      'title.font.color',
+      'number.font.color',
+    ]) {
+      expect(isColorPath(path), path).toBe(true)
+    }
+    // A step is indexed in the manifest but one row per control.
+    expect(isColorPath('gauge.steps[0].color')).toBe(true)
+    expect(isColorPath('gauge.steps[2].color')).toBe(true)
+    // Layout colours take the same swatch.
+    expect(isColorPath('polar.bgcolor')).toBe(true)
+    expect(isColorPath('xaxis.gridcolor')).toBe(true)
+    expect(isColorPath('line.width')).toBe(false)
+    expect(isColorPath('marker.colorway')).toBe(false)
+  })
+
+  it('only offers a swatch for a literal colour', () => {
+    // A slot or a list is not something a picker can write back.
+    expect(swatchColor('$opt.brand')).toBeNull()
+    expect(swatchColor('$x.values')).toBeNull()
+    expect(swatchColor(['#fff', '#000'])).toBeNull()
+    expect(swatchColor({ color: '#fff' })).toBeNull()
+    expect(swatchColor('#FFF')).toBe('#ffffff')
+    expect(swatchColor('#abc')).toBe('#aabbcc')
+    expect(swatchColor(undefined)).toBe(DEFAULT_SWATCH_COLOR)
+    expect(swatchColor('red')).toBe(DEFAULT_SWATCH_COLOR)
+  })
+
+  it('gives numeric leaves sane bounds', () => {
+    expect(numberConstraints('opacity')).toEqual({ min: 0, max: 1, step: 0.05 })
+    expect(numberConstraints('marker.opacity')).toEqual({ min: 0, max: 1, step: 0.05 })
+    for (const path of [
+      'width',
+      'line.width',
+      'marker.size',
+      'node.pad',
+      'node.thickness',
+      'gauge.thickness',
+      'gauge.bar.thickness',
+      'error_x.thickness',
+      'error_y.width',
+    ]) {
+      expect(numberConstraints(path), path).toEqual({ min: 0, step: 1 })
+    }
+    expect(numberConstraints('margin.t')).toEqual({ step: 1 })
+    expect(numberConstraints('xaxis.tickangle')).toEqual({ min: -180, max: 180, step: 1 })
+    // Free values keep every literal (a negative delta.reference is valid).
+    expect(numberConstraints('delta.reference')).toEqual({ step: 'any' })
+    expect(numberConstraints('line.smoothing')).toEqual({ step: 'any' })
+  })
+
+  it('suggests a placeholder for the common inputs', () => {
+    expect(placeholderKind('opacity', 'styleNumber')).toBe('opacity')
+    expect(placeholderKind('marker.opacity', 'arrayStyle')).toBe('opacity')
+    expect(placeholderKind('line.color', 'style')).toBe('color')
+    expect(placeholderKind('gauge.steps[0].color', 'style')).toBe('color')
+    expect(placeholderKind('hovertemplate', 'style')).toBe('hovertemplate')
+    expect(placeholderKind('width', 'styleNumber')).toBe('number')
+    expect(placeholderKind('marker.size', 'arrayStyle')).toBe('number')
+    expect(placeholderKind('name', 'text')).toBeNull()
+  })
+
+  it('treats an array slot with a numeric literal as a number input', () => {
+    expect(isNumericArrayPath('marker.size')).toBe(true)
+    expect(isNumericArrayPath('marker.opacity')).toBe(true)
+    expect(isNumericArrayPath('marker.color')).toBe(false)
+  })
+})
+
+describe('nested object editing', () => {
+  it('adds an empty object once and removes the whole object again', () => {
+    expect(addNestedObject({}, 'marker.line')).toEqual({ marker: { line: {} } })
+    // Existing fields are never overwritten by a second "add".
+    const filled = { marker: { line: { color: '#fff' } } }
+    expect(addNestedObject(filled, 'marker.line')).toBe(filled)
+    expect(removeNestedObject(addNestedObject({}, 'marker.line'), 'marker.line')).toEqual({})
+    // Removing the last child prunes the empty parents too.
+    expect(removeNestedObject({ marker: { line: {} } }, 'marker.line')).toEqual({})
+  })
+
+  it('appends a gauge step row and caps the list at ten', () => {
+    expect(appendGaugeStep(undefined)).toEqual([
+      { range: [0, 0], color: DEFAULT_SWATCH_COLOR },
+    ])
+    const two = appendGaugeStep([{ range: [0, 1], color: '#fff' }])
+    expect(two).toHaveLength(2)
+    expect(two[1]).toEqual({ range: [0, 0], color: DEFAULT_SWATCH_COLOR })
+    // Appending must not alias the seed row into the manifest.
+    expect((two[1] as { range: number[] }).range).not.toBe(
+      (appendGaugeStep(undefined)[0] as { range: number[] }).range,
+    )
+    const full = Array.from({ length: MAX_GAUGE_STEPS }, () => ({ range: [0, 1] }))
+    expect(appendGaugeStep(full)).toHaveLength(MAX_GAUGE_STEPS)
+    expect(appendGaugeStep(full)).toEqual(full)
+  })
+
+  it('keeps hand-written step fields when a sibling is edited', () => {
+    const steps = [{ range: [0, 1], color: 'red', label: 'x' }]
+    const edited = setPath({ gauge: { steps } }, 'gauge.steps', [
+      { ...steps[0], color: '#111827' },
+    ])
+    expect(edited).toEqual({
+      gauge: { steps: [{ range: [0, 1], color: '#111827', label: 'x' }] },
+    })
+  })
+})
+
+describe('trace card summary', () => {
+  it('names what the trace draws', () => {
+    expect(traceSummary('scatter', { x: '$x', y: '$y0' })).toBe('scatter · $x × $y0')
+    expect(traceSummary('bar', { x: '$x', y: '$y1' })).toBe('bar · $x × $y1')
+    expect(traceSummary('scatter', { segments: { x: '$x', from: '$y0', to: '$y1' } })).toBe(
+      'scatter · $x $y0 → $y1',
+    )
+    expect(traceSummary('indicator', { value: '$total' })).toBe('indicator · $total')
+    expect(traceSummary('sankey', { source: '$source', target: '$target' })).toBe(
+      'sankey · $source → $target',
+    )
+    expect(traceSummary('scatter', {})).toBe('scatter · —')
+  })
+
+  it('summarises the shipped examples', () => {
+    expect(traceSummary('scatter', traceToForm(dumbbell.traces[0]).fields)).toBe(
+      'scatter · $x $y0 → $y1',
+    )
+    expect(traceSummary('scatter', traceToForm(dumbbell.traces[1]).fields)).toBe(
+      'scatter · $x × $y0',
+    )
+    expect(traceSummary('indicator', traceToForm(kpiGauge.traces[0]).fields)).toBe(
+      'indicator · $total',
+    )
+    expect(traceSummary('sankey', traceToForm(flowSankey.traces[0]).fields)).toBe(
+      'sankey · $source → $target',
+    )
+  })
+})
+
+describe('per-field validation', () => {
+  const problems = [
+    { path: 'traces[0]', message: 'mutually exclusive' },
+    { path: 'traces[0].json', message: 'bad json' },
+    { path: 'traces[0].type', message: 'bad type' },
+    { path: 'traces[1].marker.color', message: 'bad colour' },
+    { path: 'traces[1].gauge.steps[0].color', message: 'bad step' },
+    { path: 'layout.xaxis.title', message: 'bad title' },
+    { path: 'layout.margin.l', message: 'bad margin' },
+    { path: 'channels.x.types', message: 'bad types' },
+  ]
+
+  it('splits problems down to one trace', () => {
+    expect(traceErrors(problems, 0)).toEqual({
+      trace: 'mutually exclusive',
+      json: 'bad json',
+      type: 'bad type',
+      fields: {},
+    })
+    expect(traceErrors(problems, 1)).toEqual({
+      fields: {
+        'marker.color': 'bad colour',
+        'gauge.steps[0].color': 'bad step',
+      },
+    })
+    // Nothing for a trace the backend did not blame.
+    expect(traceErrors(problems, 2)).toEqual({ fields: {} })
+  })
+
+  it('strips the layout prefix and keeps a layout-level problem apart', () => {
+    expect(layoutFieldErrors(problems)).toEqual({
+      'xaxis.title': 'bad title',
+      'margin.l': 'bad margin',
+    })
+    expect(layoutFieldErrors([{ path: 'layout', message: 'must be an object' }])).toEqual({
+      '': 'must be an object',
+    })
+    // A channel problem stays a section-level dot.
+    expect(layoutFieldErrors(problems)['channels.x.types']).toBeUndefined()
+  })
+
+  it('finds the problem a control writes at a finer leaf', () => {
+    const errors = {
+      'xaxis.title': 'bad title',
+      'xaxis.range[1]': 'bad range',
+      'marker.color': 'bad colour',
+    }
+    // The title control writes `title.text`; the backend blames `title`.
+    expect(errorAtPath(errors, 'xaxis.title.text')).toBe('bad title')
+    // The pair control is the whole range; the backend blames one item.
+    expect(errorAtPath(errors, 'xaxis.range')).toBe('bad range')
+    expect(errorAtPath(errors, 'marker.color')).toBe('bad colour')
+    expect(errorAtPath(errors, 'marker.size')).toBeUndefined()
+    // The steps list is the only control for an indexed step problem.
+    expect(errorAtPath({ 'gauge.steps[2].color': 'bad step' }, 'gauge.steps')).toBe('bad step')
+  })
+})
+
+describe('layout core set', () => {
+  it('renders every core control without writing a key', () => {
+    const fresh = layoutToForm({})
+    expect(fresh.fields).toEqual({})
+    expect(serializeLayoutFields(fresh.fields)).toBe('')
+    for (const path of LAYOUT_FIELD_PATHS) {
+      expect(getPath(fresh.fields, path), path).toBeUndefined()
+    }
+    // Opening a fresh manifest must not mark it dirty.
+    expect(JSON.stringify(formToLayout(fresh))).toBe('{}')
+  })
+
+  it('surfaces the full set for a converted chart with empty axes', () => {
+    const converted = layoutToForm({ xaxis: {}, yaxis: {} })
+    expect(formToLayout(converted)).toEqual({ xaxis: {}, yaxis: {} })
+    // Explicitly-empty axes are not "unsupported keys" the notice should list.
+    expect(unrepresentedLayoutKeys(converted.fields)).toEqual([])
+    // …and the untouched defaults still read as absent.
+    expect(getPath(converted.fields, 'xaxis.title.text')).toBeUndefined()
+    expect(getPath(converted.fields, 'margin.l')).toBeUndefined()
+  })
+
+  it('deletes a key instead of writing an empty value', () => {
+    expect(layoutLeafValue('')).toBeUndefined()
+    expect(layoutLeafValue(undefined)).toBeUndefined()
+    // Falsy but meaningful values survive.
+    expect(layoutLeafValue(0)).toBe(0)
+    expect(layoutLeafValue(false)).toBe(false)
+    expect(layoutLeafValue('bottom')).toBe('bottom')
+
+    expect(
+      setPath({ xaxis: { title: { text: 'x' } } }, 'xaxis.title.text', layoutLeafValue('')),
+    ).toEqual({})
+    expect(setPath({ showlegend: false }, 'showlegend', layoutLeafValue(0))).toEqual({
+      showlegend: 0,
+    })
+
+    expect(layoutRangeValue('', '')).toBeUndefined()
+    expect(layoutRangeValue(undefined, undefined)).toBeUndefined()
+    expect(layoutRangeValue('', 5)).toEqual(['', 5])
+    expect(layoutRangeValue(0, 0)).toEqual([0, 0])
   })
 })

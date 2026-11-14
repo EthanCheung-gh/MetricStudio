@@ -70,23 +70,29 @@
 编辑方式：
 
 - 结构化表单：基础信息、通道、选项、算子（transforms）、轨迹（traces）、布局（layout）；
-- 每条 trace 有独立的子表单：轨迹类型下拉、数据槽下拉、按类型的样式对象、`segments` 子表单、`splitBy` 开关；
-- 整个 layout 也有表单：开关/标量顶层键，加上轴与图例；
+- 每条 trace 是一张卡片，卡片头上有序号、轨迹类型和一份内容摘要，右侧依次是「上移」「下移」「复制轨迹」「删除轨迹」（`chart.workbench.moveUp` / `moveDown` / `duplicateTrace` / `deleteTrace`）；卡片顺序就是清单里 `traces` 的顺序。卡片内部仍旧是「数据」「样式」「高级（JSON）」三块：轨迹类型下拉、取值控件、按类型的样式对象、`segments` 子表单、`splitBy` 开关；
+- 删掉最后一条 trace 后，轨迹区不会变成一块空面板，而是留一句提示（`chart.workbench.noTraces`：`还没有轨迹，至少添加一条才能出图`），点「添加轨迹」重新开始；
+- 整个 layout 也有表单：开关/标量顶层键，加上标题、边距、轴与图例；
 - 表单覆盖不到的键不会被丢掉，而是留在 JSON 里（见下一小节）。
 
 traces 的表单：
 
 - **轨迹类型**下拉（`chart.workbench.field.traceType`）只列后端白名单里的 9 种：`scatter` / `bar` / `box` / `violin` / `waterfall` / `funnel` / `indicator` / `histogram` / `sankey`（第 7 节）。
 - **数据槽**下拉（`chart.workbench.trace.data`）给 `x` / `y` / `z` / `labels` / `values` 选值（`indicator` 是 `value`，`sankey` 是 `source` / `target`），可选值是 `$x`、`$y0`…`$y4`、`$color`、`$size`、`$z`、`$error`、`$source`、`$target`、`$index`、`$count`，以及算子 `as` 产出的 `$<as>`。下拉只列**当前清单真正提供**的槽位：通道没声明、`yFields.mode` 不够（`range` 只给 `$y0` / `$y1`），或前置 `group_agg` / `reduce` 已经把列清掉时，对应槽位根本不会出现（第 4、5 节）。
+- **取值方式**（`chart.workbench.valueMode.label`）：每个取值控件都能在「槽位」和「字面量」之间切（`valueMode.slot` / `valueMode.literal`）——槽位那边就是上面这份清单，字面量那边是直接写死的值。字面量只在后端接受字面量的位置提供：`segments` 的 `x` / `from` / `to` 只给槽位（后端会拒绝那里的字面量，第 7 节），其它位置切换后由一个自由输入框接管。
 - **样式**（`chart.workbench.trace.style`）按 trace 类型给出对应的嵌套样式对象，键集合就是第 7 节的白名单：`line`、`marker`（含 `marker.line`）、`error_x` / `error_y`；`indicator` 额外给 `title` / `number` / `gauge` / `delta`；`sankey` 额外给 `node` / `link`。
+- **嵌套样式块是按需添加的**：缺哪个对象就显示一个「添加 `line`」「添加 `marker`」这样的按钮（`chart.workbench.add`），点开才有字段，块底部可以把整块移除（`chart.workbench.remove`）——表单不会预先铺一堆空对象，所以没碰过的键在清单里继续保持不存在。`gauge.steps` 是列表，逐条加 `{range, color}`，最多 10 项，加满后「添加」按钮直接禁用（后端仍会报 `traces[0].gauge.steps: at most 10 steps are allowed`，第 7 节）。
+- **输入控件按值类型给**：颜色字段旁边有取色块，但**文本框仍然是权威输入**——点色块只是把 hex 填回同一个值，`$opt.<key>` 和 `$y0.values` 这类槽位照样只能在文本框里写，不会被色块覆盖；`opacity`、尺寸、宽度这类数值字段是数字输入并带上下界（`opacity` 就是 0–1）；`opacity`、颜色、`hovertemplate` 还带占位提示（`chart.workbench.placeholder.opacity` / `.color` / `.hovertemplate`），提示里给的就是期望的写法。
 - **`segments` 子表单**（`chart.workbench.segments`）只在 `scatter` 上出现，编辑 `x` / `from` / `to` 三个数据槽和 `horizontal` 开关；用它的 trace 只产出 layout 线段，不产出 trace（第 7 节）。
 - **`splitBy` 开关**（`chart.workbench.splitBy`）勾选即写入 `"splitBy": "$color"`；只在 `scatter` / `bar` / `box` / `violin` / `histogram` / `funnel` 上可用，且要求清单声明 `color` 通道（第 7 节）。
 
 layout 的表单（`chart.workbench.layout.axis` / `chart.workbench.layout.legend`）：
 
+- 清单里没有 `layout` 也照样给完整的一套核心键：`showlegend`、`barmode`、`hovermode`、`margin`（`chart.workbench.layout.margin`）、`title`（`chart.workbench.layout.title`）、`polar`，加上轴与图例——不需要先「创建 layout」才能填第一项；
 - 开关与标量：`showlegend`、`barmode`、`hovermode`；
 - 对象：`margin`、`title`、`legend`、`polar`；
 - `xaxis` / `yaxis` 各给 `title`、`type`、`range`、`showgrid`、`gridcolor`、`tickangle`；
+- **清空一个输入等于删掉那个键**：文本框留空后这个键就从对象里消失，而不是留下一个空字符串（要在 `title.text` 里表达空字符串，就在 JSON 面板里写 `""`）；
 - 表单只覆盖第 8 节那九键之内的内容；`xaxis.automargin`、`xaxis.tickformat`、`legend.orientation` 这类嵌套键属于 JSON（见下一小节）。
 
 通道表单里，未启用的通道不会写入清单；带必填标记的通道缺少绑定时图表无法渲染（`chart.workbench.hint.channels`）。
@@ -97,9 +103,11 @@ layout 的表单（`chart.workbench.layout.axis` / `chart.workbench.layout.legen
 - 只有点「校验并保存」才会**写入** `~/.metricstudio/charts/{id}.json`；预览本身从不落盘。
 - 保存到已存在的 `id` 时会先弹出覆盖确认（`chart.workbench.overwrite`）。
 - 预览绑定会在 manifest 的通道或 `yFields` mode 变化后自动重新补齐（已有选择不覆盖），应用 AI 草稿后同样会重新播种；图为空表示还需要补绑定，界面用 `chart.workbench.previewEmpty` 提示。
+- 校验错误有两处呈现：右下角的汇总列表（`chart.workbench.errors`，每条带 `traces[0].line.color` 这样的路径，出错的段落标题旁也会亮点），以及**出错的那个控件本身被描红**——不用对着路径去数「第几个输入框」。所以第二个 trace 的 `y` 写坏了会直接在第二个 trace 卡片的 `y` 控件上显形。
 
 AI 草稿的约定：
 
+- 请求框是空的，「生成」就是禁用的（`chart.workbench.ai.disabledHint`：`先输入一句描述再生成`），不会发出一个空 prompt 让后端去猜。
 - 后端返回 **502**（模型/服务不可用）时，工作台提供前往设置页的入口，同时保留并显示后端的原始错误消息（`chart.workbench.ai.failed`）。
 - 后端返回 **422**（草稿校验失败）时，草稿会被填入工作台，连同校验错误一起供修改，不覆盖已有文件。
 - 编辑已有 manifest 时 `id` 锁定；AI 草稿也不会改掉这个锁定 id。
