@@ -29,15 +29,17 @@
 2. 按编码绑定通道，建立「槽位 → 数据列」映射；
 3. 按顺序执行 `transforms`（整张表执行一次，分面之前）；
 4. 如果声明了 `facet` 通道或 `facetBy: "$color"`，按取值拆成子图格子；
-5. 在每个格子内解析槽位并生成 Plotly traces（`segments` 生成嵌套数组，`splitBy` 按颜色值展开）；
+5. 在每个格子内解析槽位并生成 Plotly traces（`splitBy` 按颜色值展开）；`segments` trace **不产生 trace**，只按行累积 layout 线段（见第 7 节）；
 6. 把清单的 `layout` 合并到应用基础 layout，并为分面写入 `grid` 与各格坐标轴；
-7. 返回 figure；`NaN` 转为 `null`，日期/时间转为 ISO 字符串。
+7. 渲染器把 `segments` 线段与分面 annotation 追加到 layout 末尾（清单自己不能声明 `shapes` / `annotations`）；类目轴上 `segments` 的位置在这一步统一换算成标签下标；
+8. 返回 figure；`NaN` 转为 `null`，日期/时间转为 ISO 字符串。
 
 需要特别说明的边界：
 
-- **每个格子内，除 `splitBy` 外，一条 trace 模板生成一条 trace**。`splitBy` 会按颜色值展开；`color`、`size`、`z`、`error` 不会自动复制 trace。只有 `facet` / `facetBy` 会拆子图；`source` / `target` 现在由 `sankey` 消费。
+- **每个格子内，除 `splitBy` / `segments` 外，一条 trace 模板生成一条 trace**。`splitBy` 会按颜色值展开；`segments` 一条 trace 都不生成（只出 layout 线段）；`color`、`size`、`z`、`error` 不会自动复制 trace。只有 `facet` / `facetBy` 会拆子图；`source` / `target` 现在由 `sankey` 消费。
 - `facet` 通道会产生子图网格；`source` / `target` 作为 sankey 端点通道使用（见第 4、7 节）。
 - 清单不执行 Plotly 表达式；trace 里只允许单个 `$` 槽位字符串或字面量。需要「一行画两段」时用 `segments`（见第 7 节）。
+- `segments` 走的是 layout 路线：线段是 `layout.shapes`，不是 trace。所以只含 `segments` 的清单会正常返回 `{"data": [], "layout": {..., "shapes": [...]}}`，这不是「配置缺失」的空图。
 
 ## 2. 安装、导入与重载
 
@@ -50,12 +52,41 @@
 | 删除 | 管理对话框每行的删除按钮，确认后删除磁盘文件 |
 
 - 目录不存在时，首次保存/导入会自动创建；手工放置前请先自行创建目录。
-- 单个文件上限 **256 KB**；读取超限会进入 invalid 列表，保存超限会直接报错。
+- 单个文件上限 **256 KB**；读取、工作台预览和保存共用同一套校验与上限，超限会进入 invalid 列表或直接报错。
 - 每个 `*.json` 独立解析。一个文件坏掉不会影响其他文件，也不会让列表接口失败。
 - 「导入 JSON」先在浏览器里 `JSON.parse`，再 POST 给后端校验。校验失败不会写文件，错误显示为 `导入失败：<后端 detail>`；后端把所有问题用 `; ` 连接在同一行 `detail` 里。
 - 导入同一个 `id` 会覆盖已有文件（接口返回 `replaced: true`）；写入的是规范化后的 pretty JSON，并采用原子替换。
 - 无效文件仍保留在磁盘上，在管理对话框的「清单无效」区域按 `file` + `errors[]` 展示；它们**不会出现在图表类型列表里，也不能被选择**。
 - 后端的清单缓存按目录内文件的 `mtime` / `size` 失效；应用不会监听文件系统，手工编辑后请点「重新加载」刷新管理列表。
+
+### 工作台
+
+「自定义图表工作台」是全屏编辑表单，带实时预览、校验错误和 AI 生成草稿。入口：
+
+- 「管理自定义图表」→「新建自定义图表」或某一行的「编辑」；
+- 图表类型选择器 →「管理自定义图表」。
+
+编辑方式：
+
+- 结构化表单：基础信息、通道、选项、算子（transforms）；
+- JSON 编辑：traces 与 layout。
+
+通道表单里，未启用的通道不会写入清单；带必填标记的通道缺少绑定时图表无法渲染（`chart.workbench.hint.channels`）。
+
+预览与保存：
+
+- 预览调用 `/custom/preview`，会先用与保存相同的校验（包括 256 KB 上限）校验未保存的 manifest；校验失败返回 400 和逐项错误，不会写文件。
+- 只有点「校验并保存」才会**写入** `~/.metricstudio/charts/{id}.json`；预览本身从不落盘。
+- 保存到已存在的 `id` 时会先弹出覆盖确认（`chart.workbench.overwrite`）。
+- 预览绑定会在 manifest 的通道或 `yFields` mode 变化后自动重新补齐（已有选择不覆盖），应用 AI 草稿后同样会重新播种；图为空表示还需要补绑定，界面用 `chart.workbench.previewEmpty` 提示。
+
+AI 草稿的约定：
+
+- 后端返回 **502**（模型/服务不可用）时，工作台提供前往设置页的入口，同时保留并显示后端的原始错误消息（`chart.workbench.ai.failed`）。
+- 后端返回 **422**（草稿校验失败）时，草稿会被填入工作台，连同校验错误一起供修改，不覆盖已有文件。
+- 编辑已有 manifest 时 `id` 锁定；AI 草稿也不会改掉这个锁定 id。
+
+需要新 id 时用「另存为副本」或新建；编辑已有 manifest 时不能在原文件上改名。
 
 ## 3. 清单字段
 
@@ -364,7 +395,7 @@ ternary, waterfall, funnel, table, gantt, candlestick, surface, timeline, gauge
 
 | `type` | 常见数据键 | 说明 |
 | --- | --- | --- |
-| `scatter` | `x`、`y` 或 `segments` | 点/线；`mode` 控制 |
+| `scatter` | `x`、`y` 或 `segments` | 点/线；`mode` 控制。写 `segments` 时只产出 layout 线段，`mode` 被忽略 |
 | `bar` | `x`、`y` | 柱/条；`orientation: "h"` 时 `x` 为数值、`y` 为类目 |
 | `box` | `y`（`x` 可选） | 箱线 |
 | `violin` | `y`（`x` 可选） | 小提琴 |
@@ -443,7 +474,7 @@ link:        color, line
 
 ### segments
 
-`segments` 是「一行 → 一条两点线段」的语法，只用于 `scatter`：
+`segments` 是「一行 → 一条两点线段」的语法，只用于 `scatter`。它**不产生 trace**：每个数据行生成一条 `layout.shapes` 线段。
 
 ```text
 {
@@ -456,27 +487,65 @@ link:        color, line
 }
 ```
 
-- 只能出现在 `type: "scatter"` 的 trace 上；`mode` 必须包含 `lines`（例如 `lines` 或 `lines+markers`）。
+- 只能出现在 `type: "scatter"` 的 trace 上。`mode` 可以照旧写上，但**会被忽略**（shape 没有 mode）；新清单不必写它。
 - `segments` 与顶层 `x` / `y` 互斥；同时出现会报 `'segments' and 'x' are mutually exclusive`（或 `'y'`）。
 - `x` / `from` / `to` 必填，值必须是数据槽；`horizontal` 可选，默认 `false`，必须是布尔值。
-- 渲染结果是一行一个嵌套数组：
-  - 默认：`x = [[xi, xi], ...]`，`y = [[from_i, to_i], ...]`；
-  - `horizontal: true`：`x = [[from_i, to_i], ...]`，`y = [[xi, xi], ...]`。
-- 某一行的 `x` / `from` / `to` 只要有一个缺失或 `NaN`，整条线段被丢弃（不会生成 `[None, value]` 的半截线）。
 - `segments` 的槽位只能是数据槽，不能是 `$opt.*` 或 `*.label`。
 
-仓库里的哑铃图第一条 trace 就是完整用法：
+渲染结果：每行一条 layout shape
+
+```text
+{
+  "type": "line",
+  "x0": i,
+  "x1": i,
+  "y0": from,
+  "y1": to,
+  "xref": "x",
+  "yref": "y",
+  "line": { "color": ..., "width": ..., "dash": ... },
+  "layer": "below"
+}
+```
+
+- 默认：`x0 == x1 ==` 该行的 `x` 位置，`y0` / `y1` 是 `from` / `to`。
+- `horizontal: true`：角色互换——`y0 == y1 ==` 该行的 `x` 位置，`x0` / `x1` 是 `from` / `to`。
+- 分面时使用该格的轴引用：第一格 `x` / `y`，之后 `x2` / `y2`、`x3` / `y3`……
+- `line` 只取 trace 的 `line` 样式里的 `color` / `width` / `dash`；没写就是空对象，交给 Plotly 默认。
+- `layer: "below"`：线段画在 marker / bar trace 之下，端点不会被线盖住。
+- 任何一行的 `x` / `from` / `to` 缺失或 `NaN`，整条线段被丢弃（不会生成 `[None, value]` 的半截线）。
+- **没有图例项、没有 hover**：线段不是 trace，所以不会出现在图例里，`name` / `hovertemplate` / `marker` 对它都无效。图例名、hover 与端点样式请放在同轴的 marker trace 上。
+- `layout.shapes` 由渲染器拥有：它在清单 `layout` 合并**之后**追加，基础 layout 里已有的 `shapes` 会保留并排在前面；清单自己不能声明 `shapes`（见第 8 节）。
+
+#### 类目轴：位置改用标签下标
+
+shape 的坐标必须是数值，而 Plotly 的类目轴并不把「类目名」当作数值位置，所以渲染器对**非数值**的 segments 轴做一次统一换位：
+
+- 轴上出现过的类目按**首次出现**顺序编号 `0..n-1`；shape 的 `x0` / `x1`（`horizontal: true` 时是 `y0` / `y1`）写这个下标。
+- 同一根轴上的**其他 trace**（例如哑铃图的两个 marker trace）的坐标也一起换成同一组下标；否则线段和端点会落在不同的坐标系里。
+- 轴本身写成 `type: "linear"` + `tickmode: "array"` + `tickvals: [0, 1, …]` + `ticktext: ["A", "B", …]`：位置是数字，用户看到的仍是类目名。
+- 数值轴（`quantitative`）保持原始值：`x0` / `x1` 直接写数据里的数，不加 `tickvals` / `ticktext`。
+- 分面按格独立编号：每格只给自己出现过的类目编号，`xaxis2` / `yaxis2` 等各自拿自己的 `tickvals` / `ticktext`。
+- 布尔列按类目处理；只有一个类目且不分面时不换位（没有位置冲突，保留原标签更易读）。
+
+这就是哑铃图能读对的原因：**类目在轴上（`ticktext`），数值在数值轴上（shape 的 `y0` / `y1` 与 marker 的 `y`）**。旧的实现把两个端点写成嵌套数组塞进一条 `scatter`，而嵌套数组只有 `multicategory` 轴才画得出来：Plotly 会把两个端点摆到两个类目槽位上，把同一根轴上的其他 trace 一起压乱；强制成线性轴又会直接丢掉连接线。所以现在改成 layout shape。
+
+写法建议：
+
+- 连接线只负责「连线」：`line.color` / `line.width` 用 `$opt` 暴露成选项即可，不要把样式、图例名、hover 放在 segments trace 上（它都不生效）。
+- 端点、图例与 hover 放在 marker trace 上（`name: "$y0.label"`、`marker.size` / `marker.color`）。
+- 经典哑铃形状：**类目 `x` + 两个数值 `yFields`**（`mode: "range"`），segments 的 `from` / `to` 分别取 `$y0` / `$y1`。
+
+仓库里的哑铃图第一条 trace 就是完整用法（`mode` 保留只为向后兼容，可省略）：
 
 ```text
 {
   "type": "scatter",
-  "mode": "lines",
   "segments": {
     "x": "$x",
     "from": "$y0",
     "to": "$y1"
   },
-  "showlegend": false,
   "line": {
     "color": "$opt.connector",
     "width": "$opt.width"
@@ -516,7 +585,7 @@ link:        color, line
 - `marker.color` = `palette[series_index % len(palette)]`；`scatter` 且解析后的 `mode` 包含 `lines` 时，`line.color` 也设为同一颜色。
 - 调色板按系列序号循环取色；默认是内置 builder 同款 10 色：`#3b82f6`、`#ef4444`、`#10b981`、`#f59e0b`、`#8b5cf6`、`#ec4899`、`#06b6d4`、`#84cc16`、`#f97316`、`#6366f1`。`render(..., palette=[...])` 可以覆盖调色板，但清单本身没有 palette 字段。
 - 调色板会覆盖模板里的**标量** `marker.color` / `line.color`；数组值不会被调色板覆盖。`marker.color` 可以写字面量数组或 `$<slot>.values`；`line.color` 的数组只能是**字面量数组**（会通过校验并渲染），不能是 `$<slot>.values`（该路径不在第 5 节的 7 个数组路径内）。注意 `line.color` 的字面量数组会原样写到每个系列上，并抑制调色板对 line 的着色。
-- 数组样式槽按系列各自的行子集解析；`segments` 也按系列生成各自的嵌套数组。
+- 数组样式槽按系列各自的行子集解析；`segments` 也按系列分别生成 layout shapes（每个系列只对自己那些行出线段）。注意连接线本身不进图例，所以 `splitBy` + `segments` 的图例项只能来自同系列的 marker / bar trace。
 - `cumulate` 在拆分**之前**对整张表执行，所以每个系列的累计值都包含其他系列的行；如果需要按系列累计，先用 `group_agg` 汇总到系列粒度，再设计 split 后的 trace。
 
 ### facet 与 facetBy
@@ -632,6 +701,8 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 - 清单 `layout` 会**浅合并**到应用基础 layout：同名的顶层键整体替换。比如清单写了 `margin`，基础 layout 的 `margin` 会被整体替换，而不是逐键深合并。
 - 分面时 `grid` 由渲染器写入；清单不能声明或删除它（`grid` 不在上面的顶层白名单里）。每一格的 `xaxis` / `yaxis` 会复制合并后的轴样式，`xaxis.title` 改为该格的值。
 - `annotations` 也由渲染器拥有：清单不能设置或删除它；分面值超过 24 个时渲染器会追加一条 `"Showing 24 of N facet values"` annotation。
+- `shapes` 同样由渲染器拥有：清单不能声明它（不在上面的顶层白名单里，会报 `layout.shapes: is not an allowed layout key (allowed: ...)`）。`segments` 线段在清单 `layout` 合并**之后**追加到 `layout.shapes`；基础 layout 里已有的 `shapes`（例如画在图上的参考线）会保留并排在前面，且不会写回调用方传入的 `base_layout`。
+- 类目轴的换位（`type` / `tickmode` / `tickvals` / `ticktext`）也发生在合并之后、由渲染器写入；清单对同一根 `xaxis` / `yaxis` 的样式（`gridcolor`、`title.font` 等）会保留，但不要自己写 `tickvals` / `ticktext` 去和类目轴抢。
 
 ## 9. options
 
@@ -668,9 +739,10 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 ### 10.1 哑铃图（dumbbell）
 
 - `x` 是类目，`yFields.mode: "range"` 提供 `$y0` / `$y1`；
-- 第一条 trace 用 `segments` 画连接线，后两条 `scatter` 画两个端点；
+- 第一条 trace 用 `segments` 画连接线（渲染成 `layout.shapes`，不进图例、没有 hover），后两条 `scatter` 画两个端点并负责图例名；
+- 类目 `x` 会被换位成标签下标，同一根轴上的两个 marker trace 一起换，轴用 `tickvals` / `ticktext` 显示类目名（见第 7 节）；
 - `dropna` + `sort` + `limit`，因为出现 `limit`，这张图不参与抽样；
-- `connector` / `width` 两个选项注入 `line.color` / `line.width`。
+- `connector` / `width` 两个选项注入连接线的 `line.color` / `line.width`。
 
 ```json
 {
@@ -1494,6 +1566,8 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 
 结果是空图（layout 仍在），不是「图表渲染出错」横幅。补齐编码即可。`group_agg` + facet 不在此列：它是上面的导入校验错误，不会走到渲染。`indicator` 的 `value` 行数不对、`sankey` 的 `source` / `target` / `values` 长度不一致，会抛 `ValueError` 并以 400 显示可操作错误，也不是空图。
 
+反过来，`{"data": [], "layout": {..., "shapes": [...]}}` **不一定是空图**：只含 `segments` 的清单本来就只产出 layout 线段，`data` 为空是正常的。判断方法是有没有 `layout.shapes` 以及 `segments` 是否被丢弃——整段没有任何 shape，通常是 `segments` 的 `x` / `from` / `to` 槽位没绑定，或每一行都缺了某个坐标。
+
 ### 未知 id
 
 项目/图表按 `id` 引用类型。打开一个引用了本机未安装的自定义图表时：
@@ -1537,7 +1611,6 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `traces[0].line.bogus: unsupported style key for line` | 嵌套样式键不在 `line` 白名单 | 只用 `color` / `width` / `dash` / `shape` / `smoothing` / `simplify` |
 | `traces[0]: 'segments' and 'x' are mutually exclusive` | `segments` 和 `x` / `y` 同时写了 | 二选一；线段只写 `segments` |
 | `traces[0].segments: only allowed on type 'scatter'` | 把 `segments` 写在 bar/box 等 trace 上 | 改成 `scatter` |
-| `traces[0].mode: segments requires a mode that includes 'lines' (for example 'lines' or 'lines+markers')` | `segments` 的 `mode` 不含 `lines` | 写 `lines` 或 `lines+markers` |
 | `traces[0].x[0]: slots inside literal arrays are not supported; use a single slot string` | 用了 `["$x", "$x"]` 这种槽位数组 | 改用 `segments`，或单槽位字符串 |
 | `traces[0].splitBy: only '$color' is supported` | `splitBy` 写了别的槽位 | 只能写 `"$color"` |
 | `traces[0].splitBy: requires a 'color' channel` | 清单没有声明 `color` 通道 | 在 `channels` 里声明 `color` |
@@ -1569,6 +1642,7 @@ showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title
 | `traces[0].y: data slot '$y2' is not supplied by yFields.mode 'range' (only y0 and y1)` | 引用了当前 mode 不提供的 Y 槽位 | 改 mode 为 `multi`，或把槽位降到 `$y0` / `$y1` |
 | `layout.template: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | layout 顶层键不在白名单 | 只用 9 个顶层键；想调轴样式写进 `xaxis` / `yaxis` |
 | `layout.grid: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | 试图在清单里声明/覆盖 `grid` | 删除 `grid`；分面网格由渲染器根据 `facet` / `facetBy` 写入 |
+| `layout.shapes: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)` | 试图在清单里声明 `shapes` | 删除 `shapes`；线段由 `segments` trace 生成，渲染器在 layout 合并后追加 |
 | `options[0].choices: select options need 1-20 choices` | `select` 缺少 `choices` 或数量不对 | 给 1–20 个不重复字符串 |
 | `options[1].default: must be a finite number` | `number` 选项默认值不是有限数字 | 改成数字；布尔不算数字 |
 | `options[0].default: is required` | 漏写 `default` | 每个选项都必须有类型匹配的默认值 |

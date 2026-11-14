@@ -21,8 +21,10 @@ import type { ChartEncoding, ChartTemplate, ChartConfig, ChartRecommendation, Se
 import type { DashboardConfig } from '@/types/dashboard';
 import type {
   CustomChartDeleteResponse,
+  CustomChartDraftResponse,
   CustomChartListResponse,
   CustomChartManifest,
+  CustomChartPreviewRequest,
   CustomChartSaveResponse,
 } from '@/types/customChart';
 import type { QAConversation, QAFilter, QAFact, QAFactTable } from '@/stores/qaStore';
@@ -135,6 +137,41 @@ function tracedHeaders(extra?: Record<string, string>): Record<string, string> {
   return { ...(id ? { 'X-Trace-Id': id } : {}), ...extra };
 }
 
+/**
+ * fetchJson failure carrying the HTTP status and the parsed `detail` body.
+ * Most callers only need `message`, but structured details (the custom-chart
+ * draft 422 payload) can only be read from the object itself.
+ */
+export interface ApiRequestError extends Error {
+  status?: number;
+  detail?: unknown;
+}
+
+function apiError(
+  status: number,
+  statusText: string,
+  path: string,
+  detailText: string,
+  detail: unknown,
+): ApiRequestError {
+  const error = new Error(`${status} ${statusText}: ${path} — ${detailText}`) as ApiRequestError;
+  error.status = status;
+  error.detail = detail;
+  return error;
+}
+
+/** HTTP status behind a failed fetchJson call (null for anything else). */
+export function apiErrorStatus(err: unknown): number | null {
+  if (!(err instanceof Error)) return null;
+  const status = (err as ApiRequestError).status;
+  return typeof status === 'number' ? status : null;
+}
+
+/** Structured `detail` of a failed fetchJson call (undefined when the body was not JSON). */
+export function apiErrorDetail(err: unknown): unknown {
+  return err instanceof Error ? (err as ApiRequestError).detail : undefined;
+}
+
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${getBaseUrl()}${path}`
   let response: Response
@@ -153,16 +190,18 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`无法连接后端服务 ${url}。请确认 MetricStudio 后端已启动。`, { cause: error })
   }
   if (!response.ok) {
-    let detail = ''
+    let detail: unknown
+    let detailText = ''
     try {
       const body = await response.json()
+      detail = body?.detail ?? body
       // FastAPI validation errors carry detail as an array — render it
       // instead of collapsing into "[object Object]".
-      detail = typeof body?.detail === 'string' ? body.detail : JSON.stringify(body?.detail ?? body)
+      detailText = typeof body?.detail === 'string' ? body.detail : JSON.stringify(body?.detail ?? body)
     } catch {
-      detail = await response.text().catch(() => 'Unknown error')
+      detailText = await response.text().catch(() => 'Unknown error')
     }
-    throw new Error(`${response.status} ${response.statusText}: ${path} — ${detail}`)
+    throw apiError(response.status, response.statusText, path, detailText, detail)
   }
   return response.json() as Promise<T>
 }
@@ -859,6 +898,25 @@ export const api = {
   deleteCustomChart: (id: string) =>
     fetchJson<CustomChartDeleteResponse>(`/api/v1/chart/custom/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+    }),
+  /**
+   * Render an unsaved manifest against a dataset — the workbench's live
+   * preview. 400 means the manifest/encoding is invalid and `detail` holds the
+   * joined validation or render errors.
+   */
+  previewCustomChart: (request: CustomChartPreviewRequest) =>
+    fetchJson<PlotlyFigure>('/api/v1/chart/custom/preview', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }),
+  /**
+   * Ask the backend's LLM to draft a manifest. 422 carries a structured
+   * `detail` (`{message, errors, draft?}`) readable via `apiErrorDetail`.
+   */
+  draftCustomChart: (request: string, datasetId?: string) =>
+    fetchJson<CustomChartDraftResponse>('/api/v1/chart/custom/draft', {
+      method: 'POST',
+      body: JSON.stringify({ request, dataset_id: datasetId }),
     }),
 
   // SQL import

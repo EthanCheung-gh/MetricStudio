@@ -21,6 +21,21 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
+    // The Rust build tree and generated bundles are huge; watching them exhausts
+    // the inotify watcher limit (ENOSPC) and kills the dev server at startup.
+    watch: {
+      ignored: [
+        '**/src-tauri/target/**',
+        '**/src-tauri/gen/**',
+        '**/dist/**',
+        '**/build/**',
+        '**/.git/**',
+        '**/.venv/**',
+        '**/backend/.venv/**',
+        '**/__pycache__/**',
+        '**/.cph/**',
+      ],
+    },
   },
   build: {
     target: 'es2022',

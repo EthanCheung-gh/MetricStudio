@@ -7,6 +7,8 @@
  * the frontend normalizes or rewrites.
  */
 
+import type { ChartEncoding } from '@/types/encoding';
+
 /** Bilingual copy carried by a manifest label / option label. */
 export interface LocalizedText {
   zh: string;
@@ -52,6 +54,11 @@ export interface CustomChartManifest {
   label: LocalizedText;
   description?: LocalizedText;
   channels: CustomChartChannels;
+  /**
+   * Manifest-level faceting (`"$color"` only in schema v1); `null`/absent
+   * means no faceting. Mutually exclusive with the `facet` channel.
+   */
+  facetBy?: '$color' | null;
   transforms?: { op: string; [key: string]: unknown }[];
   traces: { type: string; [key: string]: unknown }[];
   layout?: Record<string, unknown>;
@@ -78,6 +85,37 @@ export interface CustomChartListResponse {
 export interface CustomChartSaveResponse {
   id: string;
   replaced: boolean;
+}
+
+/**
+ * POST /api/v1/chart/custom/preview — render an *unsaved* manifest against a
+ * dataset. The response is the same figure shape as `/chart/preview`; a
+ * rejected manifest answers 400 with the joined validation/render errors in
+ * `detail`.
+ */
+export interface CustomChartPreviewRequest {
+  manifest: CustomChartManifest;
+  dataset_id: string;
+  encoding: ChartEncoding;
+  filters?: { field: string; op: 'range' | 'in'; range?: [string, string]; values?: string[] }[];
+}
+
+/** POST /api/v1/chart/custom/draft — LLM-assisted manifest authoring. */
+export interface CustomChartDraftResponse {
+  manifest: CustomChartManifest;
+  /** How many LLM repair passes the backend needed to reach a valid manifest. */
+  attempts: number;
+}
+
+/**
+ * 422 body of `/chart/custom/draft`: the model answered, but its manifest is
+ * still invalid. `draft` carries the rejected manifest so the workbench can
+ * load it for hand editing instead of discarding the suggestion.
+ */
+export interface CustomChartDraftRejection {
+  message: string;
+  errors: string[];
+  draft?: CustomChartManifest;
 }
 
 export interface CustomChartDeleteResponse {

@@ -1338,40 +1338,54 @@ def test_limit_bottom_keeps_last_rows():
 # Renderer
 # ---------------------------------------------------------------------------
 
-def test_dumbbell_example_renders_three_traces():
+def test_dumbbell_example_renders_markers_and_shapes():
     manifest = cc.validate_payload(example("dumbbell"))
     base_layout = {"template": "plotly_white", "margin": {"t": 1}}
     figure = cc.render(
         toy_df(), manifest, dumbbell_encoding(), base_layout
     )
 
-    assert len(figure["data"]) == 3
+    # The connector is a layout shape, not a data trace.
+    assert len(figure["data"]) == 2
     allowed = set(cc.STYLE_KEYS) | set(cc.DATA_KEYS) | {"type"}
     for trace in figure["data"]:
         assert trace["type"] in cc.TRACE_TYPES
         assert set(trace) <= allowed
 
-    connector, first_marker, second_marker = figure["data"]
-    assert connector["mode"] == "lines"
-    assert connector["x"] == [["C", "C"], ["A", "A"], ["B", "B"]]
-    assert connector["y"] == [
-        [30.0, 45.0],
-        [10.0, 18.0],
-        [20.0, 17.0],
-    ]
-    assert connector["line"] == {"color": "#cbd5e1", "width": 2}
-    assert "segments" not in connector
-
-    nested = [trace for trace in figure["data"] if isinstance(trace["x"][0], list)]
-    assert nested == [connector]
-    assert all(
-        isinstance(trace["x"][0], str)
-        for trace in (first_marker, second_marker)
-    )
+    first_marker, second_marker = figure["data"]
+    assert first_marker["x"] == [0, 1, 2]
+    assert second_marker["x"] == [0, 1, 2]
     assert first_marker["name"] == "Start"
     assert first_marker["y"] == [30.0, 10.0, 20.0]
     assert second_marker["name"] == "End"
     assert second_marker["y"] == [45.0, 18.0, 17.0]
+
+    shapes = figure["layout"]["shapes"]
+    assert len(shapes) == 3
+    assert [shape["x0"] for shape in shapes] == [0, 1, 2]
+    assert [shape["x1"] for shape in shapes] == [0, 1, 2]
+    assert [(shape["y0"], shape["y1"]) for shape in shapes] == [
+        (30.0, 45.0),
+        (10.0, 18.0),
+        (20.0, 17.0),
+    ]
+    for shape in shapes:
+        assert shape == {
+            "type": "line",
+            "x0": shape["x0"],
+            "x1": shape["x1"],
+            "y0": shape["y0"],
+            "y1": shape["y1"],
+            "xref": "x",
+            "yref": "y",
+            "line": {"color": "#cbd5e1", "width": 2},
+            "layer": "below",
+        }
+
+    assert figure["layout"]["xaxis"]["tickmode"] == "array"
+    assert figure["layout"]["xaxis"]["tickvals"] == [0, 1, 2]
+    assert figure["layout"]["xaxis"]["ticktext"] == ["C", "A", "B"]
+    assert figure["layout"]["xaxis"]["type"] == "linear"
 
     # Shallow merge, base layout untouched.
     assert figure["layout"] is not base_layout
@@ -1396,7 +1410,7 @@ def test_opt_width_default_and_override(options, expected_width):
         dumbbell_encoding(options=options),
         {},
     )
-    assert figure["data"][0]["line"]["width"] == expected_width
+    assert figure["layout"]["shapes"][0]["line"]["width"] == expected_width
 
 
 def test_render_accepts_real_chart_encoding_models():
@@ -1412,9 +1426,10 @@ def test_render_accepts_real_chart_encoding_models():
         chart_type="scatter",
     )
     figure = cc.render(toy_df(), manifest, encoding_model, {})
-    assert len(figure["data"]) == 3
-    assert figure["data"][1]["name"] == "Start"
-    assert figure["data"][2]["name"] == "End"
+    assert len(figure["data"]) == 2
+    assert len(figure["layout"]["shapes"]) == 3
+    assert figure["data"][0]["name"] == "Start"
+    assert figure["data"][1]["name"] == "End"
 
 
 def test_opt_text_override():
@@ -1425,7 +1440,7 @@ def test_opt_text_override():
         dumbbell_encoding(options={"connector": "#000000"}),
         {},
     )
-    assert figure["data"][0]["line"]["color"] == "#000000"
+    assert figure["layout"]["shapes"][0]["line"]["color"] == "#000000"
 
 
 def test_opt_reads_pydantic_model_extra():
@@ -1438,7 +1453,10 @@ def test_opt_reads_pydantic_model_extra():
         dumbbell_encoding(options=options),
         {},
     )
-    assert figure["data"][0]["line"] == {"width": 7, "color": "#123456"}
+    assert figure["layout"]["shapes"][0]["line"] == {
+        "width": 7,
+        "color": "#123456",
+    }
 
 
 def test_dumbbell_connector_uses_both_option_overrides():
@@ -1451,7 +1469,10 @@ def test_dumbbell_connector_uses_both_option_overrides():
         ),
         {},
     )
-    assert figure["data"][0]["line"] == {"color": "#abcdef", "width": 4}
+    assert figure["layout"]["shapes"][0]["line"] == {
+        "color": "#abcdef",
+        "width": 4,
+    }
 
 
 def test_opt_dumbbell_invalid_overrides_use_defaults():
@@ -1467,7 +1488,10 @@ def test_opt_dumbbell_invalid_overrides_use_defaults():
         ),
         {},
     )
-    assert figure["data"][0]["line"] == {"color": "#cbd5e1", "width": 2}
+    assert figure["layout"]["shapes"][0]["line"] == {
+        "color": "#cbd5e1",
+        "width": 2,
+    }
 
 
 def test_opt_number_accepts_numeric_strings():
@@ -1478,7 +1502,7 @@ def test_opt_number_accepts_numeric_strings():
         dumbbell_encoding(options={"width": "5.5"}),
         {},
     )
-    assert figure["data"][0]["line"]["width"] == 5.5
+    assert figure["layout"]["shapes"][0]["line"]["width"] == 5.5
 
 
 def test_opt_type_coercion_defaults_and_valid_overrides():
@@ -1754,22 +1778,50 @@ def test_unusable_transform_returns_empty_without_raising():
 # Segments (row -> two-point line)
 # ---------------------------------------------------------------------------
 
-def test_segments_render_nested_arrays_for_three_rows():
+def test_segments_render_layout_shapes_for_three_rows():
     manifest = cc.validate_payload(segment_manifest())
     figure = cc.render(segment_df(), manifest, segment_encoding(), {})
-    trace = figure["data"][0]
-    assert trace["type"] == "scatter"
-    assert trace["x"] == [["A", "A"], ["B", "B"], ["C", "C"]]
-    assert trace["y"] == [[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]]
-    assert "segments" not in trace
+    assert figure["data"] == []
+    shapes = figure["layout"]["shapes"]
+    assert len(shapes) == 3
+    assert [shape["x0"] for shape in shapes] == [0, 1, 2]
+    assert [shape["x1"] for shape in shapes] == [0, 1, 2]
+    assert [(shape["y0"], shape["y1"]) for shape in shapes] == [
+        (1.0, 4.0),
+        (2.0, 5.0),
+        (3.0, 6.0),
+    ]
+    for index, shape in enumerate(shapes):
+        assert shape == {
+            "type": "line",
+            "x0": index,
+            "x1": index,
+            "y0": shape["y0"],
+            "y1": shape["y1"],
+            "xref": "x",
+            "yref": "y",
+            "line": {},
+            "layer": "below",
+        }
+    assert figure["layout"]["xaxis"]["ticktext"] == ["A", "B", "C"]
 
 
 def test_segments_horizontal_swaps_axes():
     manifest = cc.validate_payload(segment_manifest(horizontal=True))
     figure = cc.render(segment_df(), manifest, segment_encoding(), {})
-    trace = figure["data"][0]
-    assert trace["y"] == [["A", "A"], ["B", "B"], ["C", "C"]]
-    assert trace["x"] == [[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]]
+    assert figure["data"] == []
+    shapes = figure["layout"]["shapes"]
+    assert [shape["y0"] for shape in shapes] == [0, 1, 2]
+    assert [shape["y1"] for shape in shapes] == [0, 1, 2]
+    assert [(shape["x0"], shape["x1"]) for shape in shapes] == [
+        (1.0, 4.0),
+        (2.0, 5.0),
+        (3.0, 6.0),
+    ]
+    assert figure["layout"]["yaxis"]["tickvals"] == [0, 1, 2]
+    assert figure["layout"]["yaxis"]["ticktext"] == ["A", "B", "C"]
+    assert figure["layout"]["yaxis"]["type"] == "linear"
+    assert "tickvals" not in figure["layout"].get("xaxis", {})
 
 
 @pytest.mark.parametrize("endpoint", ["low", "high"])
@@ -1778,9 +1830,34 @@ def test_segments_drop_rows_with_nan_endpoint(endpoint):
     df.loc[1, endpoint] = np.nan
     manifest = cc.validate_payload(segment_manifest())
     figure = cc.render(df, manifest, segment_encoding(), {})
-    trace = figure["data"][0]
-    assert trace["x"] == [["A", "A"], ["C", "C"]]
-    assert trace["y"] == [[1.0, 4.0], [3.0, 6.0]]
+    shapes = figure["layout"]["shapes"]
+    assert len(shapes) == 2
+    assert [shape["x0"] for shape in shapes] == [0, 2]
+    assert [(shape["y0"], shape["y1"]) for shape in shapes] == [
+        (1.0, 4.0),
+        (3.0, 6.0),
+    ]
+    assert figure["layout"]["xaxis"]["ticktext"] == ["A", "B", "C"]
+
+
+def test_segments_append_to_base_layout_shapes_without_mutating_it():
+    manifest = cc.validate_payload(segment_manifest())
+    base_shape = {
+        "type": "rect",
+        "x0": 0,
+        "x1": 1,
+        "y0": 0,
+        "y1": 1,
+        "xref": "paper",
+        "yref": "paper",
+    }
+    base_layout = {"shapes": [base_shape]}
+    figure = cc.render(segment_df(), manifest, segment_encoding(), base_layout)
+    shapes = figure["layout"]["shapes"]
+    assert shapes[0] == base_shape
+    assert len(shapes) == 4
+    assert base_layout["shapes"] == [base_shape]
+    assert figure["layout"]["shapes"] is not base_layout["shapes"]
 
 
 def test_segments_and_x_are_mutually_exclusive():
@@ -1805,14 +1882,15 @@ def test_segments_only_on_scatter():
 
 
 @pytest.mark.parametrize("mode", [None, "markers", "text+markers"])
-def test_segments_require_lines_mode(mode):
+def test_segments_mode_is_accepted_and_ignored(mode):
     data = segment_manifest()
     if mode is None:
         data["traces"][0].pop("mode")
     else:
         data["traces"][0]["mode"] = mode
-    message = errors_of(data)
-    assert "segments requires a mode that includes 'lines'" in message
+    manifest = cc.validate_payload(data)
+    figure = cc.render(segment_df(), manifest, segment_encoding(), {})
+    assert len(figure["layout"]["shapes"]) == 3
 
 
 def test_segments_accepts_lines_plus_markers():
@@ -2565,7 +2643,7 @@ def test_numeric_array_slot_rejects_datetime_and_timedelta(column, values):
     assert figure["data"][0]["marker"]["size"] == [None, None]
 
 
-def test_split_by_with_segments_renders_nested_segments_per_series():
+def test_split_by_with_segments_renders_shapes_per_series():
     manifest = cc.validate_payload(
         minimal_manifest(
             chart_id="splitseg",
@@ -2606,22 +2684,17 @@ def test_split_by_with_segments_renders_nested_segments_per_series():
         ),
         {},
     )
-    assert len(figure["data"]) == 2
-    g1, g2 = figure["data"]
-    assert g1["name"] == "g1"
-    assert g1["legendgroup"] == "g1"
-    assert g1["showlegend"] is True
-    assert g1["x"] == [["A", "A"], ["C", "C"]]
-    assert g1["y"] == [[1.0, 5.0], [3.0, 7.0]]
-    assert g2["name"] == "g2"
-    assert g2["legendgroup"] == "g2"
-    assert g2["showlegend"] is True
-    assert g2["x"] == [["B", "B"], ["D", "D"]]
-    assert g2["y"] == [[2.0, 6.0], [4.0, 8.0]]
-    assert g1["marker"]["color"] == "#3b82f6"
-    assert g1["line"]["color"] == "#3b82f6"
-    assert g2["marker"]["color"] == "#ef4444"
-    assert g2["line"]["color"] == "#ef4444"
+    assert figure["data"] == []
+    shapes = figure["layout"]["shapes"]
+    assert len(shapes) == 4
+    assert [(shape["x0"], shape["y0"], shape["y1"]) for shape in shapes] == [
+        (0, 1.0, 5.0),
+        (2, 3.0, 7.0),
+        (1, 2.0, 6.0),
+        (3, 4.0, 8.0),
+    ]
+    assert all(shape["line"] == {} for shape in shapes)
+    assert figure["layout"]["xaxis"]["ticktext"] == ["A", "B", "C", "D"]
 
 
 @pytest.mark.parametrize(
@@ -3025,7 +3098,7 @@ def test_facet_channel_declared_but_unbound_is_empty():
     assert figure["layout"]["showlegend"] is False
 
 
-def test_facet_with_segments_renders_one_trace_per_cell():
+def test_facet_with_segments_renders_shapes_per_cell():
     manifest = cc.validate_payload(
         minimal_manifest(
             chart_id="facet-segments",
@@ -3065,18 +3138,26 @@ def test_facet_with_segments_renders_one_trace_per_cell():
         ),
         {},
     )
-    assert len(figure["data"]) == 2
-    first, second = figure["data"]
-    assert first["x"] == [["A", "A"], ["B", "B"]]
-    assert first["y"] == [[1.0, 4.0], [2.0, 5.0]]
-    assert second["x"] == [["C", "C"]]
-    assert second["y"] == [[3.0, 6.0]]
-    assert first["xaxis"] == "x"
-    assert second["xaxis"] == "x2"
-    assert "segments" not in first
+    assert figure["data"] == []
+    shapes = figure["layout"]["shapes"]
+    assert len(shapes) == 3
+    assert [
+        (shape["xref"], shape["yref"], shape["x0"], shape["y0"], shape["y1"])
+        for shape in shapes
+    ] == [
+        ("x", "y", 0, 1.0, 4.0),
+        ("x", "y", 1, 2.0, 5.0),
+        ("x2", "y2", 0, 3.0, 6.0),
+    ]
     assert figure["layout"]["grid"]["columns"] == 2
     assert figure["layout"]["xaxis"]["title"] == "F1"
     assert figure["layout"]["xaxis2"]["title"] == "F2"
+    assert figure["layout"]["xaxis"]["tickvals"] == [0, 1]
+    assert figure["layout"]["xaxis"]["ticktext"] == ["A", "B"]
+    assert figure["layout"]["xaxis"]["type"] == "linear"
+    assert figure["layout"]["xaxis2"]["tickvals"] == [0]
+    assert figure["layout"]["xaxis2"]["ticktext"] == ["C"]
+    assert figure["layout"]["xaxis2"]["type"] == "linear"
 
 
 def test_facet_inherits_manifest_and_base_layout_styling():
@@ -4562,7 +4643,7 @@ def test_flow_sankey_example_aggregates_duplicate_pairs():
 
 @pytest.mark.parametrize(
     "name, expected_traces",
-    [("dumbbell", 3), ("lollipop", 2), ("bullet", 2)],
+    [("dumbbell", 2), ("lollipop", 2), ("bullet", 2)],
 )
 def test_examples_validate_and_render(name, expected_traces):
     data = example(name)
@@ -4732,3 +4813,115 @@ def test_dropna_and_sort_remain_samplable_together():
         {"op": "sort", "by": "y0"},
     ]
     assert cc.is_samplable(manifest) is True
+
+
+# ---------------------------------------------------------------------------
+# Categorical segments: remap axis positions for Plotly
+# ---------------------------------------------------------------------------
+
+def test_dumbbell_segments_remap_categorical_axis_for_flat_markers():
+    manifest = cc.validate_payload(example("dumbbell"))
+    df = pd.DataFrame(
+        {
+            "city": ["A", "B", "C", "D", "E", "F"],
+            "start": [12.0, 18.0, 22.0, 14.0, 30.0, 9.0],
+            # The example sorts by y1 descending; descending ends keep the
+            # A..F order so the expected ticktext is easy to read.
+            "end": [60.0, 50.0, 40.0, 30.0, 20.0, 10.0],
+        }
+    )
+    figure = cc.render(df, manifest, dumbbell_encoding(), {})
+
+    assert len(figure["data"]) == 2
+    first_marker, second_marker = figure["data"]
+    assert first_marker["x"] == [0, 1, 2, 3, 4, 5]
+    assert second_marker["x"] == [0, 1, 2, 3, 4, 5]
+
+    shapes = figure["layout"]["shapes"]
+    assert len(shapes) == 6
+    assert [shape["x0"] for shape in shapes] == [0, 1, 2, 3, 4, 5]
+    assert [shape["x1"] for shape in shapes] == [0, 1, 2, 3, 4, 5]
+    assert [(shape["y0"], shape["y1"]) for shape in shapes] == [
+        (12.0, 60.0),
+        (18.0, 50.0),
+        (22.0, 40.0),
+        (14.0, 30.0),
+        (30.0, 20.0),
+        (9.0, 10.0),
+    ]
+    for shape in shapes:
+        assert shape["type"] == "line"
+        assert shape["xref"] == "x"
+        assert shape["yref"] == "y"
+        assert shape["line"] == {"color": "#cbd5e1", "width": 2}
+        assert shape["layer"] == "below"
+
+    xaxis = figure["layout"]["xaxis"]
+    assert xaxis["tickmode"] == "array"
+    assert xaxis["tickvals"] == [0, 1, 2, 3, 4, 5]
+    assert xaxis["ticktext"] == ["A", "B", "C", "D", "E", "F"]
+    assert xaxis["type"] == "linear"
+
+    def walk(value):
+        if isinstance(value, dict):
+            for item in value.values():
+                yield from walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                yield from walk(item)
+        else:
+            yield value
+
+    assert "multicategory" not in set(walk(figure))
+
+
+def test_segments_numeric_axis_keeps_original_values():
+    data = segment_manifest()
+    data["channels"] = {
+        "x": {"required": True, "types": ["quantitative"]},
+        "yFields": {"mode": "range"},
+    }
+    manifest = cc.validate_payload(data)
+    df = pd.DataFrame(
+        {
+            "n": [10, 20, 30],
+            "low": [1.0, 2.0, 3.0],
+            "high": [4.0, 5.0, 6.0],
+        }
+    )
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(
+            x=channel("n", "quantitative"),
+            y=[y_channel("low"), y_channel("high")],
+        ),
+        {},
+    )
+    assert figure["data"] == []
+    shapes = figure["layout"]["shapes"]
+    assert [shape["x0"] for shape in shapes] == [10, 20, 30]
+    assert [shape["x1"] for shape in shapes] == [10, 20, 30]
+    xaxis = figure["layout"].get("xaxis", {})
+    assert "tickvals" not in xaxis
+    assert "ticktext" not in xaxis
+
+
+def test_plain_categorical_scatter_does_not_remap_axis():
+    manifest = cc.validate_payload(
+        minimal_manifest(
+            traces=[{"type": "scatter", "mode": "markers", "x": "$x", "y": "$y0"}]
+        )
+    )
+    df = pd.DataFrame({"cat": ["A", "B"], "val": [1.0, 2.0]})
+    figure = cc.render(
+        df,
+        manifest,
+        encoding(x=channel("cat", "nominal"), y=[y_channel("val")]),
+        {},
+    )
+    assert figure["data"][0]["x"] == ["A", "B"]
+    xaxis = figure["layout"].get("xaxis", {})
+    assert "tickvals" not in xaxis
+    assert "ticktext" not in xaxis
+    assert xaxis.get("type") != "multicategory"

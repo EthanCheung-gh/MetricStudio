@@ -807,9 +807,14 @@ def test_options_roundtrip_reaches_opt_slots(client, dumbbell_dataset, charts_di
     )
     assert resp.status_code == 200, resp.text
     figure = resp.json()
-    connector = next(trace for trace in figure["data"] if trace.get("mode") == "lines")
-    # Proves extra="allow" -> Options.model_extra -> $opt.connector/$opt.width.
-    assert connector["line"] == {"color": "#123456", "width": 5}
+    # segments render as layout shapes (line connectors), not as traces.
+    shapes = figure["layout"]["shapes"]
+    assert shapes, "the connector must be emitted as layout shapes"
+    # Proves extra="allow" -> Options.model_extra -> $opt.connector/$opt.width
+    # on every connector: one shape per row, all carrying the override.
+    assert shapes[0]["line"] == {"color": "#123456", "width": 5}
+    assert {shape["line"]["color"] for shape in shapes} == {"#123456"}
+    assert all(shape["line"]["width"] == 5 for shape in shapes)
 
 
 # ---------------------------------------------------------------------------

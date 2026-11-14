@@ -42,7 +42,7 @@ In one line: **the LLM handles understanding and narration; the data handles com
 
 ### Visualization & dashboards
 - 34 chart types (line / bar / pie / histogram / box / violin / heatmap / treemap / sankey / parallel coordinates / gauge, etc.) with drag-and-drop encoding
-- Custom charts (an extension to the built-in types): drop a JSON manifest into `~/.metricstudio/charts/` to declare a new chart type — no code execution, with in-app import / export; see [docs/custom-charts.md](docs/custom-charts.md)
+- Custom charts (an extension to the built-in types): drop a JSON manifest into `~/.metricstudio/charts/` to declare a new chart type — no code execution, with in-app import / export, plus a full-screen workbench (structured form + live preview + validation errors + AI draft); see [docs/custom-charts.md](docs/custom-charts.md)
 - Large-sample downsampling: raw-row charts (scatter / line / area / step / dot / splom / parcoords / parcats) switch to even-stride sampling above **5000 points**, always keeping the first and last row and recording `layout.meta.sampled` (total / shown); `METRICSTUDIO_CHART_MAX_POINTS` changes the cap, `0` disables it. Statistical charts (histogram / box / violin / pie / heatmap) always read every row — sampling only ever touches "one point per row" marks and never changes a statistic
 - Dashboards: multi-page composition, KPI cards, text cards, cross-card selection linking, dashboard-level filters (server-side search & pagination for high-cardinality fields)
 - Editing: edit/view modes, card locking, dashboard duplication, alignment & even-spacing layout tools, dashboard-level undo/redo, sidebar width memory

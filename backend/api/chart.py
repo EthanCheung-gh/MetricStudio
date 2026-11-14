@@ -7,17 +7,19 @@ import re
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Body, HTTPException
+from pydantic import ValidationError
 
 logger = logging.getLogger("chart")
 logging.basicConfig(level=logging.DEBUG)
 
-from backend.core import chart_registry, custom_charts
+from backend.core import chart_registry, custom_chart_agent, custom_charts
 from backend.core.session import session
-from backend.models.chart import ChartPreviewRequest, AggregateRequest, TemplateSaveRequest, ChartTemplate, SelectionFilter, FilterSpec
+from backend.models.chart import ChartEncoding, ChartPreviewRequest, AggregateRequest, TemplateSaveRequest, ChartTemplate, SelectionFilter, FilterSpec
+from backend.models.data import CBaseModel
 
 router = APIRouter(prefix="/api/v1/chart", tags=["chart"])
 
@@ -1183,6 +1185,132 @@ async def list_custom_charts():
         entry["file"] = str(custom_charts.CHART_DIR / f"{manifest.id}.json")
         items.append(entry)
     return {"items": items, "invalid": [_absolute_file(entry) for entry in invalid]}
+
+
+# ---------------------------------------------------------------------------
+# Custom-chart authoring workbench: preview an unsaved manifest, draft one.
+# ---------------------------------------------------------------------------
+
+class CustomChartPreviewRequest(CBaseModel):
+    # Any, not dict: a non-object manifest must reach validate_payload so it
+    # becomes the same 400 "manifest must be a JSON object" as POST /custom.
+    manifest: Any
+    dataset_id: str
+    # Kept as a dict at the HTTP boundary: the chart id of an unsaved draft is
+    # unknown to ChartEncoding's validator (which only accepts saved ids).
+    encoding: dict[str, Any]
+    filters: Optional[list[FilterSpec]] = None
+
+
+class CustomChartDraftRequest(CBaseModel):
+    request: str
+    dataset_id: Optional[str] = None
+
+
+def _encoding_for_unsaved_manifest(
+    raw: dict[str, Any], chart_id: str
+) -> ChartEncoding:
+    """Validate a workbench encoding whose custom chart is not on disk yet.
+
+    ``ChartEncoding.chart_type`` accepts registry ids or *saved* custom ids, so
+    every other field is validated through the shared model with a placeholder
+    registry id and the manifest id is attached afterwards (assignment is not
+    re-validated). The wire shape stays identical to ``ChartPreviewRequest``.
+    """
+    payload = dict(raw or {})
+    payload.pop("chartType", None)
+    payload.pop("chart_type", None)
+    payload["chartType"] = "scatter"
+    encoding = ChartEncoding.model_validate(payload)
+    encoding.chart_type = chart_id
+    return encoding
+
+
+@router.post("/custom/preview")
+async def preview_custom_chart(request: CustomChartPreviewRequest):
+    """Render a manifest that is NOT saved yet (authoring workbench).
+
+    Same pipeline as the saved-manifest dispatch: dashboard filters, the shared
+    base layout, the core's sampling rule and the built-in palette. Nothing is
+    written to ``CHART_DIR``; persisting stays an explicit ``POST /custom``.
+    """
+    try:
+        # Validate before touching the dataset so a broken manifest is always a
+        # 400 with the joined errors, never a render-time surprise.
+        manifest = custom_charts.validate_payload(request.manifest)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        encoding = _encoding_for_unsaved_manifest(request.encoding, manifest.id)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
+
+    try:
+        dataset = session.get(request.dataset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    df = dataset.df
+    if request.filters:
+        df = _filter_by_filters(df, request.filters)
+
+    layout = _base_layout(encoding)
+    # Same rule as the saved dispatch: only raw-row manifests are sampled;
+    # group_agg/cumulate/limit/reduce change row semantics.
+    if custom_charts.is_samplable(manifest):
+        df = _maybe_sample(df, layout)
+
+    try:
+        return custom_charts.render(
+            df, manifest, encoding, layout, palette=DEFAULT_COLORS
+        )
+    except ValueError as exc:
+        # Structural render errors (indicator arity, sankey lengths) are
+        # actionable 400s, never a silent empty figure or a 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/custom/draft")
+def draft_custom_chart(request: CustomChartDraftRequest):
+    """One sentence -> one validated manifest draft (LLM; no fallback).
+
+    Deliberately a plain ``def``: ``custom_chart_agent.draft_manifest`` calls the
+    blocking LLM client (httpx with transport retries × up to two prompt
+    attempts). An ``async def`` would block the single-process event loop for
+    the whole call and stall every other request; FastAPI runs a sync handler
+    in its threadpool. This matches every LLM endpoint in ``backend/api/nl.py``.
+    """
+    df = None
+    if request.dataset_id:
+        try:
+            df = session.get(request.dataset_id).df
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        manifest, attempts = custom_chart_agent.draft_manifest(request.request, df)
+    except custom_chart_agent.LLMUnavailable as exc:
+        # Matches the app-wide convention the SPA keys on to open LLM settings.
+        raise HTTPException(
+            status_code=502, detail=f"LLM unavailable: {exc}"
+        ) from exc
+    except custom_chart_agent.DraftValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "draft did not validate",
+                "errors": exc.errors,
+                "draft": exc.draft,
+            },
+        ) from exc
+
+    # exclude_none keeps the workbench payload consistent with GET /custom:
+    # undeclared channels are absent, not null.
+    return {
+        "manifest": manifest.model_dump(by_alias=True, exclude_none=True),
+        "attempts": attempts,
+    }
 
 
 @router.get("/custom/{chart_id}")

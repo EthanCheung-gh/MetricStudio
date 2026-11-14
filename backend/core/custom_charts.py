@@ -42,16 +42,23 @@ and ``values``.
 
 ``segments``
 ------------
-A ``scatter`` trace whose ``mode`` contains ``lines`` may replace ``x``/``y``
-with a ``segments`` object::
+A ``scatter`` trace may replace ``x``/``y`` with a ``segments`` object::
 
     {"segments": {"x": "$x", "from": "$y0", "to": "$y1"}}
 
-The renderer emits Plotly's nested-array form, one two-point line per row:
-``x = [[xi, xi], ...]`` and ``y = [[from_i, to_i], ...]``. ``horizontal: true``
-swaps the axes (``y = [[xi, xi], ...]``, ``x = [[from_i, to_i], ...]``). Rows
-whose ``x``, ``from`` or ``to`` value is missing/NaN are dropped as a whole
-segment. ``segments`` and top-level ``x``/``y`` are mutually exclusive.
+A segments trace contributes **no data trace**. The renderer appends one
+Plotly layout shape per row::
+
+    {"type": "line", "x0": X, "x1": X, "y0": from, "y1": to,
+     "xref": "x", "yref": "y", "line": {...}, "layer": "below"}
+
+``horizontal: true`` swaps the roles (``y0 = y1 = X``, ``x0 = from``,
+``x1 = to``). Rows whose ``x``, ``from`` or ``to`` value is missing/NaN are
+dropped as a whole shape. ``segments`` and top-level ``x``/``y`` are mutually
+exclusive. ``mode`` is accepted for backward compatibility but ignored: a
+categorical segment axis is represented by numeric label indices plus
+``tickvals``/``ticktext``, and a numeric axis uses the raw values. Layout
+``shapes`` are renderer-owned and appended after the manifest layout merge.
 
 Label slots are ``$x.label``, ``$y0`` .. ``$y4`` ``.label`` and
 ``$color.label``; they resolve to ``yFields[i].label`` or the field name and
@@ -84,7 +91,8 @@ could never draw and the manifest is rejected at import time.
 
 ``render(..., palette=[...])`` overrides the default palette, which is the same
 ten colours as the built-in builder's ``DEFAULT_COLORS``. ``splitBy`` works
-together with ``segments``; it never appears in the emitted trace.
+together with ``segments``: each colour series contributes shapes resolved
+against its own row subset.
 
 ``facet`` / ``facetBy``
 -----------------------
@@ -99,9 +107,10 @@ appearance order (``pd.unique``, never sorted); ``None``/NaN renders as
 ``"None"`` and temporal values use ISO-8601. ``columns = min(n, 3)`` and
 ``rows = ceil(n / columns)``, with the cell cap described below. The renderer
 sets ``layout["grid"]`` and gives cell *i* the axes suffix ``""`` for the first
-cell and ``str(i + 1)`` afterwards. Each trace is rebuilt against only that
-cell's rows, so data slots, ``$slot.values`` arrays, ``segments`` and
-``splitBy`` all see the cell subset.
+cell and ``str(i + 1)`` afterwards. Each trace and segment shape is rebuilt
+against only that cell's rows, so data slots, ``$slot.values`` arrays,
+``segments`` and ``splitBy`` all see the cell subset. Segment shapes use the
+cell's axis references (``x``/``y``, then ``x2``/``y2``, ...).
 ``splitBy`` is allowed inside a channel facet (series per colour per cell);
 ``showlegend`` then defaults to true only in the first cell unless the template
 sets it explicitly. ``splitBy`` is rejected when ``facetBy`` is ``"$color"``.
@@ -186,10 +195,12 @@ import copy
 import json
 import logging
 import math
+import numbers
 import os
 import re
 import stat
 import uuid
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -1193,17 +1204,11 @@ def _validate_segments(
     y_mode: str | None,
     option_keys: set[str],
     trace_type: Any,
-    trace_mode: Any,
 ) -> None:
     """Validate the ``segments`` object on one trace (``path`` is traces[i])."""
     segment_path = f"{path}.segments"
     if trace_type != "scatter":
         errors.append(f"{segment_path}: only allowed on type 'scatter'")
-    if not isinstance(trace_mode, str) or "lines" not in trace_mode.split("+"):
-        errors.append(
-            f"{path}.mode: segments requires a mode that includes 'lines' "
-            f"(for example 'lines' or 'lines+markers')"
-        )
     if not isinstance(value, dict):
         errors.append(
             f"{segment_path}: must be an object with 'x', 'from' and 'to'"
@@ -1865,7 +1870,6 @@ def _validate_traces(
                 y_mode,
                 option_keys,
                 trace_type,
-                item.get("mode"),
             )
         if "splitBy" in item:
             _validate_split_trace(
@@ -2162,12 +2166,27 @@ def _claimed_keywords(exclude_id: str | None = None) -> list[tuple[str, str]]:
     return claimed
 
 
+def _manifest_text(manifest: CustomChartManifest) -> str:
+    """The exact JSON text :func:`save_manifest` writes.
+
+    Shared by the size cap so preview, draft validation and save all measure
+    the same bytes. (``_json_safe`` is defined later in this module; the
+    reference resolves at call time.)
+    """
+    payload = _json_safe(manifest.model_dump(by_alias=True, exclude_none=True))
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
 def validate_payload(data: dict) -> CustomChartManifest:
     """Validate a manifest payload, collecting *all* errors.
 
     Raises ``ValueError("; ".join(errors))`` when anything is wrong. The
     message is user-facing and each error starts with a JSON path such as
     ``traces[1].y:``.
+
+    Also enforces :data:`MAX_MANIFEST_BYTES` on the bytes that would be
+    written, so an oversized payload fails identically in every caller
+    (preview, draft validation, save) instead of only at save time.
     """
     if not isinstance(data, dict):
         raise ValueError("manifest must be a JSON object")
@@ -2181,9 +2200,14 @@ def validate_payload(data: dict) -> CustomChartManifest:
     if errors:
         raise ValueError("; ".join(errors))
     try:
-        return _build_manifest(data)
+        manifest = _build_manifest(data)
     except RecursionError:
         raise ValueError("manifest is nested too deeply") from None
+    if len(_manifest_text(manifest).encode("utf-8")) > MAX_MANIFEST_BYTES:
+        raise ValueError(
+            f"manifest is larger than {MAX_MANIFEST_BYTES // 1024} KB"
+        )
+    return manifest
 
 
 # ---------------------------------------------------------------------------
@@ -2384,13 +2408,9 @@ def save_manifest(data: dict) -> tuple[CustomChartManifest, bool]:
     path = CHART_DIR / f"{manifest.id}.json"
     replaced = path.exists()
 
-    payload = _json_safe(manifest.model_dump(by_alias=True, exclude_none=True))
-    text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    encoded = text.encode("utf-8")
-    if len(encoded) > MAX_MANIFEST_BYTES:
-        raise ValueError(
-            f"manifest is larger than {MAX_MANIFEST_BYTES // 1024} KB"
-        )
+    # validate_payload() already enforced MAX_MANIFEST_BYTES on exactly this
+    # text, so there is no second size check here.
+    text = _manifest_text(manifest)
 
     # Unique temp name: concurrent saves of the same id must not clobber each
     # other's temporary file before os.replace makes the write atomic.
@@ -2595,6 +2615,48 @@ def _facet_axis_title(base_title: Any, label: str) -> Any:
         title["text"] = label
         return title
     return label
+
+
+@dataclass
+class _SegmentAxis:
+    """A segments axis that needs numeric positions for other traces."""
+
+    role: str
+    ref: str
+    labels: list[str]
+    label_to_index: dict[str, int]
+
+
+def _axis_needs_remap(series: Any) -> bool:
+    """Only numeric axes keep Plotly's native numeric typing."""
+    if pd.api.types.is_bool_dtype(series):
+        return True
+    return not pd.api.types.is_numeric_dtype(series)
+
+
+def _axis_layout_key(axis_ref: str) -> str:
+    """Map a trace axis ref ('x', 'x2', 'y3') to its layout key."""
+    if axis_ref in ("x", "y"):
+        return f"{axis_ref}axis"
+    if axis_ref[:1] in ("x", "y"):
+        return f"{axis_ref[0]}axis{axis_ref[1:]}"
+    return f"{axis_ref}axis"
+
+
+def _remap_segment_position(
+    value: Any,
+    mapping: dict[str, int],
+) -> Any:
+    if isinstance(value, list):
+        return [
+            _remap_segment_position(item, mapping) for item in value
+        ]
+    if isinstance(value, numbers.Number) and not isinstance(value, bool):
+        # A non-segments trace may legitimately plot numeric data on the same
+        # axis; only the categorical labels need rewriting.
+        return value
+    label = _split_value_label(value)
+    return mapping.get(label, value)
 
 
 def _is_array_style_value(value: Any) -> bool:
@@ -2962,6 +3024,10 @@ class _RenderEnv:
         self.y_mode: str | None = None
         self.y_fields: list[Any] = []
         self.facet_field: str | None = None
+        self._segment_axes: list[_SegmentAxis] = []
+        self.shapes: list[dict] = []
+        self._shape_xref = "x"
+        self._shape_yref = "y"
         self.channels = manifest.channels
 
     # -- setup ---------------------------------------------------------
@@ -3164,8 +3230,10 @@ class _RenderEnv:
             raise _RenderError("segment values must be data slots")
         return self._resolve_data_slot(value)
 
-    def _resolve_segments(self, value: Any) -> dict:
-        """Turn one row per segment into Plotly's nested-array form."""
+    def _resolve_segment_rows(
+        self, value: Any
+    ) -> tuple[bool, list[tuple[Any, Any, Any]]]:
+        """Resolve one shape row per segment, dropping incomplete rows."""
         if not isinstance(value, dict):
             raise _RenderError("invalid segments object")
         if set(value) - _SEGMENT_KEYS:
@@ -3184,22 +3252,16 @@ class _RenderEnv:
         ):
             raise _RenderError("segment slots have different lengths")
 
-        x_segments: list[list] = []
-        y_segments: list[list] = []
+        rows: list[tuple[Any, Any, Any]] = []
         for x_value, from_value, to_value in zip(
             x_values, from_values, to_values
         ):
             # A segment needs all three coordinates; dropping it here prevents
-            # emitting a partial [None, value] line.
+            # emitting a partial shape.
             if x_value is None or from_value is None or to_value is None:
                 continue
-            if horizontal:
-                x_segments.append([from_value, to_value])
-                y_segments.append([x_value, x_value])
-            else:
-                x_segments.append([x_value, x_value])
-                y_segments.append([from_value, to_value])
-        return {"x": x_segments, "y": y_segments}
+            rows.append((x_value, from_value, to_value))
+        return horizontal, rows
 
     def _resolve_label(self, value: str) -> str:
         name = value[1:-len(".label")]
@@ -3328,21 +3390,128 @@ class _RenderEnv:
             return self._resolve_style_list(value)
         return _json_safe(value)
 
+    def _append_segment_shapes(
+        self,
+        raw: dict,
+        *,
+        frame: Any = None,
+    ) -> None:
+        """Append one layout shape per segment row (no data trace)."""
+        line_style: dict = {}
+        if "line" in raw:
+            resolved = self._resolve_style_value("line", raw["line"])
+            if isinstance(resolved, dict):
+                line_style = {
+                    key: value
+                    for key, value in resolved.items()
+                    if key in {"color", "width", "dash"}
+                }
+        horizontal, rows = self._resolve_segment_rows(raw["segments"])
+        category_positions = self._record_segment_axis(raw, frame=frame)
+        for x_value, from_value, to_value in rows:
+            position = x_value
+            if category_positions is not None:
+                position = category_positions.get(
+                    _split_value_label(x_value), x_value
+                )
+            if horizontal:
+                x0, x1 = from_value, to_value
+                y0, y1 = position, position
+            else:
+                x0, x1 = position, position
+                y0, y1 = from_value, to_value
+            self.shapes.append(
+                {
+                    "type": "line",
+                    "x0": x0,
+                    "x1": x1,
+                    "y0": y0,
+                    "y1": y1,
+                    "xref": self._shape_xref,
+                    "yref": self._shape_yref,
+                    "line": dict(line_style),
+                    "layer": "below",
+                }
+            )
+
+    def _record_segment_axis(
+        self,
+        raw: dict,
+        *,
+        frame: Any = None,
+    ) -> dict[str, int] | None:
+        """Remember a categorical segments axis that needs numeric positions.
+
+        Shapes need numeric category positions too, while flat marker/bar
+        traces sharing the axis must be remapped consistently.  The category
+        order comes from the frame this trace was built against (a facet cell,
+        or the pre-split frame for ``splitBy`` traces).  Returns the label map
+        for this axis, or ``None`` when the axis stays as-is.
+        """
+        segments = raw.get("segments")
+        if not isinstance(segments, dict):
+            return None
+        slot_value = segments.get("x")
+        if not isinstance(slot_value, str) or not slot_value.startswith("$"):
+            return None
+        if slot_value.startswith("$opt.") or ".label" in slot_value:
+            return None
+        column = self.slots.get(slot_value[1:])
+        if column is None:
+            return None
+        source = self.work if frame is None else frame
+        if column not in source.columns:
+            return None
+        series = source[column]
+        if not _axis_needs_remap(series):
+            return None
+        try:
+            unique_values = list(pd.unique(series))
+        except (TypeError, ValueError):
+            return None
+        label_to_index: dict[str, int] = {}
+        for value in unique_values:
+            label = _split_value_label(value)
+            if label not in label_to_index:
+                label_to_index[label] = len(label_to_index)
+        facet_by = _obj_get(self.manifest, "facet_by")
+        if facet_by is None:
+            facet_by = _obj_get(self.manifest, "facetBy")
+        has_facet = self.facet_field is not None or facet_by == "$color"
+        if len(label_to_index) <= 1 and not has_facet:
+            # A single category has no cross-trace position collision to fix;
+            # keeping the original label also keeps one-row previews readable.
+            return None
+        role = "y" if segments.get("horizontal", False) is True else "x"
+        ref = self._shape_yref if role == "y" else self._shape_xref
+        self._segment_axes.append(
+            _SegmentAxis(
+                role=role,
+                ref=ref,
+                labels=list(label_to_index),
+                label_to_index=label_to_index,
+            )
+        )
+        return label_to_index
+
     def _build_trace_body(
         self,
         raw: dict,
         trace_type: str,
         trace_index: int = 0,
-    ) -> dict:
-        has_segments = "segments" in raw
-        if has_segments:
+        *,
+        segment_frame: Any = None,
+    ) -> dict | None:
+        if "segments" in raw:
             if "x" in raw or "y" in raw:
                 raise _RenderError("segments and x/y are mutually exclusive")
             if trace_type != "scatter":
                 raise _RenderError("segments need a scatter trace")
-            mode = raw.get("mode")
-            if not isinstance(mode, str) or "lines" not in mode.split("+"):
-                raise _RenderError("segments need a lines mode")
+            self._append_segment_shapes(
+                raw,
+                frame=self.work if segment_frame is None else segment_frame,
+            )
+            return None
         trace: dict[str, Any] = {"type": trace_type}
         for key, value in raw.items():
             if key in ("type", "splitBy"):
@@ -3365,9 +3534,7 @@ class _RenderEnv:
                 if trace_type == "sankey":
                     trace[key] = self._resolve_data_value(value)
                 continue
-            if key == "segments":
-                trace.update(self._resolve_segments(value))
-            elif key in DATA_KEYS:
+            if key in DATA_KEYS:
                 if trace_type == "indicator" and key in (
                     "x", "y", "z", "labels", "values",
                 ):
@@ -3547,8 +3714,13 @@ class _RenderEnv:
                     continue
                 self.work = subset
                 trace = self._build_trace_body(
-                    raw, trace_type, trace_index
+                    raw,
+                    trace_type,
+                    trace_index,
+                    segment_frame=original,
                 )
+                if trace is None:
+                    continue
                 value_label = _split_value_label(value)
                 if base_name is None or base_name == "":
                     trace["name"] = value_label
@@ -3622,6 +3794,8 @@ class _RenderEnv:
                 trace = self._build_trace_body(
                     raw, trace_type, trace_index
                 )
+                if trace is None:
+                    continue
                 if (
                     default_showlegend is not None
                     and "showlegend" not in raw
@@ -3670,6 +3844,8 @@ class _RenderEnv:
                 )
                 layout[f"xaxis{suffix}"] = cell_xaxis
                 layout[f"yaxis{suffix}"] = dict(base_yaxis)
+                self._shape_xref = f"x{suffix}"
+                self._shape_yref = f"y{suffix}"
 
                 if _is_missing_value(value):
                     subset = original[series.isna()]
@@ -3688,6 +3864,8 @@ class _RenderEnv:
                 traces.extend(cell_traces)
         finally:
             self.work = original
+            self._shape_xref = "x"
+            self._shape_yref = "y"
 
         if total > MAX_FACET_CELLS:
             annotation = {
@@ -3716,6 +3894,65 @@ class _RenderEnv:
             default_showlegend=None
         )
 
+    def remap_segment_axes(
+        self,
+        traces: list[dict],
+        layout: dict,
+    ) -> None:
+        """Replace categorical segment-axis labels with numeric indices.
+
+        Segment lines are layout shapes, so every flat marker/bar trace on the
+        same axis must use the same numeric category positions; the axis then
+        gets array ticks carrying the original labels.  Each facet cell is
+        handled independently via its ``xaxis``/``xaxis2``/... reference.
+        """
+        if not self._segment_axes:
+            return
+        groups: dict[
+            tuple[str, str],
+            tuple[list[str], dict[str, int]],
+        ] = {}
+        for info in self._segment_axes:
+            key = (info.role, info.ref)
+            existing = groups.get(key)
+            if existing is None:
+                groups[key] = (
+                    list(info.labels),
+                    dict(info.label_to_index),
+                )
+                continue
+            labels, mapping = existing
+            for label in info.labels:
+                if label not in mapping:
+                    mapping[label] = len(labels)
+                    labels.append(label)
+
+        for (role, ref), (labels, mapping) in groups.items():
+            for trace in traces:
+                trace_ref = trace.get(f"{role}axis", role)
+                if trace_ref != ref:
+                    continue
+                values = trace.get(role)
+                if not isinstance(values, list):
+                    continue
+                trace[role] = [
+                    _remap_segment_position(value, mapping)
+                    for value in values
+                ]
+
+            axis_key = _axis_layout_key(ref)
+            axis_layout = layout.get(axis_key)
+            axis_layout = (
+                dict(axis_layout)
+                if isinstance(axis_layout, dict)
+                else {}
+            )
+            axis_layout["tickmode"] = "array"
+            axis_layout["tickvals"] = list(range(len(labels)))
+            axis_layout["ticktext"] = list(labels)
+            axis_layout["type"] = "linear"
+            layout[axis_key] = axis_layout
+
 
 def render(
     df: pd.DataFrame,
@@ -3743,6 +3980,11 @@ def render(
     or Sankey ``source``/``target``/``values`` length mismatch — raise
     ``ValueError`` so the API can return the actionable message instead of a
     silent empty figure.
+
+    ``segments`` traces emit layout shapes rather than data traces, so a
+    segments-only manifest intentionally returns ``{"data": [], "layout":
+    {..., "shapes": [...]}}``.  Existing base-layout shapes are preserved and
+    renderer shapes are appended; a manifest cannot declare ``shapes``.
     """
     layout = dict(base_layout or {})
     try:
@@ -3770,6 +4012,13 @@ def render(
             traces = env.build_faceted_traces(facet_column, layout)
         else:
             traces = env.build_traces()
+        env.remap_segment_axes(traces, layout)
+        if env.shapes:
+            existing_shapes = layout.get("shapes")
+            if isinstance(existing_shapes, (list, tuple)):
+                layout["shapes"] = list(existing_shapes) + list(env.shapes)
+            else:
+                layout["shapes"] = list(env.shapes)
         if not traces:
             return {"data": [], "layout": layout}
         return {"data": traces, "layout": layout}
