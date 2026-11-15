@@ -46,6 +46,8 @@ jobs:
     name: Build ${{ matrix.os }}
     needs: eval
     runs-on: ${{ matrix.os }}
+    # macOS runners are unavailable for this account right now and must not block the release.
+    continue-on-error: ${{ matrix.optional == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -56,8 +58,10 @@ jobs:
             artifact: windows
           # macos-14 = Apple Silicon (arm64); the macos-13 (Intel) queue is
           # heavily backlogged. Produce an arm64 dmg for M-series Macs.
+          # optional: true — a missing macOS runner must not block the release.
           - os: macos-14
             artifact: macos
+            optional: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -129,8 +133,10 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    # Publish from whatever platform builds succeeded (an optional macOS entry
+    # may have failed or never been scheduled) but never from a cancelled run.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.eval.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'failure') }}
+    needs: [eval, build]
     runs-on: ubuntu-22.04
     steps:
       # gh needs a git checkout to resolve the repository and verify the tag.
@@ -151,6 +157,7 @@ jobs:
         # unpacked intermediates); pick only real installer files to upload.
         run: |
           FILES=$(find release-assets -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' \))
+          [ -n "$FILES" ] || { echo "no installer files found"; exit 1; }
           echo "uploading:"; echo "${FILES}"
           # A previous partially-failed run may have left the Release behind;
           # fall back to uploading (overwriting) assets onto the existing one.
