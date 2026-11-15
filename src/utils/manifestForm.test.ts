@@ -37,7 +37,7 @@ const examples = import.meta.glob('../../examples/charts/*.json', {
   eager: true,
 }) as Record<string, string>
 
-function withChannelTypes(form: ManifestForm, key: 'x' | 'color', types: ('quantitative' | 'nominal' | 'temporal')[]) {
+function withChannelTypes(form: ManifestForm, key: 'x' | 'color' | 'facet', types: ('quantitative' | 'nominal' | 'temporal')[]) {
   form.channels[key] = { enabled: true, required: true, types }
   return form
 }
@@ -247,6 +247,30 @@ describe('previewEncodingFor', () => {
     const encoding = previewEncodingFor(emptyManifest(), bindings, columnTypes)
     expect(encoding.chartType).toBe('custom')
   })
+
+  it('sends a declared facet channel like any other binding', () => {
+    const form = withChannelTypes(emptyManifest(), 'x', ['nominal'])
+    form.id = 'facet-grid'
+    form.channels.facet = { enabled: true, required: true, types: ['nominal'] }
+    const encoding = previewEncodingFor(
+      form,
+      { fields: { x: 'region', facet: 'segment' }, yFields: ['a'] },
+      { region: 'nominal', segment: 'nominal', a: 'quantitative' },
+    )
+    // Same shape as the other channels: the backend reads `field` + `type`.
+    expect(encoding.facet).toEqual({ field: 'segment', type: 'nominal' })
+  })
+
+  it('omits facet when the manifest does not declare it', () => {
+    const form = withChannelTypes(emptyManifest(), 'x', ['nominal'])
+    const encoding = previewEncodingFor(
+      form,
+      { fields: { x: 'region', facet: 'segment' }, yFields: [] },
+      { region: 'nominal', segment: 'nominal' },
+    )
+    // A bound-but-undeclared fixture would only produce an unused encoding key.
+    expect(encoding.facet).toBeUndefined()
+  })
 })
 
 describe('seedPreviewBindings', () => {
@@ -326,6 +350,23 @@ describe('seeding on a mixed-type dataset', () => {
     const seeded = seedPreviewBindings(form, { fields: {}, yFields: [] }, demo)
     expect(seeded.fields.x).toBe('city')
     expect(seeded.fields.color).toBe('region')
+  })
+
+  it('binds a declared facet to a nominal column the x channel did not take', () => {
+    const form = emptyManifest()
+    form.channels.facet = { enabled: true, required: true, types: ['nominal'] }
+    const seeded = seedPreviewBindings(form, { fields: {}, yFields: [] }, demo)
+    expect(seeded.fields.x).toBe('city')
+    expect(seeded.fields.facet).toBe('region')
+    expect(seeded.yFields).toEqual(['before'])
+  })
+
+  it('binds an unconstrained facet to a nominal column', () => {
+    const form = emptyManifest()
+    // No declared types: facet is a category split by convention, like `color`.
+    form.channels.facet = { enabled: true, required: true, types: [] }
+    const seeded = seedPreviewBindings(form, { fields: {}, yFields: [] }, demo)
+    expect(seeded.fields.facet).toBe('region')
   })
 
   it('falls back to the channel default type when it declares none', () => {
@@ -410,6 +451,25 @@ describe('reseedPreviewBindings', () => {
       columns,
     )
     expect(next.fields.x).toBe('region')
+  })
+
+  it('keeps a facet binding while declared and drops it with the channel', () => {
+    const facetColumns = [...columns, { name: 'segment', inferredType: 'nominal' }]
+    const form = withChannelTypes(emptyManifest(), 'x', ['nominal'])
+    form.channels.facet = { enabled: true, required: true, types: ['nominal'] }
+
+    const kept = reseedPreviewBindings(
+      form,
+      { fields: { x: 'region', facet: 'segment' }, yFields: ['value'] },
+      facetColumns,
+    )
+    expect(kept.fields).toEqual({ x: 'region', facet: 'segment' })
+
+    // The manifest stops declaring the channel: the stale binding goes away.
+    form.channels.facet = { enabled: false, required: true, types: [] }
+    const dropped = reseedPreviewBindings(form, kept, facetColumns)
+    expect(dropped.fields.facet).toBeUndefined()
+    expect(dropped.fields.x).toBe('region')
   })
 })
 

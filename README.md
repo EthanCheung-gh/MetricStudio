@@ -4,7 +4,7 @@
 
 基于 Plotly 的个人数据分析桌面工具。导入数据后即可完成清洗变换、可视化图表构建、交互式 Dashboard 编排，并借助 AI 完成数据问答、洞察叙述与统计解释——全程数据留在本机。
 
-当前版本：**1.15.1**
+当前版本：**1.16.0**
 
 ## 界面预览
 
@@ -17,6 +17,8 @@
 | ![命令面板](png/05-metricstudio-command-panel.png) | ![SQL 工作台](png/06-metricstudio-sql-stat.png) |
 | **Agent问答面板** | **设置面板** |
 | ![Agent问答面板](png/07-metricstudio-qa-panel.png) | ![设置面板](png/08-metricstudio-setup-panel.png) |
+| **自定义图表工作台** | **自定义图表管理** |
+| ![自定义图表工作台](png/09-metricstudio-custom-chart-workbench.png) | ![自定义图表管理](png/10-metricstudio-custom-charts.png) |
 
 ## 设计决策
 
@@ -231,6 +233,7 @@ codegraph impact Dataset       # 修改某符号会影响什么
 - **v1.14.0**：agent 代配图表——NL → ChartEncoding（单轮生成 + 严格校验 + 失败回喂重试一次 + 规则推荐兜底），AI 胶囊新增「图表」模式；修复 fetchJson 缺失 Content-Type 导致同步 POST 全部 422 的传输层缺陷
 - **v1.15.0**：图表类型点名即契约（中英文关键词三层强制 + 降级 retarget + pie 支持 x 通道）；AI 未配置引导弹窗；工作上下文（标签页 / 图表 / 看板 / 数据集选中态）跨重启恢复；per-chart 预览缓存与同图跳过重绘。以上自鸿蒙端（MetricStudio-OHOS）回移，与下游行为对齐
 - **v1.15.1**：成本与延迟优化——问答的帧统计与洞察只算一次（宽表每问 436ms → 32ms，证据构建 378ms → 2ms），数据上下文移出 system prompt 让前缀可缓存；原始行图表超过 5000 点确定性降采样（10 万行散点 4.2MB → 212KB）；清洗链校验失败自动重问一次（修复失败仍保留原 422 语义）
+- **v1.16.0**：图表类型收拢为单一 registry（34 种类型统一驱动校验 / AI 配图 / 点名类型识别 / 降采样），并修掉它暴露出的漂移缺陷——K 线 AI 永远配不出来、treemap 族校验时漏掉取值字段、直方图声明了实际被忽略的通道、关键词平手按注册顺序选错类型、仪表盘劫持 dashboard 这个词；声明式自定义图表——JSON 清单放进 `~/.metricstudio/charts/`（不执行任何代码），支持 transforms / trace 模板 / 样式与数组槽位 / `segments` / `splitBy` / 分面 / indicator / sankey，应用内导入导出，并提供编写工作台（结构化 trace 与 layout 表单、未保存清单的实时预览、AI 生成草稿）与「从当前图表创建」；图表配置面板在没有活动图表时不再隐形打开或静默打开
 
 后续方向（P3）：发现式分析首页、插件系统、轻量分享。
 

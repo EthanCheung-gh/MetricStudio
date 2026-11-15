@@ -16,6 +16,7 @@ import { useCustomChartStore } from '@/stores/customChartStore'
 import { useUIStore } from '@/stores/uiStore'
 import { chartTypeLabel } from '@/utils/chartTypeLabel'
 import { manifestFromChart } from '@/utils/manifestFromChart'
+import { displayManifestPath } from '@/utils/manifestPath'
 import { CustomChartWorkbench } from '@/components/chart/CustomChartWorkbench'
 import type { CustomChartItem, CustomChartManifest } from '@/types/customChart'
 
@@ -192,7 +193,7 @@ export function CustomChartsDialog({ open, onOpenChange }: CustomChartsDialogPro
                       </div>
                       <div className="truncate text-[10px] text-muted">{item.id}</div>
                       <div className="truncate text-[10px] text-muted">
-                        {t('chart.custom.source')}: {item.file}
+                        {t('chart.custom.source')}: {displayManifestPath(item.file)}
                       </div>
                     </div>
                     <Button
@@ -255,7 +256,7 @@ export function CustomChartsDialog({ open, onOpenChange }: CustomChartsDialogPro
                       {entry.id || entry.file}
                     </div>
                     <div className="truncate text-[10px] text-muted">
-                      {t('chart.custom.source')}: {entry.file}
+                      {t('chart.custom.source')}: {displayManifestPath(entry.file)}
                     </div>
                     <ul className="mt-1 list-disc pl-4 text-[10px] text-muted">
                       {entry.errors.map((message, index) => (

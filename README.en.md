@@ -4,7 +4,7 @@ English | [简体中文](README.md)
 
 A Plotly-based personal data analysis desktop app. Import data, then clean and transform it, build visual charts, compose interactive dashboards, and use AI for data Q&A, insight narratives and statistical explanations — your data never leaves the machine.
 
-Current version: **1.15.1**
+Current version: **1.16.0**
 
 ## Screenshots
 
@@ -17,6 +17,8 @@ Current version: **1.15.1**
 | ![Command palette](png/05-metricstudio-command-panel.png) | ![SQL workbench](png/06-metricstudio-sql-stat.png) |
 | **Agent Q&A Panel** | **Settings panel** |
 | ![Agent Q&A Panel](png/07-metricstudio-qa-panel.png) | ![Settings panel](png/08-metricstudio-setup-panel.png) |
+| **Custom chart workbench** | **Custom chart management** |
+| ![Custom chart workbench](png/09-metricstudio-custom-chart-workbench.png) | ![Custom chart management](png/10-metricstudio-custom-charts.png) |
 
 ## Design decisions
 
@@ -231,6 +233,7 @@ See [package.json](package.json) for the current version (kept in sync with `src
 - **v1.14.0**: agent-configured charts — NL → ChartEncoding (single shot + strict validation + one error-feedback retry + recommendation fallback); a Chart mode joins the AI bar; fixed fetchJson missing Content-Type, which had broken every sync POST with 422
 - **v1.15.0**: a named chart type is a hard contract (zh/en keyword detection, three-layer enforcement, degraded-path retargeting, pie renders from x); an unconfigured-AI setup prompt; the working context (tabs / active chart / dashboard / dataset) survives a reload; per-chart preview cache with identical-figure render skip. Ported back from the HarmonyOS side (MetricStudio-OHOS) to keep both ends aligned
 - **v1.15.1**: cost and latency work — frame statistics and insights are computed once per dataset (436ms → 32ms per question on a wide frame; evidence 378ms → 2ms) and the data context moved out of the system prompt so its prefix is cacheable; raw-row charts deterministically downsample above 5000 points (a 100k-row scatter drops from 4.2MB to 212KB); the cleaning chain retries once with error feedback (still 422 when the repair fails)
+- **v1.16.0**: chart types collapse into a single registry (34 types now drive validation, AI chart configuration, named-type detection and sampling) and the drift it exposed is fixed — a K-line could never be produced by the AI, the treemap family validated without the value field it consumes, histogram advertised channels it ignored, keyword ties resolved by registry order to the wrong type, and 仪表盘 hijacked the app's own word for the dashboard; declarative custom charts — JSON manifests under `~/.metricstudio/charts/` (no code execution) with transforms, trace templates, style and array slots, `segments`, `splitBy`, facets, indicator and sankey, in-app import / export, plus an authoring workbench (structured trace and layout forms, live preview of unsaved manifests, AI-generated drafts) and "Create from current chart"; the chart config panel no longer opens invisibly or silently when no chart is active
 
 Next up (P3): discovery-oriented home page, plugin system, lightweight sharing.
 

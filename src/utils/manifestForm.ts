@@ -39,11 +39,23 @@ export const CHANNEL_KEYS = [
 export type ChannelKey = (typeof CHANNEL_KEYS)[number]
 
 /**
- * Channels the preview endpoint can bind to a column. `facet` is excluded: it
- * has no `$facet` data slot, so a preview binding for it would never reach the
- * renderer.
+ * Channels the preview endpoint can bind to a column, in seeding order.
+ *
+ * `facet` belongs here: the backend refuses a manifest that declares it without
+ * a binding (`missing required channel 'facet'`), so leaving it out made every
+ * faceted manifest preview as an empty figure. It claims its column after the
+ * per-series channels, mirroring `CHANNEL_KEYS`.
  */
-export const PREVIEW_CHANNELS = ['x', 'color', 'size', 'z', 'error', 'source', 'target'] as const
+export const PREVIEW_CHANNELS = [
+  'x',
+  'color',
+  'size',
+  'facet',
+  'z',
+  'error',
+  'source',
+  'target',
+] as const
 export type PreviewChannelKey = (typeof PREVIEW_CHANNELS)[number]
 
 export const CHANNEL_TYPES: readonly CustomFieldType[] = [
@@ -804,8 +816,8 @@ export function previewManifestFor(manifest: CustomChartManifest): CustomChartMa
 
 /**
  * Column type a channel prefers when the manifest does not restrict `types`.
- * `x` is handled separately (it is a dimension by default) and `facet` has no
- * preview slot yet; it is listed so the map stays total over the channels.
+ * `x` is handled separately (it is a dimension by default); `facet` is a
+ * category split, so it reads as nominal like `color`.
  */
 const DEFAULT_CHANNEL_TYPE: Partial<Record<ChannelKey, CustomFieldType>> = {
   color: 'nominal',

@@ -68,11 +68,15 @@ const LAYOUT_KEYS: readonly string[] = [
 /**
  * Encodable channels, in the panel's canonical order (`CHANNEL_KEYS`).
  *
- * `facet` is missing on purpose: a manifest that *declares* the facet channel
- * must also bind it, and the authoring workbench has no preview binding for
- * `facet` (`PREVIEW_CHANNELS` in manifestForm.ts), so every such manifest would
- * fail to preview with "facet channel is not bound". The grid is reported as a
- * fidelity loss instead.
+ * `facet` is missing on purpose. Binding it is no longer the problem — the
+ * workbench seeds a picker for it (`PREVIEW_CHANNELS` in manifestForm.ts) — but
+ * the conversion cannot reproduce a built-in chart's grid: the builder draws it
+ * from `encoding.facet` plus a layout whose cells, linked axes and per-cell
+ * styling a manifest cannot set (the renderer owns `layout["grid"]`), while
+ * `channelRule` can only carry the column, as a new `required: true` channel.
+ * Half-carrying it would hand back a manifest that claims to be this chart and
+ * renders something else, so the grid is reported as a fidelity loss
+ * (`FACET_DROPPED`) instead.
  */
 const CHANNEL_KEYS = ['x', 'color', 'size', 'z', 'error', 'source', 'target'] as const
 type ChannelKey = (typeof CHANNEL_KEYS)[number]
