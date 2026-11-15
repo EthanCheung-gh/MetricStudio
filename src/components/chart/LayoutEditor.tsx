@@ -2,12 +2,14 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 import {
+  ColorSwatch,
   FIELD_LABEL,
   JsonTextarea,
   LeafField,
   NumberField,
   PairField,
   UnsupportedNotice,
+  WorkbenchInput,
 } from '@/components/chart/StyleField'
 import {
   errorAtPath,
@@ -16,11 +18,13 @@ import {
   layoutLeafValue,
   layoutRangeValue,
   layoutToForm,
+  literalText,
   numberConstraints,
   optionalLabel,
   optionSlots,
   parseLayoutFields,
   serializeLayoutFields,
+  setLayoutPath,
   setPath,
   titleText,
   unrepresentedLayoutKeys,
@@ -33,15 +37,17 @@ import type { ManifestForm } from '@/utils/manifestForm'
  *
  * `layout` is one JSON object in the manifest and is stored as text
  * (`ManifestForm.layout`). Every control patches a single path with
- * `setPath`, so nested keys the form does not show (`xaxis.automargin`,
- * `legend.font`, …) stay exactly as written; the JSON panel replaces the whole
- * object once it parses.
+ * `setLayoutPath`, so nested keys the form does not show (`xaxis.automargin`,
+ * `legend.orientation`, …) stay exactly as written; the JSON panel replaces the
+ * whole object once it parses.
  *
  * The core set (`LAYOUT_FIELD_PATHS`) is always rendered, including for a
  * converted chart whose `layout` only has `{xaxis: {}, yaxis: {}}`. A control
  * that is still empty shows its placeholder and writes nothing; clearing a
- * field removes the key (`layoutLeafValue`) instead of writing `""`/`0`, so
- * opening a manifest never invents layout keys.
+ * field removes the key (`layoutLeafValue`) instead of writing `""`/`0`, and
+ * `setLayoutPath` prunes the empty objects it leaves behind, so opening a
+ * manifest never invents layout keys and clearing a font never leaves
+ * `title: {}`.
  */
 
 const BAR_MODES = ['stack', 'group', 'overlay', 'relative'] as const
@@ -50,6 +56,9 @@ const LEGEND_ORIENTATIONS = ['v', 'h'] as const
 const AXIS_TYPES = ['-', 'linear', 'log', 'date', 'category', 'multicategory'] as const
 const MARGIN_KEYS = ['l', 'r', 't', 'b'] as const
 const AXIS_KEYS = ['xaxis', 'yaxis'] as const
+const MONO_FONT = 'font-mono text-[11px]'
+const FIELD_ERROR = 'text-[10px] leading-tight text-danger break-words'
+const TICKFORMAT_PLACEHOLDER = '%Y-%m'
 
 export function LayoutEditor({
   layout,
@@ -82,11 +91,12 @@ export function LayoutEditor({
   /**
    * Commit one control. A blank value deletes the key — and a key that is
    * already absent is left alone, so a no-op edit never writes `layout`.
+   * `setLayoutPath` prunes the empty parents a delete leaves behind.
    */
   const setField = (path: string, value: unknown) => {
     const cleared = layoutLeafValue(value)
     if (cleared === undefined && getPath(fields, path) === undefined) return
-    commit(setPath(fields, path, cleared))
+    commit(setLayoutPath(fields, path, cleared))
   }
 
   /** A range with both ends blank is not a range: delete instead of `["",""]`. */
@@ -139,6 +149,90 @@ export function LayoutEditor({
     />
   )
 
+  /**
+   * Plain-text leaf (`font.family`, `font.color`, `tickformat`).
+   *
+   * The typed text is committed verbatim: `tickformat` is a format string, so a
+   * value such as `.2f` or `0.5` must stay a string. A blank box deletes the
+   * key through `setField`.
+   */
+  const textLeaf = (
+    path: string,
+    labelText: string,
+    options: { placeholder?: string; swatch?: boolean } = {},
+  ) => {
+    const value = getPath(fields, path)
+    const message = errorAtPath(errors, path)
+    return (
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className={FIELD_LABEL}>{labelText}</span>
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <WorkbenchInput
+              size="sm"
+              aria-label={labelText}
+              placeholder={options.placeholder}
+              value={literalText(value)}
+              onValueChange={(text) => setField(path, text)}
+              isInvalid={message !== undefined}
+              dense
+              classNames={{ input: MONO_FONT }}
+            />
+          </div>
+          {options.swatch === true && (
+            <ColorSwatch
+              label={labelText}
+              value={value}
+              onChange={(next) => setField(path, next)}
+            />
+          )}
+        </div>
+        {message !== undefined && <span className={FIELD_ERROR}>{message}</span>}
+      </div>
+    )
+  }
+
+  const numberLeaf = (path: string, labelText: string) => (
+    <NumberField
+      label={labelText}
+      value={getPath(fields, path)}
+      options={sources.options}
+      constraints={numberConstraints(path)}
+      placeholder={label('chart.workbench.placeholder.number', 'number')}
+      error={errorAtPath(errors, path)}
+      onChange={(next) => setField(path, next)}
+    />
+  )
+
+  /** One font object (`title.font`): family / size / colour, path as its title. */
+  const fontBlock = (parent: string) => (
+    <div key={parent} className="flex flex-col gap-1">
+      <span className="font-mono text-[10px] text-muted">{parent}</span>
+      <div className="grid grid-cols-2 gap-1.5">
+        {textLeaf(`${parent}.family`, label('chart.workbench.layout.fontFamily', 'Family'))}
+        {numberLeaf(`${parent}.size`, label('chart.workbench.layout.fontSize', 'Size'))}
+        {textLeaf(`${parent}.color`, label('chart.workbench.layout.fontColor', 'Color'), {
+          placeholder: label('chart.workbench.placeholder.color', '#3b82f6'),
+          swatch: true,
+        })}
+      </div>
+    </div>
+  )
+
+  /**
+   * A collapsible font sub-block per owner. The axis owners share one block for
+   * their title font and tick font, so the layout panel does not turn into a
+   * wall of inputs when all six font objects exist.
+   */
+  const fontSection = (owner: string, parents: readonly string[]) => (
+    <CollapsibleSection
+      title={`${label('chart.workbench.layout.font', 'Font')} · ${owner}`}
+      defaultOpen={false}
+    >
+      <div className="flex flex-col gap-1.5">{parents.map((parent) => fontBlock(parent))}</div>
+    </CollapsibleSection>
+  )
+
   const axisEditor = (axis: (typeof AXIS_KEYS)[number]) => {
     const current = isRecord(fields[axis]) ? (fields[axis] as Record<string, unknown>) : {}
     return (
@@ -174,6 +268,11 @@ export function LayoutEditor({
             onChange={(next) => setField(`${axis}.tickangle`, next)}
           />
           <div className="col-span-2 min-w-0">
+            {textLeaf(`${axis}.tickformat`, label('chart.workbench.layout.tickformat', 'Tick format'), {
+              placeholder: TICKFORMAT_PLACEHOLDER,
+            })}
+          </div>
+          <div className="col-span-2 min-w-0">
             <PairField
               label={`${axis}.range`}
               value={current.range}
@@ -183,6 +282,7 @@ export function LayoutEditor({
             />
           </div>
         </div>
+        {fontSection(axis, [`${axis}.title.font`, `${axis}.tickfont`])}
       </div>
     )
   }
@@ -207,17 +307,15 @@ export function LayoutEditor({
 
           <div className="flex flex-col gap-1 rounded border border-border/60 p-1.5">
             <span className={FIELD_LABEL}>{label('chart.workbench.layout.title', 'Title')}</span>
-            <div className="grid grid-cols-2 gap-1.5">
-              <LeafField
-                spec={{ key: 'title.text', control: 'style' }}
-                path="title.text"
-                value={titleText(fields.title)}
-                sources={sources}
-                error={errorAtPath(errors, 'title.text')}
-                onChange={(next) => setTitleText('title', next)}
-              />
-              {leaf('polar.bgcolor', 'style')}
-            </div>
+            <LeafField
+              spec={{ key: 'title.text', control: 'style' }}
+              path="title.text"
+              value={titleText(fields.title)}
+              sources={sources}
+              error={errorAtPath(errors, 'title.text')}
+              onChange={(next) => setTitleText('title', next)}
+            />
+            {fontSection('title.font', ['title.font'])}
           </div>
 
           <div className="flex flex-col gap-1 rounded border border-border/60 p-1.5">
@@ -237,6 +335,15 @@ export function LayoutEditor({
                   onChange={(next) => setField(`margin.${key}`, next)}
                 />
               ))}
+              {numberLeaf('margin.pad', label('chart.workbench.layout.pad', 'Pad'))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1 rounded border border-border/60 p-1.5">
+            <span className="font-mono text-[11px]">polar</span>
+            <div className="grid grid-cols-2 gap-1.5">
+              {leaf('polar.bgcolor', 'style')}
+              {numberLeaf('polar.hole', label('chart.workbench.layout.hole', 'Hole'))}
             </div>
           </div>
 
@@ -265,6 +372,7 @@ export function LayoutEditor({
                 onChange={(next) => setField('legend.y', next)}
               />
             </div>
+            {fontSection('legend.font', ['legend.font'])}
           </div>
 
           <div className="flex flex-col gap-1 rounded border border-border/60 p-1.5">

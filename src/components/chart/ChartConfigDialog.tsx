@@ -9,6 +9,7 @@ import { useCustomChart, useCustomChartStore } from '@/stores/customChartStore'
 import { api } from '@/api/client'
 import { chartTypeOptions } from '@/utils/chartConstants'
 import { chartTypeLabel, localizedCustomText } from '@/utils/chartTypeLabel'
+import { resolveConfigTarget } from '@/utils/chartConfigTarget'
 import {
   PANEL_EDGE_MARGIN,
   clampPanelPosition,
@@ -82,10 +83,16 @@ export function ChartConfigDialog() {
   const addNotification = useUIStore((s) => s.addNotification)
   const charts = useChartStore((s) => s.charts)
   const activeChartId = useChartStore((s) => s.activeChartId)
+  const setActiveChart = useChartStore((s) => s.setActiveChart)
+  const createChart = useChartStore((s) => s.createChart)
   const updateEncoding = useChartStore((s) => s.updateEncoding)
   const updateLayout = useChartStore((s) => s.updateLayout)
   const columns = useDataStore((s) => s.columns)
-  const activeChart = charts.find((c) => c.id === activeChartId)
+  const activeDataFrameId = useDataStore((s) => s.activeDataFrameId)
+  // Never render nothing: an active-but-stale/missing chart falls back to a
+  // picker, and "no charts at all" to a create action (see resolveConfigTarget).
+  const target = resolveConfigTarget(charts, activeChartId)
+  const activeChart = target.kind === 'ready' ? target.chart : null
 
   // Declarative custom charts (backend-owned manifests under ~/.metricstudio/charts)
   const language = useUIStore((s) => s.language)
@@ -180,39 +187,46 @@ export function ChartConfigDialog() {
     e.currentTarget.releasePointerCapture(e.pointerId)
   }
 
-  if (!isOpen || !activeChart) {
+  if (!isOpen) {
     return null
   }
 
   const onClose = () => setOpen(false)
 
-  const encoding = activeChart.encoding
+  // Ready-state only: an empty/pick panel shows none of this.
+  const encoding = activeChart?.encoding ?? null
   // Unknown ids (project saved by a newer build, or a plugin type) have no i18n
   // copy — fall back to the registry label (the bare id) instead of leaking the
   // raw key "chart.type.whatever" into the title. Custom chart ids resolve to
   // their manifest label first.
-  const typeLabel = chartTypeLabel(encoding.chartType, language, t)
+  const typeLabel = encoding ? chartTypeLabel(encoding.chartType, language, t) : ''
   // A custom chart describes itself; built-ins keep their i18n copy.
-  const typeDescription = customChart
-    ? localizedCustomText(customChart.description, language)
-    : t(`chart.desc.${encoding.chartType}`, { defaultValue: '' })
+  const typeDescription = encoding
+    ? customChart
+      ? localizedCustomText(customChart.description, language)
+      : t(`chart.desc.${encoding.chartType}`, { defaultValue: '' })
+    : ''
 
   const applyTemplate = () => {
+    const chart = activeChart
+    if (!chart) return
     const tpl = templates.find((t) => t.id === selectedTemplateId)
     if (!tpl) return
-    updateEncoding(activeChart.id, tpl.encoding)
+    updateEncoding(chart.id, tpl.encoding)
     if (tpl.layout && Object.keys(tpl.layout).length > 0) {
-      updateLayout(activeChart.id, tpl.layout)
+      updateLayout(chart.id, tpl.layout)
     }
     addNotification('success', t('chart.templateApplied', { name: tpl.name }))
   }
 
   const saveAsTemplate = async () => {
+    const chart = activeChart
+    if (!chart) return
     const name = templateName.trim()
     if (!name) return
     setTemplateBusy(true)
     try {
-      const saved = await api.saveTemplate(name, activeChart.encoding, activeChart.layout)
+      const saved = await api.saveTemplate(name, chart.encoding, chart.layout)
       setTemplates((prev) => [...prev, saved])
       setTemplateName('')
       addNotification('success', t('chart.templateSaved', { name }))
@@ -239,6 +253,13 @@ export function ChartConfigDialog() {
     }
   }
 
+  // Create from the empty state: no dataset means no chart (the button is
+  // disabled and the hint below it says why).
+  const createNewChart = () => {
+    if (!activeDataFrameId) return
+    createChart(activeDataFrameId)
+  }
+
   return (
     <>
     <div
@@ -258,7 +279,7 @@ export function ChartConfigDialog() {
         <div className="flex items-center gap-2 text-sm font-semibold">
           <GripHorizontal className="h-4 w-4 text-muted" />
           <span>{t('chart.configTitle')}</span>
-          <span className="text-sm font-normal text-muted">— {activeChart.name}</span>
+          {activeChart && <span className="text-sm font-normal text-muted">— {activeChart.name}</span>}
         </div>
         <Button
           isIconOnly
@@ -273,6 +294,7 @@ export function ChartConfigDialog() {
         </Button>
       </div>
 
+      {activeChart ? (
       <div className="flex flex-1 min-h-0 flex-col overflow-hidden p-4 pb-6">
           {/* Height constraint travels via flex-1/min-h-0 the whole way down (never %: the root only has max-h) */}
           <div className="flex flex-1 min-h-0 gap-4">
@@ -296,8 +318,8 @@ export function ChartConfigDialog() {
                   <Button
                     key={opt.value}
                     size="sm"
-                    variant={encoding.chartType === opt.value ? 'solid' : 'flat'}
-                    color={encoding.chartType === opt.value ? 'primary' : 'default'}
+                    variant={activeChart.encoding.chartType === opt.value ? 'solid' : 'flat'}
+                    color={activeChart.encoding.chartType === opt.value ? 'primary' : 'default'}
                     onPress={() => updateEncoding(activeChart.id, { chartType: opt.value as ChartType })}
                     className="justify-start text-xs"
                   >
@@ -314,8 +336,8 @@ export function ChartConfigDialog() {
                     <Button
                       key={item.id}
                       size="sm"
-                      variant={encoding.chartType === item.id ? 'solid' : 'flat'}
-                      color={encoding.chartType === item.id ? 'primary' : 'default'}
+                      variant={activeChart.encoding.chartType === item.id ? 'solid' : 'flat'}
+                      color={activeChart.encoding.chartType === item.id ? 'primary' : 'default'}
                       onPress={() => updateEncoding(activeChart.id, { chartType: item.id as ChartType })}
                       className="justify-start text-xs"
                     >
@@ -396,6 +418,50 @@ export function ChartConfigDialog() {
             </div>
           </div>
       </div>
+      ) : (
+        /* Same shell, same measured clamping — just no chart to configure yet */
+        <div className="flex flex-col gap-3 p-4 pb-5">
+          <p className="text-xs leading-relaxed text-muted">
+            {t('chart.config.noActiveChart', { defaultValue: 'No chart is selected yet.' })}
+          </p>
+          {target.kind === 'pick' && (
+            <>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+                {t('chart.config.pickChart', { defaultValue: 'Pick a chart to configure' })}
+              </span>
+              <div className="flex max-h-64 flex-col gap-1 overflow-y-auto pr-1">
+                {target.charts.map((chart) => (
+                  <Button
+                    key={chart.id}
+                    size="sm"
+                    variant="flat"
+                    className="justify-start text-xs"
+                    onPress={() => setActiveChart(chart.id)}
+                  >
+                    {chart.name}
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
+          <div className="flex flex-col gap-1 border-t border-border pt-2">
+            <Button
+              color="primary"
+              size="sm"
+              className="self-start text-xs"
+              isDisabled={!activeDataFrameId}
+              onPress={createNewChart}
+            >
+              {t('chart.config.createChart', { defaultValue: 'New chart' })}
+            </Button>
+            {!activeDataFrameId && (
+              <span className="text-[10px] text-muted">
+                {t('chart.config.noDataset', { defaultValue: 'Select a dataset first to create a chart.' })}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex justify-end gap-2 border-t border-border p-3">
         <Button color="primary" size="sm" onPress={onClose}>
           {t('chart.done')}

@@ -844,8 +844,28 @@ export const LAYOUT_KEYS = [
   'title',
 ] as const
 
-const AXIS_KEYS = ['title', 'type', 'showgrid', 'gridcolor', 'tickangle', 'range'] as const
-const MARGIN_KEYS = ['l', 'r', 't', 'b'] as const
+const AXIS_KEYS = [
+  'title',
+  'type',
+  'showgrid',
+  'gridcolor',
+  'tickangle',
+  'range',
+  'tickformat',
+  'tickfont',
+] as const
+const MARGIN_KEYS = ['l', 'r', 't', 'b', 'pad'] as const
+const FONT_KEYS = ['family', 'size', 'color'] as const
+
+/** Nested font objects the layout form edits, three leaves each. */
+export const LAYOUT_FONT_PATHS = [
+  'title.font',
+  'legend.font',
+  'xaxis.title.font',
+  'yaxis.title.font',
+  'xaxis.tickfont',
+  'yaxis.tickfont',
+] as const
 
 export function layoutToForm(layout: unknown): LayoutState {
   return { fields: isRecord(layout) ? cloneJson(layout) : {} }
@@ -866,10 +886,22 @@ export function serializeLayoutFields(fields: Record<string, unknown>): string {
 /**
  * Layout paths the form cannot represent. Nested keys are unconstrained in the
  * schema (any Plotly axis/legend key is valid), so `xaxis.automargin` and
- * friends are preserved and listed rather than dropped.
+ * friends are preserved and listed rather than dropped. The font objects the
+ * form does edit (`title.font`, `xaxis.tickfont`, …) are reduced to their three
+ * leaves; any other key inside one is still named.
  */
 export function unrepresentedLayoutKeys(fields: Record<string, unknown>): string[] {
   const out: string[] = []
+  const reportFont = (path: string, value: unknown) => {
+    if (value === undefined) return
+    if (!isRecord(value)) {
+      out.push(path)
+      return
+    }
+    for (const child of Object.keys(value)) {
+      if (!(FONT_KEYS as readonly string[]).includes(child)) out.push(`${path}.${child}`)
+    }
+  }
   for (const [key, value] of Object.entries(fields)) {
     if (!(LAYOUT_KEYS as readonly string[]).includes(key)) {
       out.push(key)
@@ -886,21 +918,32 @@ export function unrepresentedLayoutKeys(fields: Record<string, unknown>): string
       }
       if (isRecord(value.title)) {
         for (const child of Object.keys(value.title)) {
-          if (child !== 'text') out.push(`${key}.title.${child}`)
+          if (child !== 'text' && child !== 'font') out.push(`${key}.title.${child}`)
         }
+        reportFont(`${key}.title.font`, value.title.font)
       }
+      reportFont(`${key}.tickfont`, value.tickfont)
     } else if (key === 'legend') {
       for (const child of Object.keys(value)) {
-        if (child !== 'orientation' && child !== 'x' && child !== 'y') out.push(`legend.${child}`)
+        if (
+          child !== 'orientation' &&
+          child !== 'x' &&
+          child !== 'y' &&
+          child !== 'font'
+        ) {
+          out.push(`legend.${child}`)
+        }
       }
+      reportFont('legend.font', value.font)
     } else if (key === 'polar') {
       for (const child of Object.keys(value)) {
-        if (child !== 'bgcolor') out.push(`polar.${child}`)
+        if (child !== 'bgcolor' && child !== 'hole') out.push(`polar.${child}`)
       }
     } else if (key === 'title') {
       for (const child of Object.keys(value)) {
-        if (child !== 'text') out.push(`title.${child}`)
+        if (child !== 'text' && child !== 'font') out.push(`title.${child}`)
       }
+      reportFont('title.font', value.font)
     }
   }
   return out
@@ -911,6 +954,29 @@ export function titleText(value: unknown): string {
   if (isRecord(value)) return typeof value.text === 'string' ? value.text : ''
   if (typeof value === 'string') return value
   return ''
+}
+
+/**
+ * `setPath` for the layout object.
+ *
+ * Plotly accepts a bare string for `title` / `xaxis.title` / `yaxis.title`, so
+ * editing a child of one (a font leaf) must not drop the text: the string is
+ * normalised to `{text}` first. Empty parents are pruned by `setPath`, which is
+ * what makes clearing the last font field remove `font` and then the empty
+ * `title: {}` around it.
+ */
+export function setLayoutPath(
+  root: Record<string, unknown>,
+  path: string,
+  value: unknown,
+): Record<string, unknown> {
+  let next = root
+  for (const parent of ['title', 'xaxis.title', 'yaxis.title']) {
+    if (!path.startsWith(`${parent}.`)) continue
+    const current = getPath(next, parent)
+    if (typeof current === 'string') next = setPath(next, parent, { text: current })
+  }
+  return setPath(next, path, value)
 }
 
 /** Deep equality of two JSON values, ignoring object key order. */
@@ -965,6 +1031,12 @@ export const LAYOUT_COLOR_PATHS: readonly string[] = [
   'polar.bgcolor',
   'xaxis.gridcolor',
   'yaxis.gridcolor',
+  'title.font.color',
+  'legend.font.color',
+  'xaxis.title.font.color',
+  'yaxis.title.font.color',
+  'xaxis.tickfont.color',
+  'yaxis.tickfont.color',
 ]
 
 export function isColorPath(path: string): boolean {
@@ -1024,13 +1096,19 @@ const WHOLE_NUMBER_PATHS = [
   'error_y.thickness',
   'error_x.width',
   'error_y.width',
+  'margin.pad',
 ]
 const STEP_NUMBER_PATHS = ['margin.l', 'margin.r', 'margin.t', 'margin.b']
 const ANGLE_PATHS = ['xaxis.tickangle', 'yaxis.tickangle']
+/** Plotly font sizes start at 1; the layout fonts are the only sizes the form edits. */
+const FONT_SIZE_PATHS: readonly string[] = LAYOUT_FONT_PATHS.map((path) => `${path}.size`)
+const HOLE_PATHS = ['polar.hole']
 
 export function numberConstraints(path: string): NumberConstraints {
   const canonical = canonicalStylePath(path)
   if (OPACITY_PATHS.includes(canonical)) return { min: 0, max: 1, step: 0.05 }
+  if (HOLE_PATHS.includes(canonical)) return { min: 0, max: 1, step: 0.01 }
+  if (FONT_SIZE_PATHS.includes(canonical)) return { min: 1, step: 1 }
   if (WHOLE_NUMBER_PATHS.includes(canonical)) return { min: 0, step: 1 }
   if (STEP_NUMBER_PATHS.includes(canonical)) return { step: 1 }
   if (canonical === 'legend.x' || canonical === 'legend.y') return { step: 0.01 }
@@ -1227,25 +1305,47 @@ export const LAYOUT_FIELD_PATHS = [
   'barmode',
   'hovermode',
   'title.text',
+  'title.font.family',
+  'title.font.size',
+  'title.font.color',
   'margin.l',
   'margin.r',
   'margin.t',
   'margin.b',
+  'margin.pad',
   'legend.orientation',
   'legend.x',
   'legend.y',
+  'legend.font.family',
+  'legend.font.size',
+  'legend.font.color',
   'polar.bgcolor',
+  'polar.hole',
   'xaxis.title.text',
   'xaxis.type',
   'xaxis.showgrid',
   'xaxis.gridcolor',
   'xaxis.tickangle',
+  'xaxis.tickformat',
+  'xaxis.title.font.family',
+  'xaxis.title.font.size',
+  'xaxis.title.font.color',
+  'xaxis.tickfont.family',
+  'xaxis.tickfont.size',
+  'xaxis.tickfont.color',
   'xaxis.range',
   'yaxis.title.text',
   'yaxis.type',
   'yaxis.showgrid',
   'yaxis.gridcolor',
   'yaxis.tickangle',
+  'yaxis.tickformat',
+  'yaxis.title.font.family',
+  'yaxis.title.font.size',
+  'yaxis.title.font.color',
+  'yaxis.tickfont.family',
+  'yaxis.tickfont.size',
+  'yaxis.tickfont.color',
   'yaxis.range',
 ] as const
 

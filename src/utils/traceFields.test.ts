@@ -26,6 +26,7 @@ import {
   isNumericArrayPath,
   labelSlots,
   LAYOUT_FIELD_PATHS,
+  LAYOUT_FONT_PATHS,
   layoutFieldErrors,
   layoutLeafValue,
   layoutRangeValue,
@@ -43,6 +44,7 @@ import {
   sameJsonValue,
   serializeLayoutFields,
   serializeTraceFields,
+  setLayoutPath,
   setPath,
   swatchColor,
   switchTraceType,
@@ -412,6 +414,10 @@ describe('layout', () => {
     for (const [name, manifest] of EXAMPLES) {
       const layout = manifest.layout ?? {}
       expect(formToLayout(layoutToForm(layout)), name).toEqual(layout)
+      // Byte-identical: a form pass must not reorder or re-serialize a key.
+      expect(JSON.stringify(formToLayout(layoutToForm(layout))), name).toBe(
+        JSON.stringify(layout),
+      )
     }
   })
 
@@ -431,15 +437,7 @@ describe('layout', () => {
         title: { text: 't', font: { size: 9 } },
         polar: { bgcolor: '#fff', hole: 0.2 },
       }),
-    ).toEqual([
-      'template',
-      'xaxis.automargin',
-      'xaxis.title.font',
-      'margin.pad',
-      'legend.font',
-      'title.font',
-      'polar.hole',
-    ])
+    ).toEqual(['template', 'xaxis.automargin'])
   })
 
   it('parses/serializes layout text through the same field codec', () => {
@@ -730,5 +728,117 @@ describe('layout core set', () => {
     expect(layoutRangeValue(undefined, undefined)).toBeUndefined()
     expect(layoutRangeValue('', 5)).toEqual(['', 5])
     expect(layoutRangeValue(0, 0)).toEqual([0, 0])
+  })
+})
+
+describe('layout nested fonts and scalars', () => {
+  it('keeps every new control in the always-rendered core set', () => {
+    const paths: readonly string[] = LAYOUT_FIELD_PATHS
+    for (const parent of LAYOUT_FONT_PATHS) {
+      for (const leaf of ['family', 'size', 'color']) {
+        expect(paths).toContain(`${parent}.${leaf}`)
+      }
+    }
+    for (const path of [
+      'xaxis.tickformat',
+      'yaxis.tickformat',
+      'margin.pad',
+      'polar.hole',
+    ]) {
+      expect(paths).toContain(path)
+    }
+    // A fresh manifest still reads every new control as absent.
+    const fresh = layoutToForm({})
+    for (const path of paths) {
+      expect(getPath(fresh.fields, path), path).toBeUndefined()
+    }
+  })
+
+  it('sets a nested leaf and prunes every empty parent when it is cleared', () => {
+    expect(setLayoutPath({}, 'title.font.family', 'Inter')).toEqual({
+      title: { font: { family: 'Inter' } },
+    })
+    expect(
+      setLayoutPath({ title: { font: { family: 'Inter' } } }, 'title.font.family', undefined),
+    ).toEqual({})
+    // Siblings survive; only the emptied branch goes.
+    expect(
+      setLayoutPath(
+        { title: { text: 'Sales', font: { family: 'Inter', size: 14 } } },
+        'title.font.size',
+        undefined,
+      ),
+    ).toEqual({ title: { text: 'Sales', font: { family: 'Inter' } } })
+    // An explicitly empty parent is pruned as well.
+    expect(setLayoutPath({ title: {} }, 'title.font.size', undefined)).toEqual({})
+    // Removing the third and last leaf removes `font` and then the axis.
+    expect(
+      setLayoutPath(
+        { showlegend: false, yaxis: { tickfont: { color: '#111827' } } },
+        'yaxis.tickfont.color',
+        undefined,
+      ),
+    ).toEqual({ showlegend: false })
+  })
+
+  it('keeps a bare-string title when editing a child of it', () => {
+    expect(setLayoutPath({ title: 'Sales' }, 'title.font.size', 14)).toEqual({
+      title: { text: 'Sales', font: { size: 14 } },
+    })
+    expect(
+      setLayoutPath({ yaxis: { title: 'Revenue' } }, 'yaxis.title.font.color', '#111827'),
+    ).toEqual({ yaxis: { title: { text: 'Revenue', font: { color: '#111827' } } } })
+  })
+
+  it('keeps tickformat a string, never a number', () => {
+    for (const [axis, format] of [
+      ['xaxis', '.2f'],
+      ['yaxis', '%Y-%m'],
+    ] as const) {
+      const next = setLayoutPath({}, `${axis}.tickformat`, format)
+      expect(next).toEqual({ [axis]: { tickformat: format } })
+      expect(typeof getPath(next, `${axis}.tickformat`)).toBe('string')
+    }
+    // A numeric-looking format is still text: Plotly reads it as a pattern.
+    const numeric = setLayoutPath({}, 'xaxis.tickformat', '0.5')
+    expect(getPath(numeric, 'xaxis.tickformat')).toBe('0.5')
+    expect(typeof getPath(numeric, 'xaxis.tickformat')).toBe('string')
+  })
+
+  it('bounds font sizes, margin pad and polar hole', () => {
+    for (const parent of LAYOUT_FONT_PATHS) {
+      expect(numberConstraints(`${parent}.size`), parent).toEqual({ min: 1, step: 1 })
+    }
+    expect(numberConstraints('margin.pad')).toEqual({ min: 0, step: 1 })
+    expect(numberConstraints('polar.hole')).toEqual({ min: 0, max: 1, step: 0.01 })
+
+    const sized = setLayoutPath({}, 'xaxis.title.font.size', 12)
+    expect(getPath(sized, 'xaxis.title.font.size')).toBe(12)
+    expect(typeof getPath(sized, 'xaxis.title.font.size')).toBe('number')
+  })
+
+  it('no longer reports the structured nested paths as unrepresented', () => {
+    const layout = {
+      title: { text: 't', font: { family: 'Inter', size: 14, color: '#111827' } },
+      legend: { font: { family: 'Inter', size: 12, color: '#334155' } },
+      xaxis: {
+        tickformat: '%Y-%m',
+        title: { text: 'month', font: { family: 'Inter', size: 12, color: '#334155' } },
+        tickfont: { family: 'Inter', size: 11, color: '#64748b' },
+      },
+      yaxis: {
+        tickformat: '.2f',
+        title: { font: { family: 'Inter', size: 12, color: '#334155' } },
+        tickfont: { family: 'Inter', size: 11, color: '#64748b' },
+      },
+      margin: { l: 40, pad: 4 },
+      polar: { bgcolor: '#fff', hole: 0.25 },
+    }
+    expect(unrepresentedLayoutKeys(layout)).toEqual([])
+    expect(formToLayout(layoutToForm(layout))).toEqual(layout)
+    // A key inside a font object the form does not show is still named.
+    expect(unrepresentedLayoutKeys({ title: { font: { weight: 700 } } })).toEqual([
+      'title.font.weight',
+    ])
   })
 })

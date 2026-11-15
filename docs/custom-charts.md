@@ -67,6 +67,8 @@
 - 图表类型选择器 →「管理自定义图表」；
 - 「管理自定义图表」→「从当前图表创建」（把当前内置图表推导成草稿，见下文「从现有图表创建」）。
 
+「图表配置」面板（`chart.configTitle`）在没有选中图表时不再什么都不显示，而是给一个空状态：列出可选的已有图表（`chart.config.pickChart`），并带一个「新建图表」按钮（`chart.config.createChart`，没有数据集时禁用并提示 `chart.config.noDataset`），说明文字是 `chart.config.noActiveChart`。
+
 编辑方式：
 
 - 结构化表单：基础信息、通道、选项、算子（transforms）、轨迹（traces）、布局（layout）；
@@ -89,11 +91,13 @@ traces 的表单：
 layout 的表单（`chart.workbench.layout.axis` / `chart.workbench.layout.legend`）：
 
 - 清单里没有 `layout` 也照样给完整的一套核心键：`showlegend`、`barmode`、`hovermode`、`margin`（`chart.workbench.layout.margin`）、`title`（`chart.workbench.layout.title`）、`polar`，加上轴与图例——不需要先「创建 layout」才能填第一项；
-- 开关与标量：`showlegend`、`barmode`、`hovermode`；
+- 开关与标量：`showlegend`、`barmode`、`hovermode`；轴上的 `tickformat`（刻度格式，`chart.workbench.layout.tickformat`）、边距里的 `margin.pad`（内边距，`chart.workbench.layout.pad`）和极坐标的 `polar.hole`（中心孔，`chart.workbench.layout.hole`）也是标量输入；
 - 对象：`margin`、`title`、`legend`、`polar`；
 - `xaxis` / `yaxis` 各给 `title`、`type`、`range`、`showgrid`、`gridcolor`、`tickangle`；
-- **清空一个输入等于删掉那个键**：文本框留空后这个键就从对象里消失，而不是留下一个空字符串（要在 `title.text` 里表达空字符串，就在 JSON 面板里写 `""`）；
-- 表单只覆盖第 8 节那九键之内的内容；`xaxis.automargin`、`xaxis.tickformat`、`legend.orientation` 这类嵌套键属于 JSON（见下一小节）。
+- **字体收进可折叠的字体组**（`chart.workbench.layout.font`）：`title.font`、`legend.font`、`xaxis.title.font` / `yaxis.title.font`、`xaxis.tickfont` / `yaxis.tickfont` 各占一组，组里就是同一个 `font` 对象的三项——`family`（字族，`chart.workbench.layout.fontFamily`）、`size`（字号，`chart.workbench.layout.fontSize`）、`color`（字色，`chart.workbench.layout.fontColor`）；分组默认收起，展开/收起只动界面，不写清单；
+- **只在改动时写**：打开布局区、展开字体组都不会往清单里加键，没碰过的键继续保持不存在，空输入框只显示占位提示——所以不会凭空出现 `"font": {}` 或 `"title": {}` 这种空壳；
+- **清空一个输入等于删掉那个键**：文本框留空后这个键就从对象里消失，而不是留下一个空字符串（要在 `title.text` 里表达空字符串，就在 JSON 面板里写 `""`）；字体组里三项全清掉，整个 `font` 对象随之消失，`title` / `xaxis.title` / `yaxis.title` 外层空了也一并删掉，不留 `"title": {}`；
+- 表单覆盖的就是上面这套键；`xaxis.automargin`、`xaxis.tick0`、`xaxis.dtick`、`legend.title` 这类表单没有的键仍然属于 JSON（见下一小节）。
 
 通道表单里，未启用的通道不会写入清单；带必填标记的通道缺少绑定时图表无法渲染（`chart.workbench.hint.channels`）。
 
@@ -118,7 +122,9 @@ AI 草稿的约定：
 
 每条 trace 和整个 layout 都保留一个可折叠的「高级（JSON）」面板（trace 上是 `chart.workbench.trace.advanced`，layout 区是同名面板）。面板里放的是**完整对象**，不是「表单没覆盖的那一小块」：
 
-- 表单不认识的键**不会被删掉**。`textposition`、`hovertemplate`、`boxpoints`、`cumulative`、`histnorm`、`offsetgroup`、`hole`、`arrangement`、`marker.colorscale`、`marker.sizeref`、`xaxis.automargin` 之类照样留在对象里；工作台会在面板旁把它们点名列出（`chart.workbench.unsupportedKeys`：`以下字段暂不支持表单编辑，已保留在 JSON 中：textposition, cumulative`），提醒你这些键只能在 JSON 里改。
+- 表单不认识的键**不会被删掉**。trace 那边的 `textposition`、`hovertemplate`、`boxpoints`、`cumulative`、`histnorm`、`offsetgroup`、`hole`、`arrangement`、`marker.colorscale`、`marker.sizeref` 之类照样留在对象里；工作台会在面板旁把它们点名列出（`chart.workbench.unsupportedKeys`：`以下字段暂不支持表单编辑，已保留在 JSON 中：textposition, cumulative`），提醒你这些键只能在 JSON 里改。
+- 字体、刻度格式、内边距、中心孔都有了表单入口之后，这个 JSON 口子只用来补**表单那一套之外的键**：layout 里 `xaxis.tick0`、`xaxis.dtick`、`legend.title`、`xaxis.automargin` 这类嵌套键（第 8 节只限制顶层九键，嵌套键不限），以及 trace 上前面列的那些样式键。
+- 但 JSON 也补不了顶层白名单之外的键：`layout.hoverlabel`、`layout.template`、顶层 `layout.font` 都不在第 8 节那九键里，写进去照样报 `layout.template: is not an allowed layout key (allowed: showlegend, barmode, margin, xaxis, yaxis, legend, hovermode, polar, title)`——要改标题字体就用 `title.font`，不是顶层 `font`。
 - 在 JSON 里保存等于**整体替换**这个对象：解析出来的内容就是 trace / layout 本身，不是增量补丁。要删一个键就在 JSON 里删掉，把它从 JSON 里去掉就是把它从清单里去掉。
 - **JSON 不是后门**。面板内容随整份清单走同一套校验（第 3、7、8 节的白名单仍然生效）：`["$x", "$x"]` 这种槽位数组、未声明的 `$opt.<key>`、layout 里的数据槽、不在 7 个数组样式路径里的 `$<slot>.values`，照旧是校验错误。表单不给入口的写法也不会因为写了 JSON 就变合法——例如把 `$y0.values` 放进 `line.color`，后端照样报 `traces[0].line.color: '$y0.values' is only allowed at marker.color, marker.size, marker.opacity, error_x.array, error_x.arrayminus, error_y.array, error_y.arrayminus`。
 - 类型专属键不会跟着类型走：`title` / `number` / `gauge` / `delta` 只在 `indicator` 上合法，`node` / `link` / `arrangement` 只在 `sankey` 上合法。把轨迹类型从 `indicator` 改回 `bar` 后，留在 JSON 里的这些键会在保存时报 `traces[0].title: only allowed on the 'indicator' trace type`，需要到 JSON 面板里删掉。
