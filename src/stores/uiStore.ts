@@ -211,10 +211,15 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'metricstudio-ui',
-      // Toasts/backend status/unread are session-scoped; persist dialog state,
-      // recent projects and the notification history (v1.12.0).
+      // Session-scoped (never persisted): toasts, unread count, backend status,
+      // the autosave target, the AI bar visibility and **every dialog-open
+      // flag** (importModalOpen, chartConfigDialogOpen, saveProjectModalOpen,
+      // loadProjectModalOpen, reportDialogOpen, storyDialogOpen, settingsOpen,
+      // shortcutsOpen, llmSetupPromptOpen, diffModalOpen).
+      // Persisted: the report notes draft, recent projects, report templates,
+      // language, shortcut overrides, the sample-wizard dismissal and the
+      // notification history (v1.12.0).
       partialize: (state) => ({
-        chartConfigDialogOpen: state.chartConfigDialogOpen,
         reportNotesDraft: state.reportNotesDraft,
         recentProjects: state.recentProjects,
         reportTemplates: state.reportTemplates,
@@ -222,6 +227,16 @@ export const useUIStore = create<UIState>()(
         shortcutOverrides: state.shortcutOverrides,
         sampleWizardDismissed: state.sampleWizardDismissed,
         notificationHistory: state.notificationHistory,
+      }),
+      // Builds ≤ 1.15.1 persisted `chartConfigDialogOpen`, so a reload restored
+      // "open" while nothing was on screen: the panel looked broken because
+      // clicking 图表配置 only set `true` again. A stored `true` must never
+      // survive hydration — force the flag off while keeping every other
+      // persisted field intact.
+      merge: (persisted, current) => ({
+        ...current,
+        ...((persisted ?? {}) as Partial<UIState>),
+        chartConfigDialogOpen: false,
       }),
     },
   ),

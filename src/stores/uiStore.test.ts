@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useUIStore, type NotificationRecord } from './uiStore'
 
 function record(id: string, type: NotificationRecord['type'] = 'info', ageMs = 0): NotificationRecord {
@@ -88,5 +88,49 @@ describe('notification history (v1.12.0)', () => {
 
     useUIStore.getState().setNotificationFilter('all')
     expect(useUIStore.getState().notificationFilter).toBe('all')
+  })
+})
+
+describe('persist merge: a dialog can never be restored "open"', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.resetModules()
+  })
+
+  it('drops a legacy chartConfigDialogOpen: true but keeps the other persisted fields', async () => {
+    // Persisted snapshot written by a build ≤ 1.15.1, which stored the flag.
+    // `window.localStorage` must exist *before* the store module is evaluated,
+    // otherwise zustand persist detaches entirely in the node test env.
+    const persisted = new Map<string, string>([
+      [
+        'metricstudio-ui',
+        JSON.stringify({
+          state: {
+            chartConfigDialogOpen: true,
+            language: 'en',
+            sampleWizardDismissed: true,
+            recentProjects: [{ path: '/tmp/p', name: 'p' }],
+          },
+          version: 0,
+        }),
+      ],
+    ])
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => persisted.get(key) ?? null,
+        setItem: (key: string, value: string) => void persisted.set(key, value),
+        removeItem: (key: string) => void persisted.delete(key),
+      },
+    })
+    vi.resetModules()
+
+    const { useUIStore: hydrated } = await import('./uiStore')
+    const state = hydrated.getState()
+
+    expect(state.chartConfigDialogOpen).toBe(false)
+    // Every other persisted field still hydrates.
+    expect(state.language).toBe('en')
+    expect(state.sampleWizardDismissed).toBe(true)
+    expect(state.recentProjects).toEqual([{ path: '/tmp/p', name: 'p' }])
   })
 })

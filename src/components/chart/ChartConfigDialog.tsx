@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Select, SelectItem } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 import { GripHorizontal, Save, SlidersHorizontal, Trash2, X } from 'lucide-react'
@@ -9,6 +9,14 @@ import { useCustomChart, useCustomChartStore } from '@/stores/customChartStore'
 import { api } from '@/api/client'
 import { chartTypeOptions } from '@/utils/chartConstants'
 import { chartTypeLabel, localizedCustomText } from '@/utils/chartTypeLabel'
+import {
+  PANEL_EDGE_MARGIN,
+  clampPanelPosition,
+  defaultPanelPosition,
+  type PanelPosition,
+  type PanelSize,
+  type PanelViewport,
+} from '@/utils/panelPosition'
 import { CustomChartsDialog } from '@/components/chart/CustomChartsDialog'
 import { EncodingPanel } from '@/components/chart/EncodingPanel'
 import type { ChartType, ChartTemplate } from '@/types/encoding'
@@ -16,23 +24,28 @@ import type { ChartType, ChartTemplate } from '@/types/encoding'
 const DIALOG_WIDTH = 680
 const POS_STORAGE_KEY = 'metricstudio-chart-config-pos'
 
-function loadSavedPos(): { x: number; y: number } {
+function currentViewport(): PanelViewport {
+  return { width: window.innerWidth, height: window.innerHeight }
+}
+
+/**
+ * Raw restore only: the stored spot is clamped against the panel's *measured*
+ * size once it is in the DOM, so a position saved on a bigger screen (or an old
+ * build's pointer-offset clamp) can never be restored off-screen.
+ */
+function loadSavedPos(): PanelPosition {
   try {
     const raw = localStorage.getItem(POS_STORAGE_KEY)
     if (raw) {
       const pos = JSON.parse(raw)
       if (typeof pos.x === 'number' && typeof pos.y === 'number') {
-        // Clamp into current viewport in case the window was resized
-        return {
-          x: Math.min(Math.max(0, pos.x), Math.max(0, window.innerWidth - 120)),
-          y: Math.min(Math.max(0, pos.y), Math.max(0, window.innerHeight - 60)),
-        }
+        return { x: pos.x, y: pos.y }
       }
     }
   } catch {
     // corrupted value — fall through to default
   }
-  return { x: Math.max(16, window.innerWidth - DIALOG_WIDTH - 60), y: 72 }
+  return defaultPanelPosition(DIALOG_WIDTH, currentViewport())
 }
 
 interface LabeledSelectProps {
@@ -93,8 +106,50 @@ export function ChartConfigDialog() {
 
   // Draggable floating panel state (lazy init: restore last saved position)
   const [pos, setPos] = useState(loadSavedPos)
+  const posRef = useRef(pos)
   const dragOffset = useRef<{ dx: number; dy: number } | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  /** Single writer for the panel position, keeping the ref in sync for the
+   *  effects/pointer handlers that must not read a stale render. */
+  const moveTo = useCallback((next: PanelPosition) => {
+    posRef.current = next
+    setPos(next)
+  }, [])
+
+  /** The panel's own rendered box — never a hardcoded width constant. */
+  const measurePanel = useCallback((): PanelSize | null => {
+    const rect = panelRef.current?.getBoundingClientRect()
+    if (!rect || rect.width <= 0) return null
+    return { width: rect.width, height: rect.height }
+  }, [])
+
+  const clampToViewport = useCallback(
+    (next: PanelPosition): PanelPosition => {
+      const size = measurePanel()
+      if (!size) return next
+      return clampPanelPosition(next, size, currentViewport(), PANEL_EDGE_MARGIN)
+    },
+    [measurePanel],
+  )
+
+  // First measure after (re)opening + on every viewport resize. A spot that no
+  // longer fits falls back to the default dock instead of being restored
+  // off-screen (the panel is "open" but invisible → 图表配置 looks dead).
+  useEffect(() => {
+    if (!isOpen) return
+    const current = posRef.current
+    const fitted = clampToViewport(current)
+    if (fitted.x !== current.x || fitted.y !== current.y) {
+      const width = measurePanel()?.width ?? DIALOG_WIDTH
+      moveTo(clampToViewport(defaultPanelPosition(width, currentViewport())))
+    } else {
+      moveTo(fitted)
+    }
+    const onResize = () => moveTo(clampToViewport(posRef.current))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [isOpen, clampToViewport, measurePanel, moveTo])
 
   const onHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     dragOffset.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y }
@@ -102,17 +157,21 @@ export function ChartConfigDialog() {
   }
   const onHeaderPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragOffset.current) return
-    const maxX = window.innerWidth - 120
-    const maxY = window.innerHeight - 60
-    setPos({
-      x: Math.min(Math.max(0, e.clientX - dragOffset.current.dx), maxX),
-      y: Math.min(Math.max(0, e.clientY - dragOffset.current.dy), maxY),
-    })
+    // Clamped on every move, so a drag can never park the panel off-screen.
+    moveTo(
+      clampToViewport({
+        x: e.clientX - dragOffset.current.dx,
+        y: e.clientY - dragOffset.current.dy,
+      }),
+    )
   }
   const onHeaderPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragOffset.current) {
+      // Save the clamped position: a stored spot is always a visible one.
+      const final = clampToViewport(posRef.current)
+      moveTo(final)
       try {
-        localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(pos))
+        localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(final))
       } catch {
         // storage full/blocked — position simply won't persist
       }
